@@ -227,10 +227,10 @@ def validate_runtime_contract(*, strict: bool = False) -> ContractReport:
         pass
 
     try:
-        from hermes_cli.plugins import get_bundled_plugins_dir
+        from plugins.dietcode.audit import dietcode_plugin_root
         from plugins.dietcode.paths import is_valid_broccolidb_root
 
-        bundled_plugin = get_bundled_plugins_dir() / "dietcode"
+        bundled_plugin = dietcode_plugin_root()
         for rel in (
             "lib/runtime/governance_hooks.py",
             "lib/runtime/joyzoning_hooks.py",
@@ -244,8 +244,8 @@ def validate_runtime_contract(*, strict: bool = False) -> ContractReport:
             if not (bundled_plugin / rel).is_file():
                 report.add_error(f"DietCode layout missing required file: {rel}")
 
-        root_pkg = get_bundled_plugins_dir().parent / "broccolidb" / "package.json"
-        plugin_pkg = get_bundled_plugins_dir() / "dietcode" / "broccolidb" / "package.json"
+        root_pkg = bundled_plugin.parents[1] / "broccolidb" / "package.json"
+        plugin_pkg = bundled_plugin / "broccolidb" / "package.json"
         if root_pkg.is_file() and plugin_pkg.is_file():
             import json
 
@@ -258,7 +258,7 @@ def validate_runtime_contract(*, strict: bool = False) -> ContractReport:
                     )
             except (json.JSONDecodeError, OSError):
                 pass
-        bundled = get_bundled_plugins_dir() / "dietcode" / "broccolidb"
+        bundled = bundled_plugin / "broccolidb"
         if not is_valid_broccolidb_root(bundled):
             report.add_warning("Plugin bundle broccolidb/ missing or invalid (run npm ci in bundle)")
     except Exception:

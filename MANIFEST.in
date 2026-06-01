@@ -1,4 +1,0 @@
-recursive-include dietcode/broccolidb *
-recursive-exclude dietcode/broccolidb/node_modules *
-recursive-exclude dietcode/broccolidb/scratch *
-global-exclude *.db *.db-wal *.db-shm __pycache__ *.py[cod]
