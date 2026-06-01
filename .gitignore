@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+plugins/
+*.db
+*.db-wal
+*.db-shm
+dietcode/broccolidb/node_modules/
+dietcode/broccolidb/scratch/

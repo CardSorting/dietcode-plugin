@@ -1,0 +1,15 @@
+name: dietcode
+version: 1.8.0
+description: >
+  BroccoliDB, BroccoliQ, JoyZoning governance, and JSDP for Hermes Agent.
+  Drag-and-drop this folder to ~/.hermes/plugins/dietcode/ — auto_enable handles
+  the rest. Run npm ci once in broccolidb/. Verify with /dietcode doctor.
+author: DietCode
+kind: standalone
+auto_enable: true
+provides_hooks:
+  - on_session_start
+  - on_session_end
+  - pre_tool_call
+  - post_tool_call
+  - transform_tool_result
