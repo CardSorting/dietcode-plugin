@@ -21,6 +21,7 @@ _TOOL_MODULES = (
     f"{_LIB}.convergence_tools",
     f"{_LIB}.jsdp_harness_tools",
     f"{_LIB}.kanban_broccolidb_tools",
+    f"{_LIB}.kernel_bridge_tools",
 )
 
 # Diet tool modules loaded only via plugins/dietcode/tools_loader.py (not tools/ auto-discovery).
@@ -30,6 +31,7 @@ DEFERRED_TOOL_MODULE_STEMS: frozenset[str] = frozenset({
     "convergence_tools",
     "jsdp_harness_tools",
     "kanban_broccolidb_tools",
+    "kernel_bridge_tools",
 })
 
 # Minimum surface the dietcode toolset must resolve (behavioral contract).
@@ -45,6 +47,7 @@ EXPECTED_DIETCODE_TOOLS: FrozenSet[str] = frozenset({
     "jsdp_validate_handoff",
     "kanban_broccolidb_board_intel",
     "kanban_broccolidb_sync",
+    "dietcode_kernel",
 })
 
 _DIETCODE_TOOL_PREFIXES = (
@@ -55,7 +58,7 @@ _DIETCODE_TOOL_PREFIXES = (
     "runtime_",
     "jsdp_",
 )
-_DIETCODE_TOOL_NAMES = frozenset({"joyzoning", "jsdp", "jsdp_horizon"})
+_DIETCODE_TOOL_NAMES = frozenset({"joyzoning", "jsdp", "jsdp_horizon", "dietcode_kernel"})
 
 
 @dataclass

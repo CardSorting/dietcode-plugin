@@ -1,0 +1,71 @@
+{
+  "description": "RECOVERY: Frozen error recovery hints for docs-to-code drift checks",
+  "stale_content": {
+    "recovery_hint": "revalidate_patch_with_patch.validate",
+    "nextRecommendedCommand": "patch.validate"
+  },
+  "semantic_disabled": {
+    "recovery_hint": "use_search_literal_or_search_tokens",
+    "nextRecommendedCommand": "search.literal"
+  },
+  "ranked_search_disabled": {
+    "recovery_hint": "use_workspace_grep_or_search_literal",
+    "nextRecommendedCommand": "workspace.grep"
+  },
+  "symlink_target": {
+    "recovery_hint": "use_non_symlink_target_path",
+    "nextRecommendedCommand": "file.stat"
+  },
+  "patch_failed": {
+    "recovery_hint": "run_patch_preview_or_patch_validate",
+    "nextRecommendedCommand": "patch.validate"
+  },
+  "coherence_mismatch": {
+    "recovery_hint": "refresh_context_and_retry_mutation",
+    "nextRecommendedCommand": "file.read"
+  },
+  "nested_call_timeout": {
+    "recovery_hint": "reduce_concurrency_or_retry_later",
+    "nextRecommendedCommand": "operation.status"
+  },
+  "shell_timeout": {
+    "recovery_hint": "narrow_search_or_retry_later",
+    "nextRecommendedCommand": "shell.rg"
+  },
+  "shell_truncated": {
+    "recovery_hint": "narrow_range_or_paginate",
+    "nextRecommendedCommand": "shell.sedRange"
+  },
+  "shell_binary_file": {
+    "recovery_hint": "use_file_stat_or_skip_binary",
+    "nextRecommendedCommand": "file.stat"
+  },
+  "shell_file_too_large": {
+    "recovery_hint": "use_shell_head_tail_or_sedRange",
+    "nextRecommendedCommand": "shell.sedRange"
+  },
+  "shell_directory_target": {
+    "recovery_hint": "use_shell_cd_or_shell_rg",
+    "nextRecommendedCommand": "shell.rg"
+  },
+  "shell_invalid_range": {
+    "recovery_hint": "verify_line_bounds_with_shell_sedRange",
+    "nextRecommendedCommand": "shell.sedRange"
+  },
+  "shell_outside_workspace": {
+    "recovery_hint": "use_workspace_relative_path",
+    "nextRecommendedCommand": "shell.pwd"
+  },
+  "shell_symlink_escape": {
+    "recovery_hint": "use_non_symlink_target_path",
+    "nextRecommendedCommand": "file.stat"
+  },
+  "shell_command_not_allowed": {
+    "recovery_hint": "use_documented_shell_methods",
+    "nextRecommendedCommand": "tool.capabilities"
+  },
+  "shell_rg_failed": {
+    "recovery_hint": "verify_pattern_and_path",
+    "nextRecommendedCommand": "shell.rg"
+  }
+}

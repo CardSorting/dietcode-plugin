@@ -11,7 +11,7 @@ The plugin is declared in `plugin.yaml`:
 
 ```yaml
 name: dietcode
-version: 1.8.0
+version: 1.9.0
 kind: standalone
 auto_enable: true
 ```
@@ -59,6 +59,28 @@ The report covers:
 - Runtime layout and stale shim detection.
 - BroccoliDB root, `node_modules`, and RPC availability.
 - JoyZoning and JSDP configuration.
+- Kernel subtree, bridge preflight, and mutation authority split.
+
+## Mutation authority (kernel vs JoyZoning)
+
+| Layer | Responsibility |
+| --- | --- |
+| **Kernel** | Physical file mutations via `dietcode_kernel(action="patch")` when the bridge patch gate is open |
+| **JoyZoning** | Lifecycle journal and completion gates (`begin`, `patch`, `verify`, `request_review`) |
+
+Phase 2C bridges successful kernel patch receipts into the JoyZoning journal
+automatically.
+
+Phase 3A warns (non-blocking) on raw Hermes `write_file` / `patch` when the
+kernel patch gate is open. Set `dietcode.kernel.bridge.raw_write_policy: allow`
+to silence hints.
+
+Phase 3B blocks raw writes when `raw_write_policy: block` and
+`DIETCODE_KERNEL_RAW_WRITE_BLOCK=1` with the patch gate fully open.
+
+Phase 4 adds `dietcode_kernel(action='verify')` — kernel `verify.run` with
+allowlisted commands, journaled into JoyZoning `mutation_verify`. Convergence
+gates remain the completion authority; kanban is never auto-completed.
 
 ## Configuration
 

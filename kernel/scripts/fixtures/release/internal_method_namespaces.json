@@ -1,0 +1,13 @@
+{
+  "description": "STABILITY: RPC namespaces excluded from tool.registry agent-safe surface",
+  "internalNamespaces": [
+    "analysis.",
+    "language.",
+    "chip.",
+    "combo.",
+    "recovery.",
+    "terminal.run",
+    "verify.run"
+  ],
+  "rationale": "IDE-assisted analysis, LSP, chips, combos, recovery, and process execution are not deterministic agent-safe surfaces."
+}

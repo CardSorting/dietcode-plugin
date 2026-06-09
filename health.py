@@ -38,6 +38,8 @@ Subcommands:
   status / doctor          Full integration health report
   tools                    Tool module load report
   broccolidb               BroccoliDB root + RPC availability
+  kernel                   Kernel subtree + socket/token health
+  kernel status            Compact operator summary (bridge, policy, gates)
 """
 
 
@@ -136,6 +138,15 @@ def _runtime_health() -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+def _kernel_health() -> dict[str, Any]:
+    try:
+        from plugins.dietcode.lib.kernel_health import build_kernel_health
+
+        return build_kernel_health()
+    except ImportError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def _jsdp_health() -> dict[str, Any]:
     try:
         from plugins.dietcode.lib.agent.joyzoning.config import get_joyzoning_config
@@ -173,6 +184,7 @@ def build_status_report(*, strict: bool = False, refresh: bool = False) -> dict[
         "toolset": _toolset_health(),
         "runtime": _runtime_health(),
         "broccolidb": _broccolidb_health(),
+        "kernel": _kernel_health(),
         "joyzoning": _joyzoning_health(),
         "jsdp": _jsdp_health(),
     }
@@ -251,6 +263,137 @@ def format_status_report(
     else:
         lines.append(f"⚠️  BroccoliDB: {bdb.get('error') or 'root not found'}")
 
+    kern = data.get("kernel", {})
+    if kern.get("plugin_root"):
+        lines.append(f"   plugin_root: {kern.get('plugin_root')}")
+    if kern.get("kernel_root"):
+        lines.append(f"   kernel_root: {kern.get('kernel_root')}")
+    ws = kern.get("workspace") or {}
+    if ws.get("resolved_workspace_root"):
+        safe = ws.get("safe_for_mutation")
+        mark = "✅" if safe else "⚠️ "
+        lines.append(
+            f"{mark} workspace: {ws.get('resolved_workspace_root')}"
+            f" (source={ws.get('source')}, safe_for_mutation={safe})"
+        )
+        for err in ws.get("errors") or []:
+            lines.append(f"   • {err}")
+    elif ws.get("source"):
+        lines.append(
+            f"⚠️  workspace: unresolved (source={ws.get('source')})"
+            f" — {ws.get('hint') or 'set HERMES_KANBAN_WORKSPACE or DIETCODE_WORKSPACE_ROOT'}"
+        )
+    bridge = kern.get("bridge_preflight") or {}
+    if bridge.get("enabled") is False:
+        lines.append("ℹ️  Kernel bridge: disabled in config")
+    elif bridge.get("ok"):
+        gate = bridge.get("patch_gate") or {}
+        lines.append(
+            f"✅ Kernel bridge preflight: {bridge.get('action', 'ok')}"
+            f" | mutations_enabled={bridge.get('mutations_enabled', False)}"
+            f" | patch_allowed={gate.get('patch_allowed', False)}"
+        )
+        if bridge.get("workspace_safe_for_mutation") is False:
+            lines.append("   ⚠️  workspace not safe for kernel bridge — read/search/patch blocked")
+        elif not gate.get("mutations_enabled"):
+            lines.append(
+                "   ℹ️  patch gate closed — set dietcode.kernel.bridge.mutations_enabled: true for dietcode_kernel(action='patch')"
+            )
+        elif gate.get("patch_allowed"):
+            lines.append("   ✅ patch gate open — dietcode_kernel(action='patch') available")
+    elif bridge.get("error"):
+        err = bridge.get("error") if isinstance(bridge.get("error"), dict) else {}
+        lines.append(
+            f"⚠️  Kernel bridge: {err.get('string_code') or bridge.get('action')}"
+            f" — {err.get('message') or bridge.get('action')}"
+        )
+    elif bridge.get("action") not in (None, "skipped"):
+        lines.append(f"⚠️  Kernel bridge: {bridge.get('action')}")
+
+    if kern.get("ok"):
+        lines.append(
+            f"✅ Kernel: binary at {kern.get('binary_path')}"
+            f" | socket={'live' if kern.get('socket_reachable') else 'offline'}"
+            f" | token={'ok' if kern.get('token_readable') else 'missing'}"
+        )
+    elif kern.get("platform_supported") is False:
+        lines.append(
+            f"ℹ️  Kernel: macOS-only (current: {kern.get('platform')}) — "
+            "BroccoliDB/JoyZoning unaffected"
+        )
+    elif kern.get("subtree_present"):
+        lines.append(f"⚠️  Kernel: {kern.get('hint') or 'build required'}")
+    elif kern.get("error"):
+        lines.append(f"⚠️  Kernel: {kern.get('error')}")
+
+    receipt = kern.get("receipt_journal") or {}
+    if receipt.get("phase"):
+        lines.append(
+            "ℹ️  Mutation authority: kernel = physical writes | "
+            "JoyZoning = lifecycle journal/completion"
+        )
+        raw_router = kern.get("raw_write_router") or {}
+        policy = raw_router.get("raw_write_policy") or "warn"
+        would_warn = raw_router.get("would_warn_on_raw_write")
+        would_block = raw_router.get("would_block_raw_writes")
+        fuse = raw_router.get("env_fuse_present")
+        if would_block:
+            lines.append(
+                f"⚠️  Raw write policy: {policy} — blocking active on write_file/patch "
+                f"(DIETCODE_KERNEL_RAW_WRITE_BLOCK fuse={'on' if fuse else 'off'})"
+            )
+        elif would_warn:
+            lines.append(
+                f"⚠️  Raw write policy: {policy} — write_file/patch would warn "
+                "(kernel patch gate open; prefer dietcode_kernel)"
+            )
+        elif policy == "block" and not fuse:
+            lines.append(
+                f"ℹ️  Raw write policy: {policy} — fuse unset; raw writes warn-only until "
+                "DIETCODE_KERNEL_RAW_WRITE_BLOCK=1"
+            )
+        elif policy != "allow":
+            lines.append(
+                f"ℹ️  Raw write policy: {policy} — no warn yet "
+                f"(patch_gate_open={raw_router.get('patch_gate_open', False)})"
+            )
+        else:
+            lines.append(f"ℹ️  Raw write policy: {policy} — raw write hints disabled")
+        if not would_block:
+            lines.append(
+                "   Raw Hermes write_file/patch not hard-blocked"
+                if would_warn
+                else "   Raw Hermes write_file/patch allowed (gate closed or policy=allow)"
+            )
+        if receipt.get("joyzoning_enabled"):
+            lines.append(
+                f"   Receipt journal (Phase {receipt.get('phase')}): "
+                "successful dietcode_kernel patches → JoyZoning mutation_record_patch"
+            )
+        else:
+            lines.append(
+                "   Receipt journal: JoyZoning disabled — kernel patches succeed without lifecycle journal"
+            )
+
+    verify = kern.get("verify_bridge") or {}
+    if verify.get("phase"):
+        allowlist = verify.get("allowlist_prefixes") or []
+        if verify.get("verify_action_available"):
+            lines.append(
+                f"✅ Kernel verify (Phase {verify.get('phase')}): dietcode_kernel(action='verify') available"
+                f" | allowlist={len(allowlist)} prefixes"
+            )
+        else:
+            lines.append(
+                f"ℹ️  Kernel verify (Phase {verify.get('phase')}): unavailable"
+                f" (bridge/socket/workspace gate closed)"
+            )
+        if allowlist:
+            preview = ", ".join(str(p) for p in allowlist[:4])
+            if len(allowlist) > 4:
+                preview += f", … +{len(allowlist) - 4}"
+            lines.append(f"   verify.run allowlist: {preview}")
+
     jz = data.get("joyzoning", {})
     if jz.get("ok"):
         lines.append(
@@ -310,5 +453,15 @@ def handle_dietcode_command(raw_args: str) -> Optional[str]:
 
     if sub == "broccolidb":
         return json.dumps(_broccolidb_health(), indent=2)
+
+    if sub == "kernel":
+        rest = argv[1:] if len(argv) > 1 else []
+        if rest and rest[0].lower() == "status":
+            try:
+                from plugins.dietcode.lib.kernel_health import format_kernel_status_report
+            except ImportError:
+                from lib.kernel_health import format_kernel_status_report
+            return format_kernel_status_report()
+        return json.dumps(_kernel_health(), indent=2)
 
     return f"Unknown subcommand: {sub}\n\n{_HELP}"

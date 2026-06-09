@@ -1,0 +1,21 @@
+name: kernel-validate
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "kernel/**"
+      - ".github/workflows/kernel-validate.yml"
+  pull_request:
+    paths:
+      - "kernel/**"
+      - ".github/workflows/kernel-validate.yml"
+
+jobs:
+  validate:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Kernel coherence archive validate
+        run: make -C kernel validate

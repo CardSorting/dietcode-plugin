@@ -1,5 +1,5 @@
 name: dietcode
-version: 1.8.0
+version: 1.9.0
 description: >
   BroccoliDB, BroccoliQ, JoyZoning governance, and JSDP for Hermes Agent.
   Drag-and-drop this folder to ~/.hermes/plugins/dietcode/ — auto_enable handles

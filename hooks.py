@@ -45,6 +45,12 @@ def _ensure_handlers() -> None:
         return
     from plugins.dietcode.lib.runtime.jsdp_hooks import _on_session_start as jsdp_start
     from plugins.dietcode.lib.runtime.governance_hooks import on_transform_tool_result
+    from plugins.dietcode.lib.runtime.kernel_hooks import (
+        _post_tool_call as kernel_post,
+        _pre_tool_call as kernel_pre,
+        on_kernel_journal_transform,
+        on_kernel_raw_write_transform,
+    )
     from plugins.dietcode.lib.runtime.joyzoning_hooks import (
         _on_session_end as jz_end,
         _on_session_start as jz_start,
@@ -58,9 +64,13 @@ def _ensure_handlers() -> None:
 
     _ON_SESSION_START = (kanban_start, jz_start, jsdp_start)
     _ON_SESSION_END = (jz_end,)
-    _POST_TOOL_CALL = (jz_post, kanban_post)
-    _PRE_TOOL_CALL = (jz_pre,)
-    _TRANSFORM_TOOL_RESULT = (on_transform_tool_result,)
+    _POST_TOOL_CALL = (jz_post, kernel_post, kanban_post)
+    _PRE_TOOL_CALL = (kernel_pre, jz_pre,)
+    _TRANSFORM_TOOL_RESULT = (
+        on_kernel_journal_transform,
+        on_kernel_raw_write_transform,
+        on_transform_tool_result,
+    )
 
 
 def _run_all(hook_name: str, handlers: tuple[Callable[..., Any], ...]) -> None:

@@ -23,6 +23,10 @@ def broccolidb_root() -> Path:
     return plugin_root() / "broccolidb"
 
 
+def kernel_root() -> Path:
+    return plugin_root() / "kernel"
+
+
 def _integration_marker() -> Path:
     try:
         from hermes_constants import get_hermes_home
@@ -125,6 +129,24 @@ def apply_seamless_defaults(*, save: bool = True) -> dict[str, Any]:
             gov["enabled"] = True
             changed.append("joyzoning.governance.enabled")
 
+    dietcode = config.setdefault("dietcode", {})
+    if isinstance(dietcode, dict):
+        kernel_cfg = dietcode.setdefault("kernel", {})
+        if isinstance(kernel_cfg, dict) and "workspace_root_source" not in kernel_cfg:
+            kernel_cfg["workspace_root_source"] = "hermes_project"
+            changed.append("dietcode.kernel.workspace_root_source")
+        bridge_cfg = kernel_cfg.setdefault("bridge", {}) if isinstance(kernel_cfg, dict) else {}
+        if isinstance(bridge_cfg, dict):
+            if "enabled" not in bridge_cfg:
+                bridge_cfg["enabled"] = True
+                changed.append("dietcode.kernel.bridge.enabled")
+            if "mutations_enabled" not in bridge_cfg:
+                bridge_cfg["mutations_enabled"] = False
+                changed.append("dietcode.kernel.bridge.mutations_enabled")
+            if "raw_write_policy" not in bridge_cfg:
+                bridge_cfg["raw_write_policy"] = "warn"
+                changed.append("dietcode.kernel.bridge.raw_write_policy")
+
     if save and changed:
         save_config(config)
         logger.info("DietCode: applied seamless defaults (%s)", ", ".join(changed))
@@ -137,15 +159,36 @@ def apply_seamless_defaults(*, save: bool = True) -> dict[str, Any]:
     return {"ok": True, "changed": changed, "saved": bool(save and changed)}
 
 
-def run_install_wizard(*, auto_npm: bool = True) -> dict[str, Any]:
-    """CLI / drag-and-drop installer — config + optional npm ci."""
+def ensure_kernel_built(*, auto_build: bool = False, timeout: int = 600) -> dict[str, Any]:
+    """Check or build the quarantined kernel binary (macOS + toolchain only)."""
+    try:
+        from plugins.dietcode.lib.kernel_health import ensure_kernel_built as _ensure
+    except ImportError:
+        import sys
+
+        root = str(plugin_root())
+        if root not in sys.path:
+            sys.path.insert(0, root)
+        from lib.kernel_health import ensure_kernel_built as _ensure
+
+    return _ensure(auto_build=auto_build, timeout=timeout)
+
+
+def run_install_wizard(*, auto_npm: bool = True, auto_kernel: bool = False) -> dict[str, Any]:
+    """CLI / drag-and-drop installer — config + optional npm ci + kernel build check."""
     cfg = apply_seamless_defaults(save=True)
     runtime = ensure_broccolidb_runtime(auto_npm=auto_npm)
-    return {"config": cfg, "broccolidb": runtime}
+    kernel = ensure_kernel_built(auto_build=auto_kernel)
+    return {"config": cfg, "broccolidb": runtime, "kernel": kernel}
 
 
 if __name__ == "__main__":
     import json
+    import sys
 
-    result = run_install_wizard(auto_npm="--skip-npm" not in __import__("sys").argv)
+    argv = sys.argv[1:]
+    result = run_install_wizard(
+        auto_npm="--skip-npm" not in argv,
+        auto_kernel="--build-kernel" in argv,
+    )
     print(json.dumps(result, indent=2))
