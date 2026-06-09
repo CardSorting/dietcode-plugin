@@ -5,7 +5,31 @@ BroccoliDB for repository context, BroccoliQ for queue coordination, JoyZoning
 for mutation lifecycle governance, JSDP for rolling-horizon planning, and an
 **optional macOS kernel authority bridge** for coherent physical mutation.
 
-**Current version:** 1.9.0 — Kernel Authority Bridge
+**Current version:** 1.9.2 — Kernel Bridge Performance Pass
+
+## What changed in v1.9.2
+
+Conservative bridge latency reductions without weakening safety gates:
+
+- Preflight readiness cache (`preflight_cache_ttl_ms`)
+- Workspace open reuse (`workspace_open_cache`)
+- Progress JSONL batching (`progress_flush_interval_ms`)
+- Per-workspace mutation lock + patch fast path (no drift)
+- `/dietcode kernel perf --last 10` and `scripts/kernel_bridge_perf.py`
+
+See [releases/v1.9.2.md](releases/v1.9.2.md).
+
+## What changed in v1.9.1
+
+Structured kernel progress telemetry and operator recovery hints — observability
+only, no mutation authority changes:
+
+- `/dietcode kernel progress` — human summaries, `--timeline`, `--last N`, `--operation <id>`
+- `/dietcode kernel last-error` — normalized envelopes with `next_action`, `safe_to_retry`, retry/diagnostic/rollback commands
+- `/dietcode kernel explain-gate` — closed gates, config/env fixes, raw-write behavior
+- `dietcode_kernel` results include `_kernel_operator_hints` and `_kernel_error_envelope`
+
+See [releases/v1.9.1.md](releases/v1.9.1.md) and [agent-ergonomics.md](agent-ergonomics.md).
 
 ## What changed in v1.9.0
 
@@ -23,7 +47,7 @@ See [releases/v1.9.0.md](releases/v1.9.0.md) and [kernel-bridge-operations.md](k
 
 ```yaml
 name: dietcode
-version: 1.9.0
+version: 1.9.2
 kind: standalone
 auto_enable: true
 ```
@@ -65,6 +89,9 @@ intent → patch → receipt → journal → verify → verification journal →
 | 3B | Hard block with config + `DIETCODE_KERNEL_RAW_WRITE_BLOCK=1` |
 | 4 | Verify loop → verification journal |
 | 5 | Operations manual, `/dietcode kernel status`, failure audit |
+| 6 | Progress telemetry, slash commands, agent hints |
+| 6B | Human summaries, timeline, multi-op views, stress tests |
+| 7 | Readiness cache, workspace reuse, batching, mutation lock, perf telemetry |
 
 Details: [../kernel/MIGRATION.md](../kernel/MIGRATION.md)
 
@@ -102,6 +129,10 @@ dietcode:
 ```text
 /dietcode doctor
 /dietcode kernel status
+/dietcode kernel progress           # human summary of current operation
+/dietcode kernel progress --timeline
+/dietcode kernel last-error
+/dietcode kernel explain-gate
 /dietcode kernel          # full JSON health payload
 ```
 

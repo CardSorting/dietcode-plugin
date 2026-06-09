@@ -1,6 +1,6 @@
 # DietCode Hermes Plugin
 
-**v1.9.0 — Kernel Authority Bridge**
+**v1.9.2 — Kernel Bridge Performance Pass**
 
 DietCode is a standalone Hermes Agent plugin that bundles BroccoliDB, BroccoliQ,
 JoyZoning governance, JSDP rolling-horizon planning, and an **optional macOS
@@ -126,7 +126,7 @@ Operator guide: [docs/kernel-bridge-operations.md](docs/kernel-bridge-operations
 
 ```text
 .
-|-- plugin.yaml                 # Hermes manifest (v1.9.0)
+|-- plugin.yaml                 # Hermes manifest (v1.9.2)
 |-- hooks.py                    # Hook registration (kernel + JoyZoning + governance)
 |-- install.py                  # Config defaults, npm bootstrap, kernel build check
 |-- health.py                   # /dietcode status, doctor, kernel status
@@ -155,6 +155,8 @@ Operator guide: [docs/kernel-bridge-operations.md](docs/kernel-bridge-operations
 | [kernel/MIGRATION.md](kernel/MIGRATION.md) | Kernel integration phase history |
 | [kernel/README.md](kernel/README.md) | Kernel build, validate, RPC reference |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes |
+| [docs/releases/v1.9.2.md](docs/releases/v1.9.2.md) | v1.9.2 release note |
+| [docs/releases/v1.9.1.md](docs/releases/v1.9.1.md) | v1.9.1 release note |
 | [docs/releases/v1.9.0.md](docs/releases/v1.9.0.md) | v1.9.0 release note |
 
 ## License

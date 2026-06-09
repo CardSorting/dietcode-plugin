@@ -1,5 +1,43 @@
 # Changelog
 
+## v1.9.2 — Kernel Bridge Performance Pass (2026-06-09)
+
+Adds bridge readiness caching, workspace-open reuse, progress write batching, mutation
+locking, and phase-level performance telemetry for faster coherent patch workflows
+without weakening safety gates.
+
+### Highlights
+
+- **Readiness cache** — socket+token positive cache with TTL; invalidate on errors.
+- **Workspace open reuse** — skip redundant open when same root recently confirmed.
+- **Progress batching** — JSONL buffered; current snapshot immediate; flush on terminal phases.
+- **Patch fast path** — no drift → `apply_patch_with_coherence` (recovery loop only when needed).
+- **Mutation lock** — serialize patch/verify per workspace; reads/search unaffected.
+- **Perf surface** — `/dietcode kernel perf --last 10`, `scripts/kernel_bridge_perf.py`.
+- **Tests** — `tests/test_kernel_bridge_perf.py`.
+
+See [docs/releases/v1.9.2.md](docs/releases/v1.9.2.md).
+
+## v1.9.1 — Kernel Observability Polish (2026-06-09)
+
+Adds structured kernel progress telemetry, timeline views, gate explanations, and
+operator recovery hints for long-running coherent patch and verify operations.
+
+### Highlights
+
+- **Progress telemetry** — JSONL + current snapshot under `~/.dietcode/session/`;
+  phases from `bridge.preflight` through `done` / `error`; 15s stall detection.
+- **Operator commands** — `kernel progress` (human summary), `--timeline`,
+  `--last N`, `--operation <id>`, `last-error`, `explain-gate`.
+- **Agent hints** — `_kernel_operator_hints`, `_kernel_error_envelope` with
+  `next_action`, `safe_to_retry`, `retry_command`, `diagnostic_command`,
+  `rollback_command`.
+- **Docs** — [docs/agent-ergonomics.md](docs/agent-ergonomics.md),
+  “When the kernel feels stuck” runbook.
+- **Tests** — `tests/test_kernel_progress.py` (Phase 6 + 6B stress cases).
+
+No mutation behavior changes. No new authority. See [docs/releases/v1.9.1.md](docs/releases/v1.9.1.md).
+
 ## v1.9.0 — Kernel Authority Bridge (2026-06-09)
 
 Adds optional DietCode kernel authority bridge for coherent patching, verification,

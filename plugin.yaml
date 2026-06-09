@@ -1,5 +1,5 @@
 name: dietcode
-version: 1.9.0
+version: 1.9.2
 description: >
   BroccoliDB, BroccoliQ, JoyZoning governance, JSDP, and optional macOS kernel
   authority bridge for Hermes Agent. Drag-and-drop to ~/.hermes/plugins/dietcode/

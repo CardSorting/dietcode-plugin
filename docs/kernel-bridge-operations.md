@@ -109,12 +109,26 @@ Full loop including verify and convergence (no auto-complete):
 python scripts/kernel_bridge_e2e.py
 ```
 
-## Kernel subcommand
+## Kernel subcommands
 
 ```text
-/dietcode kernel status   # operator summary (text)
-/dietcode kernel          # full JSON health payload
+/dietcode kernel status              # operator summary (text)
+/dietcode kernel                     # full JSON health payload
+/dietcode kernel progress              # human summary (e.g. patch applying: src/foo.py, 38s elapsed)
+/dietcode kernel progress --timeline   # ordered phase timeline with durations
+/dietcode kernel progress --last 5     # summarize recent operations
+/dietcode kernel progress --operation <id>  # filter tail/timeline to one operation
+/dietcode kernel progress --tail       # JSONL tail (~/.dietcode/session/kernel-progress.jsonl)
+/dietcode kernel progress --current    # full current-state JSON snapshot
+/dietcode kernel last-error            # last normalized bridge error envelope
+/dietcode kernel explain-gate          # closed gates, fixes, raw-write behavior
 ```
+
+Progress is emitted automatically for `dietcode_kernel` patch, verify, status,
+and search. Logs live under `~/.dietcode/session/` (see [agent-ergonomics.md](agent-ergonomics.md)).
+
+If an operation is silent for 15+ seconds, doctor and `kernel status` report
+**stale progress** and the log records `bridge.progress_stalled`.
 
 ## Interpret doctor output
 
@@ -148,8 +162,21 @@ make -C kernel kernel
 make -C kernel restart-agent-server-fast   # control.sock + token
 ```
 
+## Troubleshooting (observability)
+
+| Symptom | Check |
+| --- | --- |
+| Silent patch | `/dietcode kernel progress --current` |
+| Socket offline | `/dietcode kernel status` |
+| Token missing | `/dietcode kernel status` |
+| Unsafe workspace | `/dietcode kernel explain-gate` |
+| Patch gate closed | `/dietcode kernel explain-gate` |
+| Verify command rejected | `/dietcode kernel status` (allowlist) |
+| Journal unavailable | Tool result `_journal_warning` (mutation unchanged) |
+
 ## Related docs
 
+- [agent-ergonomics.md](agent-ergonomics.md) — operator workflow and progress phases
 - [architecture.md](architecture.md) — authority split and hook flow
 - [dietcode-plugin.md](dietcode-plugin.md) — install, config, workflow
 - [tools-reference.md](tools-reference.md) — `dietcode_kernel` tool

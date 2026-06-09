@@ -1,7 +1,7 @@
 # DietCode Documentation
 
 Operator and developer documentation for the DietCode Hermes plugin
-(**v1.9.0 — Kernel Authority Bridge**).
+(**v1.9.2 — Kernel Bridge Performance Pass**).
 
 DietCode bundles BroccoliDB, BroccoliQ, JoyZoning, JSDP, and an **optional macOS
 kernel authority bridge**. The kernel handles physical mutation and verification;
@@ -21,7 +21,9 @@ intent → patch → receipt → journal → verify → verification journal →
 | **Understanding the runtime** | [architecture.md](architecture.md) | [tools-reference.md](tools-reference.md) |
 | **Working with BroccoliDB** | [broccolidb.md](broccolidb.md) | `/broccolidb status` |
 | **Building the kernel binary** | [../kernel/README.md](../kernel/README.md) | `make -C kernel validate` |
-| **Upgrading to v1.9.0** | [releases/v1.9.0.md](releases/v1.9.0.md) | [../CHANGELOG.md](../CHANGELOG.md) |
+| **Upgrading to v1.9.2** | [releases/v1.9.2.md](releases/v1.9.2.md) | [../CHANGELOG.md](../CHANGELOG.md) |
+| **v1.9.1 observability** | [releases/v1.9.1.md](releases/v1.9.1.md) | [agent-ergonomics.md](agent-ergonomics.md) |
+| **v1.9.0 kernel bridge** | [releases/v1.9.0.md](releases/v1.9.0.md) | [kernel-bridge-operations.md](kernel-bridge-operations.md) |
 
 ## Plugin documents
 
@@ -33,7 +35,10 @@ intent → patch → receipt → journal → verify → verification journal →
 | [tools-reference.md](tools-reference.md) | Slash commands and registered Hermes tools (`dietcode_kernel`, JoyZoning, BroccoliDB). |
 | [broccolidb.md](broccolidb.md) | Bundled BroccoliDB package, RPC worker, database location, smoke tests. |
 | [broccolidb-native-execution-throughput.md](broccolidb-native-execution-throughput.md) | Native RPC execution model and throughput notes. |
-| [releases/v1.9.0.md](releases/v1.9.0.md) | v1.9.0 release summary and upgrade notes. |
+| [agent-ergonomics.md](agent-ergonomics.md) | Kernel progress telemetry, stuck-operator runbook. |
+| [releases/v1.9.2.md](releases/v1.9.2.md) | v1.9.2 performance pass release notes. |
+| [releases/v1.9.1.md](releases/v1.9.1.md) | v1.9.1 observability polish release notes. |
+| [releases/v1.9.0.md](releases/v1.9.0.md) | v1.9.0 kernel authority bridge release notes. |
 
 ## Kernel subtree documents
 

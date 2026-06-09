@@ -17,6 +17,15 @@ Integration console.
 | `broccolidb` | BroccoliDB root and RPC availability. |
 | `kernel` | Full kernel health JSON (binary, socket, bridge, workspace, verify). |
 | `kernel status` | Compact operator summary (bridge, policy, gates, allowlist count). |
+| `kernel progress` | Human summary of current operation phase. |
+| `kernel progress --timeline` | Ordered phase timeline with per-phase durations. |
+| `kernel progress --last N` | Summarize last N operations (id, action, status, duration). |
+| `kernel progress --operation <id>` | Filter `--tail` / `--timeline` to one operation. |
+| `kernel progress --tail` | JSON tail of `~/.dietcode/session/kernel-progress.jsonl`. |
+| `kernel progress --current` | Full current-state JSON snapshot. |
+| `kernel last-error` | Last normalized kernel bridge error envelope. |
+| `kernel explain-gate` | Closed gates, config/env fixes, raw-write behavior. |
+| `kernel perf --last 10` | Phase timing breakdown (p50/p95 per bucket). |
 
 ### `/broccolidb`
 
