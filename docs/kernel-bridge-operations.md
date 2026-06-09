@@ -128,7 +128,8 @@ python scripts/kernel_bridge_e2e.py
 /dietcode kernel explain-gate          # closed gates, fixes, raw-write behavior
 ```
 
-Smoke (no live socket required): `python scripts/kernel_cockpit_smoke.py`
+Smoke (no live socket required): `python scripts/kernel_cockpit_smoke.py`  
+Sonic bench: `python scripts/kernel_sonic_bench.py --compact`
 
 Progress is emitted automatically for `dietcode_kernel` patch, verify, status,
 and search. Logs live under `~/.dietcode/session/` (see [agent-ergonomics.md](agent-ergonomics.md)).

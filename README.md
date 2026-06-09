@@ -1,6 +1,6 @@
 # DietCode Hermes Plugin
 
-**v1.9.3 — Kernel Cockpit Responsiveness**
+**v1.9.4 — Sonic Kernel UX**
 
 DietCode is a standalone Hermes Agent plugin that bundles BroccoliDB, BroccoliQ,
 JoyZoning governance, JSDP rolling-horizon planning, and an **optional macOS
@@ -88,7 +88,7 @@ Kernel operator checklist:
 
 ```text
 /dietcode kernel cockpit          # one-screen state, gates, next action
-/dietcode kernel watch            # compact live operation line
+/dietcode kernel watch --follow   # kinetic live line (spinner, in-place refresh)
 /dietcode kernel perf --ux        # responsiveness budgets
 /dietcode kernel progress         # human summary + next phase
 /dietcode kernel explain-gate     # closed gates and fixes
@@ -136,7 +136,7 @@ Operator guide: [docs/kernel-bridge-operations.md](docs/kernel-bridge-operations
 
 ```text
 .
-|-- plugin.yaml                 # Hermes manifest (v1.9.3)
+|-- plugin.yaml                 # Hermes manifest (v1.9.4)
 |-- hooks.py                    # Hook registration (kernel + JoyZoning + governance)
 |-- install.py                  # Config defaults, npm bootstrap, kernel build check
 |-- health.py                   # /dietcode status, doctor, kernel status
@@ -165,6 +165,7 @@ Operator guide: [docs/kernel-bridge-operations.md](docs/kernel-bridge-operations
 | [kernel/MIGRATION.md](kernel/MIGRATION.md) | Kernel integration phase history |
 | [kernel/README.md](kernel/README.md) | Kernel build, validate, RPC reference |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes |
+| [docs/releases/v1.9.4.md](docs/releases/v1.9.4.md) | v1.9.4 sonic UX release note |
 | [docs/releases/v1.9.3.md](docs/releases/v1.9.3.md) | v1.9.3 cockpit release note |
 | [docs/releases/v1.9.2.md](docs/releases/v1.9.2.md) | v1.9.2 performance pass |
 | [docs/releases/v1.9.1.md](docs/releases/v1.9.1.md) | v1.9.1 release note |

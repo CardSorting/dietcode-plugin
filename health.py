@@ -51,7 +51,7 @@ Subcommands:
   kernel perf --last 10        Phase timing breakdown (p50/p95 by bucket)
   kernel perf --ux --last 10   Perceived responsiveness metrics (ack, silent gaps)
   kernel watch                 Compact single-line live operation summary
-  kernel watch --follow        Auto-refresh summary every ~1.5s (up to 30s)
+  kernel watch --follow        Kinetic in-place refresh (~1s, spinner when TTY)
   kernel cockpit               One-screen operator summary (gates, state, next action)
 """
 

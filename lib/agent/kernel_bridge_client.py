@@ -78,6 +78,8 @@ class KernelBridgeConfig:
     keep_warm: bool = False
     keep_warm_idle_timeout_ms: int = 120_000
     keep_warm_ping_interval_ms: int = 30_000
+    event_hooks_enabled: bool = False
+    event_hooks: tuple[tuple[str, str], ...] = ()
 
     @classmethod
     def load(cls) -> KernelBridgeConfig:
@@ -134,7 +136,24 @@ class KernelBridgeConfig:
             keep_warm_ping_interval_ms=int(
                 raw.get("keep_warm_ping_interval_ms", bridge.get("keep_warm_ping_interval_ms", 30_000))
             ),
+            event_hooks_enabled=bool(
+                raw.get("event_hooks_enabled", bridge.get("event_hooks_enabled", False))
+            ),
+            event_hooks=cls._parse_event_hooks(
+                raw.get("event_hooks", bridge.get("event_hooks", {}))
+            ),
         )
+
+    @staticmethod
+    def _parse_event_hooks(raw_hooks: Any) -> tuple[tuple[str, str], ...]:
+        if not isinstance(raw_hooks, dict):
+            return ()
+        pairs: list[tuple[str, str]] = []
+        for key, value in raw_hooks.items():
+            cmd = str(value or "").strip()
+            if cmd:
+                pairs.append((str(key), cmd))
+        return tuple(pairs)
 
 
 def _kernel_scripts_dir() -> Path:
@@ -1141,7 +1160,13 @@ def _apply_kernel_patch_rpc(
                             string_code=str(err_body.get("string_code") or BRIDGE_RPC_ERROR),
                             rpc=validated,
                         )
-                    _emit_progress("patch.apply", path=norm_path, taskId=resolved_task, fast_path=True)
+                    _emit_progress(
+                        "patch.apply",
+                        path=norm_path,
+                        taskId=resolved_task,
+                        fast_path=True,
+                        mode="sonic_fast_path",
+                    )
                     applied = coherence_mod.apply_patch_with_coherence(
                         sock,
                         token,

@@ -352,52 +352,23 @@ def parse_watch_args(argv: list[str]) -> dict[str, Any]:
 def format_watch_report(
     *,
     follow: bool = False,
-    interval_sec: float = 1.5,
+    interval_sec: float = 1.0,
     max_sec: float = 30.0,
 ) -> str:
     try:
-        from plugins.dietcode.lib.agent.kernel_progress import (
-            PHASE_DONE,
-            PHASE_ERROR,
-            read_progress_current,
-        )
+        from plugins.dietcode.lib.agent.kernel_progress import read_progress_current
+        from plugins.dietcode.lib.agent.kernel_sonic import format_kinetic_watch_line, run_kinetic_watch
     except ImportError:
-        from lib.agent.kernel_progress import PHASE_DONE, PHASE_ERROR, read_progress_current
+        from lib.agent.kernel_progress import read_progress_current
+        from lib.agent.kernel_sonic import format_kinetic_watch_line, run_kinetic_watch
 
-    def _one_line() -> str:
-        payload = read_progress_current()
-        if not payload.get("ok") or not isinstance(payload.get("current"), dict):
-            return "🥦 Kernel watch — idle (no active operation)"
-        snap = payload["current"]
-        return f"🥦 {compact_watch_line(snap)}"
+    if follow:
+        return run_kinetic_watch(interval_sec=interval_sec, max_sec=max_sec)
 
-    if not follow:
-        return _one_line()
-
-    lines = [_one_line()]
-    deadline = time.monotonic() + max_sec
-    last_op = None
     payload = read_progress_current()
-    if payload.get("ok") and isinstance(payload.get("current"), dict):
-        last_op = payload["current"].get("operation_id")
-
-    while time.monotonic() < deadline:
-        time.sleep(interval_sec)
-        payload = read_progress_current()
-        if not payload.get("ok") or not isinstance(payload.get("current"), dict):
-            lines.append("🥦 Kernel watch — idle")
-            break
-        snap = payload["current"]
-        phase = snap.get("phase")
-        line = compact_watch_line(snap)
-        if lines and lines[-1].endswith(line):
-            continue
-        lines.append(f"🥦 {line}")
-        if phase in {PHASE_DONE, PHASE_ERROR}:
-            break
-        if snap.get("operation_id") != last_op and last_op is not None:
-            break
-    return "\n".join(lines)
+    if not payload.get("ok") or not isinstance(payload.get("current"), dict):
+        return "🥦 Kernel watch — idle (no active operation)"
+    return f"🥦 {format_kinetic_watch_line(payload['current'])}"
 
 
 def compute_operation_ux_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:

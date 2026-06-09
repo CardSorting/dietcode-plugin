@@ -154,6 +154,7 @@ def apply_seamless_defaults(*, save: bool = True) -> dict[str, Any]:
                 "keep_warm": False,
                 "keep_warm_idle_timeout_ms": 120000,
                 "keep_warm_ping_interval_ms": 30000,
+                "event_hooks_enabled": False,
             }
             for key, value in perf_defaults.items():
                 if key not in bridge_cfg:

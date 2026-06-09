@@ -198,6 +198,32 @@ Every cockpit/progress view recommends one of:
 
 Smoke: `python scripts/kernel_cockpit_smoke.py`
 
+## Sonic tempo (Phase 7D)
+
+High-tempo UX — **GOTTA GO FAST (with receipts)**. No mutation semantics changes.
+
+- **Instant ack** — `… PATCH accepted — src/foo.py` flushed before heavy work (<50ms target)
+- **Kinetic watch** — `/dietcode kernel watch --follow` — spinner, in-place line refresh, ANSI colors
+- **Micro-phase suppression** — sub-100ms noise hidden unless error/stall/recovery/approval
+- **Fast path** — `FAST PATH ACTIVE` when `mode: sonic_fast_path`
+- **ETA** — `~3s remaining` when history confidence is high (hidden otherwise)
+- **Event hooks** — optional local shell hooks (`event_hooks_enabled: false` by default)
+
+```yaml
+dietcode:
+  kernel:
+    bridge:
+      event_hooks_enabled: false
+      event_hooks:
+        operation_accepted: "echo dietcode ack"
+        operation_failed: "echo dietcode fail"
+        verify_passed: "echo dietcode verify ok"
+        stalled: "echo dietcode stalled"
+```
+
+Bench: `python scripts/kernel_sonic_bench.py --compact`  
+ASCII mode: `DIETCODE_ASCII_ONLY=1`
+
 ## Troubleshooting
 
 | Symptom | Likely cause | What to run |

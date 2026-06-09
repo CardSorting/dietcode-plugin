@@ -28,7 +28,7 @@ Integration console.
 | `kernel perf --last 10` | Phase timing breakdown (p50/p95 per bucket). |
 | `kernel perf --ux --last 10` | Perceived responsiveness (ack latency, silent gaps). |
 | `kernel watch` | Compact single-line live operation summary. |
-| `kernel watch --follow` | Auto-refresh summary every ~1.5s (up to 30s). |
+| `kernel watch --follow` | Kinetic in-place refresh (~1s), spinner + ANSI when supported. |
 | `kernel cockpit` | One-screen summary: state, gates, last patch/verify, next action. |
 
 ### `/broccolidb`

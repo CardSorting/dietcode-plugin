@@ -70,8 +70,8 @@ class KernelCockpitTests(unittest.TestCase):
 
     def test_ascii_symbol_fallback(self) -> None:
         with mock.patch.dict(os.environ, {"DIETCODE_ASCII_ONLY": "1"}):
-            self.assertEqual(cockpit.symbol("complete"), "[OK]")
-            self.assertEqual(cockpit.symbol("failed"), "[X]")
+            self.assertEqual(cockpit.symbol("complete"), "OK")
+            self.assertEqual(cockpit.symbol("failed"), "FAIL")
 
     def test_recommend_next_action_single(self) -> None:
         rec = cockpit.recommend_next_action(operation_state=cockpit.STATE_VERIFYING)

@@ -5,7 +5,19 @@ BroccoliDB for repository context, BroccoliQ for queue coordination, JoyZoning
 for mutation lifecycle governance, JSDP for rolling-horizon planning, and an
 **optional macOS kernel authority bridge** for coherent physical mutation.
 
-**Current version:** 1.9.3 — Kernel Cockpit Responsiveness
+**Current version:** 1.9.4 — Sonic Kernel UX
+
+## What changed in v1.9.4
+
+High-tempo kernel operator UX without mutation safety changes:
+
+- Ultra-fast operation acknowledgement (`… PATCH accepted — path`)
+- Kinetic `/dietcode kernel watch --follow` with spinner and in-place refresh
+- `FAST PATH ACTIVE` indicator for drift-free patch apply
+- Predictive ETA when history confidence is sufficient
+- `scripts/kernel_sonic_bench.py`
+
+See [releases/v1.9.4.md](releases/v1.9.4.md).
 
 ## What changed in v1.9.3
 
@@ -58,7 +70,7 @@ See [releases/v1.9.0.md](releases/v1.9.0.md) and [kernel-bridge-operations.md](k
 
 ```yaml
 name: dietcode
-version: 1.9.3
+version: 1.9.4
 kind: standalone
 auto_enable: true
 ```
@@ -105,6 +117,7 @@ intent → patch → receipt → journal → verify → verification journal →
 | 7 | Readiness cache, workspace reuse, batching, mutation lock, perf telemetry |
 | 7B | Ack, heartbeats, watch mode, pre-stage, keep-warm, perf UX |
 | 7C | Cockpit, operation states, next-action hints, UX budgets |
+| 7D | Sonic pass — kinetic watch, fast ack, ETA, event hooks |
 
 Details: [../kernel/MIGRATION.md](../kernel/MIGRATION.md)
 

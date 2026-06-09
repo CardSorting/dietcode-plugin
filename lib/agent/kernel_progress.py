@@ -184,7 +184,12 @@ def reset_progress_write_buffer() -> None:
     _last_jsonl_flush_mono = 0.0
 
 
-def _write_progress_event(event: dict[str, Any], *, skip_jsonl: bool = False) -> None:
+def _write_progress_event(
+    event: dict[str, Any],
+    *,
+    skip_jsonl: bool = False,
+    priority: bool = False,
+) -> None:
     _ensure_session_dir()
     redacted = redact_secrets(event)
     line = json.dumps(redacted, ensure_ascii=False, separators=(",", ":"))
@@ -196,7 +201,9 @@ def _write_progress_event(event: dict[str, Any], *, skip_jsonl: bool = False) ->
         )
         if not skip_jsonl:
             _progress_jsonl_buffer.append(line)
-    force = phase in _TERMINAL_PHASES or phase == PHASE_OPERATION_ACCEPTED
+    force = priority or phase in _TERMINAL_PHASES or phase == PHASE_OPERATION_ACCEPTED
+    if priority:
+        return
     _flush_progress_jsonl(force=force)
 
 
@@ -329,6 +336,20 @@ class KernelProgressTracker:
         now_mono = time.monotonic()
         phase_duration_ms = int((now_mono - self.last_emit_mono) * 1000) if self._phase_count else 0
         self._record_ux_timing(phase_name, now_mono=now_mono)
+        try:
+            from plugins.dietcode.lib.agent.kernel_sonic import should_suppress_operator_transition
+        except ImportError:
+            from lib.agent.kernel_sonic import should_suppress_operator_transition
+        if should_suppress_operator_transition(
+            phase=phase_name,
+            phase_duration_ms=phase_duration_ms,
+            fast_path=bool(extra.get("fast_path")),
+            string_code=string_code,
+        ):
+            if not extra.get("heartbeat"):
+                self.last_phase = phase_name
+            self.last_emit_mono = now_mono
+            return {}
         if not extra.get("heartbeat"):
             self.last_phase = phase_name
         self.last_emit_mono = now_mono
@@ -385,14 +406,34 @@ class KernelProgressTracker:
             )
         if extra.get("heartbeat_summary"):
             event["summary"] = str(extra["heartbeat_summary"])
+        elif phase_name == PHASE_OPERATION_ACCEPTED and extra.get("sonic_accept_line"):
+            event["summary"] = str(extra["sonic_accept_line"])
         else:
             event["summary"] = human_progress_summary(event)
+        try:
+            from plugins.dietcode.lib.agent.kernel_sonic import SONIC_FAST_PATH_MODE, estimate_remaining_ms
+        except ImportError:
+            from lib.agent.kernel_sonic import SONIC_FAST_PATH_MODE, estimate_remaining_ms
+        if extra.get("fast_path") or extra.get("mode") == SONIC_FAST_PATH_MODE:
+            event["mode"] = SONIC_FAST_PATH_MODE
+            event["fast_path"] = True
+        eta = estimate_remaining_ms(
+            action=self.action,
+            current_phase=phase_name,
+            elapsed_ms=self.elapsed_ms(),
+        )
+        if eta.get("show"):
+            event["eta_remaining_s"] = eta.get("remaining_s")
+            event["eta_confidence"] = eta.get("confidence")
         suppress_jsonl = ux.should_suppress_jsonl_emit(
             phase=phase_name,
             phase_duration_ms=phase_duration_ms,
             heartbeat=bool(extra.get("heartbeat")),
         )
-        _write_progress_event(event, skip_jsonl=suppress_jsonl)
+        priority = bool(extra.get("immediate_ack")) or phase_name == PHASE_OPERATION_ACCEPTED
+        _write_progress_event(event, skip_jsonl=suppress_jsonl, priority=priority)
+        if priority:
+            flush_progress_writes(force=True)
         if phase_name in {PHASE_DONE, PHASE_ERROR}:
             self._stop_heartbeat()
         elif not extra.get("heartbeat"):
@@ -415,6 +456,24 @@ class KernelProgressTracker:
         event = self.emit(phase, string_code=string_code, **payload)
         self.finished = True
         flush_progress_writes(force=True)
+        try:
+            from plugins.dietcode.lib.agent.kernel_sonic import emit_event_hook
+        except ImportError:
+            from lib.agent.kernel_sonic import emit_event_hook
+        if ok:
+            emit_event_hook(
+                "verify_passed" if self.action == "verify" else "operation_complete",
+                payload={"operation_id": self.operation_id, "action": self.action},
+            )
+        else:
+            emit_event_hook(
+                "operation_failed",
+                payload={
+                    "operation_id": self.operation_id,
+                    "action": self.action,
+                    "string_code": string_code,
+                },
+            )
         return event
 
     def check_stalled(self) -> dict[str, Any] | None:
@@ -426,6 +485,14 @@ class KernelProgressTracker:
             return None
         _stall_emitted_for.add(self.operation_id)
         ux = self._ux_module()
+        try:
+            from plugins.dietcode.lib.agent.kernel_sonic import emit_event_hook
+        except ImportError:
+            from lib.agent.kernel_sonic import emit_event_hook
+        emit_event_hook(
+            "stalled",
+            payload={"operation_id": self.operation_id, "last_phase": self.last_phase},
+        )
         return self.emit(
             PHASE_PROGRESS_STALLED,
             string_code="bridge_progress_stalled",
@@ -453,8 +520,25 @@ def start_operation(
     )
     tracker.command = str(command or "")
     _local.tracker = tracker
-    tracker.emit(PHASE_OPERATION_ACCEPTED, immediate_ack=True)
-    flush_progress_writes(force=True)
+    try:
+        from plugins.dietcode.lib.agent.kernel_sonic import build_accept_line, emit_event_hook
+    except ImportError:
+        from lib.agent.kernel_sonic import build_accept_line, emit_event_hook
+    accept_line = build_accept_line(action=action, path=path, command=command)
+    tracker.emit(
+        PHASE_OPERATION_ACCEPTED,
+        immediate_ack=True,
+        sonic_accept_line=accept_line,
+    )
+    emit_event_hook(
+        "operation_accepted",
+        payload={
+            "operation_id": tracker.operation_id,
+            "action": action,
+            "path": path or None,
+            "command": command or None,
+        },
+    )
     tracker.emit(PHASE_BRIDGE_PREFLIGHT, command=tracker.command or None)
     return tracker
 

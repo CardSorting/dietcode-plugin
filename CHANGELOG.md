@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.9.4 — Sonic Kernel UX (2026-06-09)
+
+Adds high-tempo kernel cockpit feedback, kinetic watch mode, fast-path indicators,
+predictive ETA, and ultra-fast operation acknowledgement without changing mutation safety.
+
+### Highlights
+
+- **Ultra-fast ack** — `… PATCH accepted — path` flushed before heavy work (<50ms target).
+- **Kinetic watch** — `/dietcode kernel watch --follow` with spinner, in-place refresh, ANSI colors.
+- **Micro-phase suppression** — sub-100ms noise hidden on healthy fast paths.
+- **Sonic fast path** — `FAST PATH ACTIVE` when drift-free coherence apply runs.
+- **Predictive ETA** — history-based remaining time when confidence is sufficient.
+- **Event hooks** — optional local shell hooks (`event_hooks_enabled: false` by default).
+- **Bench** — `scripts/kernel_sonic_bench.py`.
+- **Tests** — `tests/test_kernel_sonic.py`.
+
+See [docs/releases/v1.9.4.md](docs/releases/v1.9.4.md).
+
 ## v1.9.3 — Kernel Cockpit Responsiveness (2026-06-09)
 
 Adds live cockpit views, operation states, next-action hints, heartbeat UX, and

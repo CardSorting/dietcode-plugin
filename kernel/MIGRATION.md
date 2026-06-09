@@ -339,6 +339,28 @@ Release-grade operator UX without mutation semantics changes.
 
 **Release:** v1.9.3 — [docs/releases/v1.9.3.md](../docs/releases/v1.9.3.md)
 
+## Phase 7D — sonic pass (high-tempo kernel UX)
+
+Kinetic operator tempo without mutation semantics changes.
+
+| Deliverable | Location |
+| --- | --- |
+| Ultra-fast ack line (<50ms target) | `build_accept_line()`, priority snapshot flush |
+| Kinetic watch (`--follow`) | `run_kinetic_watch()` — spinner, ANSI, in-place refresh |
+| Micro-phase suppression | `should_suppress_operator_transition()` (<100ms) |
+| Sonic fast-path indicator | `mode: sonic_fast_path` on drift-free patch |
+| ETA (history-based) | `estimate_remaining_ms()` — hidden when low confidence |
+| Operator-priority writes | current snapshot before JSONL batching |
+| Optional shell event hooks | `event_hooks_enabled`, `event_hooks` config |
+| Visual state symbols | `visual_symbol()` — UTF-8 + ASCII fallback |
+| Sonic bench | `scripts/kernel_sonic_bench.py` |
+
+Config (`dietcode.kernel.bridge`): `event_hooks_enabled` (default false), `event_hooks` map.
+
+Tests: `tests/test_kernel_sonic.py`
+
+**Release:** v1.9.4 — [docs/releases/v1.9.4.md](../docs/releases/v1.9.4.md)
+
 ## Next phase
 
 - JoyZoning `taskId` ↔ `HERMES_KANBAN_TASK` alignment

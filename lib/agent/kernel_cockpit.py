@@ -93,8 +93,17 @@ def use_unicode_symbols() -> bool:
 
 
 def symbol(kind: str) -> str:
-    table = _UNICODE_SYMBOLS if use_unicode_symbols() else _ASCII_SYMBOLS
-    return table.get(kind, "")
+    try:
+        from plugins.dietcode.lib.agent.kernel_sonic import visual_symbol
+    except ImportError:
+        from lib.agent.kernel_sonic import visual_symbol
+    mapping = {
+        "complete": "success",
+        "warning": "warning",
+        "failed": "failed",
+        "running": "running",
+    }
+    return visual_symbol(mapping.get(kind, kind))
 
 
 def normalize_operation_state(
@@ -119,11 +128,15 @@ def state_display_label(state: str) -> str:
 
 
 def state_symbol(state: str) -> str:
+    try:
+        from plugins.dietcode.lib.agent.kernel_sonic import visual_symbol
+    except ImportError:
+        from lib.agent.kernel_sonic import visual_symbol
     mapping = {
-        STATE_COMPLETE: "complete",
+        STATE_COMPLETE: "success",
         STATE_FAILED: "failed",
-        STATE_STALLED: "warning",
-        STATE_BLOCKED: "warning",
+        STATE_STALLED: "stalled",
+        STATE_BLOCKED: "waiting",
         STATE_IDLE: "running",
     }
     if state in {
@@ -135,8 +148,8 @@ def state_symbol(state: str) -> str:
         STATE_VERIFYING,
         STATE_JOURNALING,
     }:
-        return symbol("running")
-    return symbol(mapping.get(state, "running"))
+        return visual_symbol("running")
+    return visual_symbol(mapping.get(state, "running"))
 
 
 def _gate_context() -> dict[str, Any]:
@@ -305,7 +318,11 @@ def build_cockpit_report() -> dict[str, Any]:
             "command": snap.get("command"),
             "workspace_root": snap.get("workspace_root") or gate.get("resolved_workspace_root"),
             "summary": snap.get("summary"),
+            "fast_path": bool(snap.get("fast_path") or snap.get("mode") == "sonic_fast_path"),
+            "eta_remaining_s": snap.get("eta_remaining_s"),
         }
+        if current_op.get("fast_path"):
+            current_op["mode"] = "sonic_fast_path"
 
     next_action = recommend_next_action(
         operation_state=operation_state,
@@ -365,6 +382,10 @@ def format_cockpit_report() -> str:
             lines.append(f"  target: {op.get('path') or op.get('command')}")
         if op.get("next_phase_hint"):
             lines.append(f"  {op.get('next_phase_hint')}")
+        if op.get("fast_path"):
+            lines.append(f"  {symbol('complete')} FAST PATH ACTIVE")
+        if op.get("eta_remaining_s"):
+            lines.append(f"  ~{op.get('eta_remaining_s')}s remaining (estimated)")
     else:
         lines.append("Current: (idle)")
 
