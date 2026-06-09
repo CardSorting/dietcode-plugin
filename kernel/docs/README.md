@@ -2,7 +2,7 @@
 
 > **Quarantined macOS kernel** inside `dietcode-plugin/kernel/` — headless
 > `dietcode-kernel` with operational coherence enforcement. Hermes integration
-> is wired through the **plugin kernel authority bridge** (v1.9.0).
+> is wired through the **plugin kernel authority bridge** (v1.9.2).
 
 [← Plugin docs](../../docs/README.md) · [← Kernel README](../README.md) ·
 **Health check:** `make validate` · Baseline tag: **coherence-core-v0.1**

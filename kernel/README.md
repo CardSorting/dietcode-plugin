@@ -5,13 +5,13 @@
 <h1 align="center">DietCode Kernel</h1>
 
 <p align="center">
-  <strong>macOS mutation authority with operational coherence enforcement — integrated via the Hermes plugin bridge (v1.9.0).</strong>
+  <strong>macOS mutation authority with operational coherence enforcement — integrated via the Hermes plugin bridge (v1.9.2).</strong>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-macOS-lightgrey.svg?style=flat-square" alt="macOS">
   <img src="https://img.shields.io/badge/baseline-coherence--core--v0.1-blue.svg?style=flat-square" alt="coherence-core-v0.1">
-  <img src="https://img.shields.io/badge/plugin-bridge-v1.9.0-green.svg?style=flat-square" alt="plugin bridge v1.9.0">
+  <img src="https://img.shields.io/badge/plugin-bridge-v1.9.2-green.svg?style=flat-square" alt="plugin bridge v1.9.2">
 </p>
 
 ---

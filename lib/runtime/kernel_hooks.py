@@ -42,6 +42,16 @@ def _pre_tool_call(
         return None
 
 
+def _emit_journal_progress(action: str) -> None:
+    try:
+        from plugins.dietcode.lib.agent.kernel_progress import emit_phase
+    except ImportError:
+        from lib.agent.kernel_progress import emit_phase
+    emit_phase("journal.recording", action=action)
+    if action == "verify":
+        emit_phase("convergence.checking", action=action)
+
+
 def _post_tool_call(
     *,
     tool_name: str = "",
@@ -57,10 +67,12 @@ def _post_tool_call(
     action = _journal_action(args)
     try:
         if action == "patch":
+            _emit_journal_progress("patch")
             from plugins.dietcode.lib.agent.kernel_receipt_journal import journal_kernel_patch
 
             journal_kernel_patch(tool_name=tool_name, args=args, result=result)
         elif action == "verify":
+            _emit_journal_progress("verify")
             from plugins.dietcode.lib.agent.kernel_verify_journal import journal_kernel_verify
 
             journal_kernel_verify(tool_name=tool_name, args=args, result=result)

@@ -133,18 +133,49 @@ def should_intercept_raw_write(
     return ready
 
 
-def build_raw_write_warning_metadata(*, gate: dict[str, Any]) -> dict[str, Any]:
+def _operator_hints_for_raw_write(*, gate: dict[str, Any], string_code: str) -> dict[str, Any]:
+    try:
+        from plugins.dietcode.lib.agent.kernel_progress import build_agent_operator_hints, normalize_bridge_error
+    except ImportError:
+        from lib.agent.kernel_progress import build_agent_operator_hints, normalize_bridge_error
+
+    hints = build_agent_operator_hints(action="patch", gate=gate, string_code=string_code)
+    envelope = normalize_bridge_error(
+        string_code,
+        _WARN_MESSAGE if string_code == KERNEL_RAW_WRITE_WARN else _BLOCK_MESSAGE,
+        phase="raw_write_intercept",
+        raw_error=None,
+    )
     return {
+        "operator_hints": hints,
+        "error_envelope": envelope,
+        "preferred_command": hints.get("preferred_command"),
+        "recovery_suggestion": envelope.get("operator_action"),
+        "suggested_slash_command": envelope.get("suggested_slash_command"),
+        "next_action": envelope.get("next_action"),
+        "safe_to_retry": envelope.get("safe_to_retry"),
+        "retry_command": envelope.get("retry_command"),
+        "diagnostic_command": envelope.get("diagnostic_command"),
+        "rollback_command": envelope.get("rollback_command"),
+        "mutation_safe": hints.get("mutation_safe"),
+        "missing_gate": hints.get("missing_gate"),
+    }
+
+
+def build_raw_write_warning_metadata(*, gate: dict[str, Any]) -> dict[str, Any]:
+    payload = {
         "string_code": KERNEL_RAW_WRITE_WARN,
         "message": _WARN_MESSAGE,
         "preferred_tool": "dietcode_kernel",
         "reason": RAW_WRITE_REASON_BRIDGE_READY,
         "workspace_root": gate.get("resolved_workspace_root") or "",
     }
+    payload.update(_operator_hints_for_raw_write(gate=gate, string_code=KERNEL_RAW_WRITE_WARN))
+    return payload
 
 
 def build_raw_write_block_payload(*, gate: dict[str, Any]) -> dict[str, Any]:
-    return {
+    payload = {
         "ok": False,
         "blocked": True,
         "string_code": KERNEL_RAW_WRITE_BLOCKED,
@@ -152,6 +183,8 @@ def build_raw_write_block_payload(*, gate: dict[str, Any]) -> dict[str, Any]:
         "preferred_tool": "dietcode_kernel",
         "workspace_root": gate.get("resolved_workspace_root") or "",
     }
+    payload.update(_operator_hints_for_raw_write(gate=gate, string_code=KERNEL_RAW_WRITE_BLOCKED))
+    return payload
 
 
 def build_raw_write_block_pre_tool_call(*, gate: dict[str, Any]) -> dict[str, Any]:

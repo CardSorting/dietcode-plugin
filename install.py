@@ -146,6 +146,16 @@ def apply_seamless_defaults(*, save: bool = True) -> dict[str, Any]:
             if "raw_write_policy" not in bridge_cfg:
                 bridge_cfg["raw_write_policy"] = "warn"
                 changed.append("dietcode.kernel.bridge.raw_write_policy")
+            perf_defaults = {
+                "preflight_cache_ttl_ms": 5000,
+                "workspace_open_cache": True,
+                "progress_flush_interval_ms": 250,
+                "max_concurrent_mutations_per_workspace": 1,
+            }
+            for key, value in perf_defaults.items():
+                if key not in bridge_cfg:
+                    bridge_cfg[key] = value
+                    changed.append(f"dietcode.kernel.bridge.{key}")
 
     if save and changed:
         save_config(config)

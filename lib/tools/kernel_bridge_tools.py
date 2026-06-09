@@ -20,6 +20,59 @@ def _json_result(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
+def _progress_module():
+    try:
+        from plugins.dietcode.lib.agent import kernel_progress as kp
+    except ImportError:
+        from lib.agent import kernel_progress as kp
+    return kp
+
+
+def _run_with_progress(
+    *,
+    action: str,
+    workspace: Optional[str],
+    path: str,
+    task_id: str,
+    command: str = "",
+    runner,
+) -> dict[str, Any]:
+    kp = _progress_module()
+    tracker = kp.start_operation(
+        action=action,
+        path=path,
+        command=command,
+        workspace_root=str(workspace or ""),
+        task_id=task_id,
+    )
+    try:
+        result = runner()
+        if isinstance(result, dict):
+            code = str(result.get("string_code") or "")
+            if not code and isinstance(result.get("error"), dict):
+                code = str(result["error"].get("string_code") or "")
+            if result.get("ok"):
+                tracker.finish(ok=True, string_code=code or None)
+            else:
+                tracker.finish(
+                    ok=False,
+                    string_code=code or "bridge_rpc_error",
+                    error=result.get("error") if isinstance(result.get("error"), dict) else result,
+                )
+            return kp.attach_operator_hints_to_result(result, action=action)
+        tracker.finish(ok=True)
+        return {"ok": True, "result": result}
+    except Exception as exc:
+        tracker.finish(
+            ok=False,
+            string_code="bridge_transport_error",
+            error={"message": str(exc)},
+        )
+        raise
+    finally:
+        kp.end_operation()
+
+
 def dietcode_kernel(
     action: str,
     *,
@@ -45,39 +98,67 @@ def dietcode_kernel(
 
     cfg = kbc.KernelBridgeConfig.load()
     if not cfg.enabled:
-        return _json_result(
-            kbc.bridge_error(kbc.BRIDGE_DISABLED, "Kernel bridge is disabled in config")
+        disabled = kbc.bridge_error(kbc.BRIDGE_DISABLED, "Kernel bridge is disabled in config")
+        kp = _progress_module()
+        payload = kp.attach_operator_hints_to_result(
+            {**disabled, "action": act},
+            action=act,
         )
+        return _json_result(payload)
 
     if act == "status":
-        result = kbc.workspace_status(workspace)
-        return _json_result({**result, "action": "status"})
+        result = _run_with_progress(
+            action=act,
+            workspace=workspace,
+            path="",
+            task_id=task_id,
+            runner=lambda: {**kbc.workspace_status(workspace), "action": "status"},
+        )
+        return _json_result(result)
 
     if act == "search":
         if not query.strip():
             return tool_error("query is required for search")
-        result = kbc.search_literal(workspace, query, max_results=max_results)
-        return _json_result({**result, "action": "search"})
+        result = _run_with_progress(
+            action=act,
+            workspace=workspace,
+            path="",
+            task_id=task_id,
+            runner=lambda: {**kbc.search_literal(workspace, query, max_results=max_results), "action": "search"},
+        )
+        return _json_result(result)
 
     if act == "verify":
         if not command.strip():
             return tool_error("command is required for verify")
-        result = kbc.apply_kernel_verify(
-            workspace,
-            command,
-            cwd=cwd,
+        result = _run_with_progress(
+            action=act,
+            workspace=workspace,
+            path="",
             task_id=task_id,
+            command=command,
+            runner=lambda: kbc.apply_kernel_verify(
+                workspace,
+                command,
+                cwd=cwd,
+                task_id=task_id,
+            ),
         )
         return _json_result(result)
 
-    # patch
-    result = kbc.apply_kernel_patch(
-        workspace,
-        path,
-        unified_diff=unified_diff,
-        line_search=line_search,
-        line_replace=line_replace,
+    result = _run_with_progress(
+        action=act,
+        workspace=workspace,
+        path=path,
         task_id=task_id,
+        runner=lambda: kbc.apply_kernel_patch(
+            workspace,
+            path,
+            unified_diff=unified_diff,
+            line_search=line_search,
+            line_replace=line_replace,
+            task_id=task_id,
+        ),
     )
     return _json_result(result)
 

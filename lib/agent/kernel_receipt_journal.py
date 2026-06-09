@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+_JOURNAL_DEDUP_TTL_SEC = 300.0
+_JOURNAL_DEDUP_MAX = 500
 
 # Kernel mutationReceipt keys we copy when present (no invented fields).
 _RECEIPT_KEYS = frozenset({
@@ -40,7 +44,18 @@ _VERIFY_KEYS = frozenset({
     "verify",
 })
 
-_JOURNALED_KEYS: set[str] = set()
+_JOURNALED_KEYS: dict[str, float] = {}
+
+
+def _prune_journal_dedup_cache() -> None:
+    now = time.monotonic()
+    stale = [key for key, seen_at in _JOURNALED_KEYS.items() if (now - seen_at) > _JOURNAL_DEDUP_TTL_SEC]
+    for key in stale:
+        _JOURNALED_KEYS.pop(key, None)
+    if len(_JOURNALED_KEYS) > _JOURNAL_DEDUP_MAX:
+        ordered = sorted(_JOURNALED_KEYS.items(), key=lambda item: item[1])
+        for key, _seen_at in ordered[: len(_JOURNALED_KEYS) - _JOURNAL_DEDUP_MAX]:
+            _JOURNALED_KEYS.pop(key, None)
 
 
 def reset_journal_dedup_cache() -> None:
@@ -201,6 +216,7 @@ def journal_kernel_patch(
 
     scope_id = resolve_scope_id(parsed.get("taskId"))
     dedup = _dedup_key(parsed, receipt)
+    _prune_journal_dedup_cache()
     if dedup in _JOURNALED_KEYS:
         return {"journaled": True, "deduplicated": True, "scope_id": scope_id}
 
@@ -237,7 +253,7 @@ def journal_kernel_patch(
             },
         )
 
-        _JOURNALED_KEYS.add(dedup)
+        _JOURNALED_KEYS[dedup] = time.monotonic()
         return {
             "journaled": True,
             "scope_id": scope_id,

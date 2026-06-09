@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import socket
 import sys
+import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -69,6 +70,11 @@ class KernelBridgeConfig:
     raw_write_policy: str = "warn"
     connect_timeout_sec: float = 15.0
     request_timeout_sec: float = 60.0
+    preflight_cache_ttl_ms: int = 5000
+    workspace_open_cache: bool = True
+    progress_flush_interval_ms: int = 250
+    verify_timeout_ms: int = 0
+    max_concurrent_mutations_per_workspace: int = 1
 
     @classmethod
     def load(cls) -> KernelBridgeConfig:
@@ -99,6 +105,24 @@ class KernelBridgeConfig:
             ),
             request_timeout_sec=float(
                 raw.get("request_timeout_sec", bridge.get("request_timeout_sec", 60.0))
+            ),
+            preflight_cache_ttl_ms=int(
+                raw.get("preflight_cache_ttl_ms", bridge.get("preflight_cache_ttl_ms", 5000))
+            ),
+            workspace_open_cache=bool(
+                raw.get("workspace_open_cache", bridge.get("workspace_open_cache", True))
+            ),
+            progress_flush_interval_ms=int(
+                raw.get("progress_flush_interval_ms", bridge.get("progress_flush_interval_ms", 250))
+            ),
+            verify_timeout_ms=int(
+                raw.get("verify_timeout_ms", bridge.get("verify_timeout_ms", 0))
+            ),
+            max_concurrent_mutations_per_workspace=int(
+                raw.get(
+                    "max_concurrent_mutations_per_workspace",
+                    bridge.get("max_concurrent_mutations_per_workspace", 1),
+                )
             ),
         )
 
@@ -415,13 +439,78 @@ def _kernel_rpc_session(
             pass
 
 
+def _emit_progress(phase: str, *, string_code: str = "", **extra: Any) -> None:
+    try:
+        from plugins.dietcode.lib.agent.kernel_progress import emit_phase
+    except ImportError:
+        from lib.agent.kernel_progress import emit_phase
+    emit_phase(phase, string_code=string_code, **extra)
+
+
+def _bridge_cache_module() -> Any:
+    try:
+        from plugins.dietcode.lib.agent import kernel_bridge_cache as cache
+    except ImportError:
+        from lib.agent import kernel_bridge_cache as cache
+    return cache
+
+
+def _mutation_lock_module() -> Any:
+    try:
+        from plugins.dietcode.lib.agent import kernel_mutation_lock as locks
+    except ImportError:
+        from lib.agent import kernel_mutation_lock as locks
+    return locks
+
+
+def _ensure_bridge_ready(
+    cfg: KernelBridgeConfig,
+    *,
+    start: bool = True,
+) -> dict[str, Any]:
+    """Socket + token readiness with short-TTL positive cache (Phase 7)."""
+    cache = _bridge_cache_module()
+    sock_path = _socket_path()
+    tok_path = _token_path()
+    ttl_sec = max(0.0, cfg.preflight_cache_ttl_ms / 1000.0)
+    if cache.get_cached_readiness(ttl_sec=ttl_sec, socket_path=sock_path, token_path=tok_path):
+        _emit_progress("socket.ready", cached=True)
+        return bridge_ok({"socket_path": sock_path, "token_path": tok_path, "cached": True})
+
+    socket_step = ensure_socket_ready(timeout=cfg.connect_timeout_sec, start=start)
+    if not socket_step.get("ok"):
+        err = socket_step.get("error") if isinstance(socket_step.get("error"), dict) else {}
+        cache.invalidate_on_error(str(err.get("string_code") or BRIDGE_SOCKET_UNAVAILABLE))
+        return socket_step
+
+    token_step = read_kernel_token()
+    if not token_step.get("ok"):
+        err = token_step.get("error") if isinstance(token_step.get("error"), dict) else {}
+        cache.invalidate_on_error(str(err.get("string_code") or BRIDGE_TOKEN_UNAVAILABLE))
+        return token_step
+
+    cache.cache_readiness(socket_path=sock_path, token_path=tok_path)
+    _emit_progress("socket.ready")
+    return bridge_ok({"socket_path": sock_path, "token_path": tok_path})
+
+
 def open_workspace(workspace_root: str | None = None, *, timeout: float | None = None) -> dict[str, Any]:
     """Open a validated Hermes workspace on the kernel (no patch authority)."""
     ws, err = _require_safe_workspace(workspace_root)
     if err:
+        _bridge_cache_module().invalidate_on_error(BRIDGE_WORKSPACE_UNSAFE)
         return err
 
     cfg = KernelBridgeConfig.load()
+    cache = _bridge_cache_module()
+    ttl_sec = max(0.0, cfg.preflight_cache_ttl_ms / 1000.0)
+    if cache.workspace_open_cache_hit(enabled=cfg.workspace_open_cache, workspace_root=ws, ttl_sec=ttl_sec):
+        _emit_progress("workspace.open", workspace_root=ws, cached=True)
+        return bridge_ok(
+            {"path": ws, "action": "already_open", "cached": True},
+            workspace_root=ws,
+        )
+
     timeout_sec = timeout if timeout is not None else cfg.request_timeout_sec
     try:
         with _kernel_rpc_session() as (client, sock, token, _cfg):
@@ -431,6 +520,8 @@ def open_workspace(workspace_root: str | None = None, *, timeout: float | None =
             if current.get("ok"):
                 open_path = (current.get("result") or {}).get("path")
                 if open_path and Path(open_path).resolve() == Path(ws).resolve():
+                    cache.mark_workspace_open(ws)
+                    _emit_progress("workspace.open", workspace_root=ws)
                     return bridge_ok(
                         {"path": open_path, "action": "already_open"},
                         workspace_root=ws,
@@ -456,6 +547,8 @@ def open_workspace(workspace_root: str | None = None, *, timeout: float | None =
                 sock, token, "workspace.getRoot", {}, request_timeout=timeout_sec
             )
             path = (verify.get("result") or {}).get("path") if verify.get("ok") else ws
+            cache.mark_workspace_open(ws)
+            _emit_progress("workspace.open", workspace_root=ws)
             return bridge_ok(
                 {"path": path, "action": "opened"},
                 workspace_root=ws,
@@ -564,8 +657,15 @@ def connect_preflight(*, warm: bool = False, force: bool = False) -> dict[str, A
     if not cfg.enabled:
         return bridge_ok(action="disabled", enabled=False)
 
+    ttl_sec = max(0.0, cfg.preflight_cache_ttl_ms / 1000.0)
     now = time.monotonic()
-    if not force and _PREFLIGHT_CACHE is not None and (now - _PREFLIGHT_CACHE_AT) < _PREFLIGHT_TTL_SEC:
+    if (
+        not force
+        and _PREFLIGHT_CACHE is not None
+        and _PREFLIGHT_CACHE.get("ok")
+        and ttl_sec > 0
+        and (now - _PREFLIGHT_CACHE_AT) < ttl_sec
+    ):
         return dict(_PREFLIGHT_CACHE)
 
     report: dict[str, Any] = {
@@ -587,8 +687,6 @@ def connect_preflight(*, warm: bool = False, force: bool = False) -> dict[str, A
                 "Kernel bridge requires macOS",
             )
         )
-        _PREFLIGHT_CACHE = report
-        _PREFLIGHT_CACHE_AT = now
         return report
 
     binary = _kernel_binary_path()
@@ -603,8 +701,6 @@ def connect_preflight(*, warm: bool = False, force: bool = False) -> dict[str, A
                 recovery_hint=f"make -C {binary.parent.parent} kernel",
             )
         )
-        _PREFLIGHT_CACHE = report
-        _PREFLIGHT_CACHE_AT = now
         return report
 
     ws_report = _resolve_workspace_module().resolve_workspace_root()
@@ -615,17 +711,19 @@ def connect_preflight(*, warm: bool = False, force: bool = False) -> dict[str, A
         report["steps"]["socket"] = socket_step
         if not socket_step.get("ok"):
             report.update(socket_step)
-            _PREFLIGHT_CACHE = report
-            _PREFLIGHT_CACHE_AT = now
+            _bridge_cache_module().invalidate_readiness(reason="socket")
             return report
 
         token_step = read_kernel_token()
         report["steps"]["token"] = token_step
         if not token_step.get("ok"):
             report.update(token_step)
-            _PREFLIGHT_CACHE = report
-            _PREFLIGHT_CACHE_AT = now
+            _bridge_cache_module().invalidate_readiness(reason="token")
             return report
+        _bridge_cache_module().cache_readiness(
+            socket_path=_socket_path(),
+            token_path=_token_path(),
+        )
 
     if warm:
         ping = send_kernel_rpc("rpc.ping", {}, start_socket=False)
@@ -633,8 +731,7 @@ def connect_preflight(*, warm: bool = False, force: bool = False) -> dict[str, A
         if not ping.get("ok"):
             report.update(ping)
             report["action"] = "ping_failed"
-            _PREFLIGHT_CACHE = report
-            _PREFLIGHT_CACHE_AT = now
+            _bridge_cache_module().invalidate_readiness(reason="ping_failed")
             return report
 
         if ws_report.safe_for_mutation:
@@ -643,8 +740,7 @@ def connect_preflight(*, warm: bool = False, force: bool = False) -> dict[str, A
             if not status.get("ok"):
                 report.update(status)
                 report["action"] = "workspace_status_failed"
-                _PREFLIGHT_CACHE = report
-                _PREFLIGHT_CACHE_AT = now
+                _bridge_cache_module().invalidate_workspace_cache(reason="workspace_status")
                 return report
         else:
             report["steps"]["workspace_status"] = bridge_error(
@@ -849,9 +945,10 @@ def apply_kernel_patch(
             string_code=str((err_body or {}).get("string_code") or BRIDGE_WORKSPACE_UNSAFE),
         )
 
-    socket_step = ensure_socket_ready(timeout=cfg.connect_timeout_sec, start=True)
-    if not socket_step.get("ok"):
-        err_body = socket_step.get("error", {})
+    ready_step = _ensure_bridge_ready(cfg, start=True)
+    if not ready_step.get("ok"):
+        err_body = ready_step.get("error", {})
+        code = str((err_body or {}).get("string_code") or BRIDGE_SOCKET_UNAVAILABLE)
         return _patch_receipt(
             ok=False,
             action="patch",
@@ -859,20 +956,7 @@ def apply_kernel_patch(
             path=rel_path,
             task_id=task_id,
             error=err_body if isinstance(err_body, dict) else {},
-            string_code=str((err_body or {}).get("string_code") or BRIDGE_SOCKET_UNAVAILABLE),
-        )
-
-    token_step = read_kernel_token()
-    if not token_step.get("ok"):
-        err_body = token_step.get("error", {})
-        return _patch_receipt(
-            ok=False,
-            action="patch",
-            workspace_root=ws,
-            path=rel_path,
-            task_id=task_id,
-            error=err_body if isinstance(err_body, dict) else {},
-            string_code=str((err_body or {}).get("string_code") or BRIDGE_TOKEN_UNAVAILABLE),
+            string_code=code,
         )
 
     norm_path, path_err = _normalize_rel_path(rel_path)
@@ -903,15 +987,80 @@ def apply_kernel_patch(
         )
 
     timeout_sec = cfg.request_timeout_sec
+    locks = _mutation_lock_module()
+    try:
+        with locks.mutation_lock(
+            ws,
+            max_concurrent=cfg.max_concurrent_mutations_per_workspace,
+        ):
+            return _apply_kernel_patch_rpc(
+                ws=ws,
+                norm_path=norm_path or rel_path,
+                rel_path=rel_path,
+                resolved_task=resolved_task,
+                unified_diff=unified_diff,
+                line_search=line_search,
+                line_replace=line_replace,
+                timeout_sec=timeout_sec,
+            )
+    except (TimeoutError, socket.timeout) as exc:
+        _bridge_cache_module().invalidate_on_error(BRIDGE_RPC_TIMEOUT)
+        return _patch_receipt(
+            ok=False,
+            action="patch",
+            workspace_root=ws,
+            path=norm_path or rel_path,
+            task_id=resolved_task,
+            error={"string_code": BRIDGE_RPC_TIMEOUT, "message": str(exc)},
+            string_code=BRIDGE_RPC_TIMEOUT,
+        )
+    except Exception as exc:
+        _bridge_cache_module().invalidate_on_error(BRIDGE_TRANSPORT_ERROR)
+        return _patch_receipt(
+            ok=False,
+            action="patch",
+            workspace_root=ws,
+            path=norm_path or rel_path,
+            task_id=resolved_task,
+            error={"string_code": BRIDGE_TRANSPORT_ERROR, "message": str(exc)},
+            string_code=BRIDGE_TRANSPORT_ERROR,
+        )
+
+
+def _workspace_has_drift(client: Any, sock: socket.socket, token: str, timeout_sec: float) -> bool:
+    response = client.send_rpc(sock, token, "workspace.status", {}, request_timeout=timeout_sec)
+    if not response.get("ok"):
+        return True
+    result = response.get("result") if isinstance(response.get("result"), dict) else {}
+    return bool(result.get("driftDetected"))
+
+
+def _apply_kernel_patch_rpc(
+    *,
+    ws: str,
+    norm_path: str,
+    rel_path: str,
+    resolved_task: str,
+    unified_diff: str,
+    line_search: str,
+    line_replace: str,
+    timeout_sec: float,
+) -> dict[str, Any]:
     try:
         with _kernel_rpc_session() as (client, sock, token, _cfg):
             try:
                 coherence_mod = _load_coherence_module()
             except ImportError:
-                # TODO: fall back to direct patch.apply without coherence recovery when harness module missing.
                 coherence_mod = None
 
+            try:
+                from plugins.dietcode.lib.agent.kernel_progress import coherence_emit_callback
+            except ImportError:
+                from lib.agent.kernel_progress import coherence_emit_callback
+
             if coherence_mod is not None and resolved_task:
+                drift = _workspace_has_drift(client, sock, token, timeout_sec)
+                _emit_progress("coherence.read", path=norm_path, taskId=resolved_task)
                 read_result = coherence_mod.read_with_coherence(sock, token, norm_path, resolved_task)
                 patch_text = _build_patch_text(
                     norm_path,
@@ -932,16 +1081,51 @@ def apply_kernel_patch(
                         coherence_mod=coherence_mod,
                     )
 
-                applied = coherence_mod.recover_and_apply_patch(
-                    sock,
-                    token,
-                    task_id=resolved_task,
-                    path=norm_path,
-                    stale_patch=patch_text,
-                    stale_coherence=read_result["coherence"],
-                    build_patch_from_content=_rebuild_from_content,
-                    resolved_by="dietcode_kernel",
-                )
+                if not drift:
+                    _emit_progress("patch.validate", path=norm_path)
+                    validated = client.send_rpc(
+                        sock,
+                        token,
+                        "patch.validate",
+                        {"path": norm_path, "patch": patch_text},
+                        request_timeout=timeout_sec,
+                    )
+                    if not validated.get("ok"):
+                        err_body = validated.get("error") if isinstance(validated.get("error"), dict) else {}
+                        return _patch_receipt(
+                            ok=False,
+                            action="patch",
+                            workspace_root=ws,
+                            path=norm_path,
+                            task_id=resolved_task,
+                            error=err_body,
+                            string_code=str(err_body.get("string_code") or BRIDGE_RPC_ERROR),
+                            rpc=validated,
+                        )
+                    _emit_progress("patch.apply", path=norm_path, taskId=resolved_task, fast_path=True)
+                    applied = coherence_mod.apply_patch_with_coherence(
+                        sock,
+                        token,
+                        task_id=resolved_task,
+                        path=norm_path,
+                        patch=patch_text,
+                        coherence=read_result["coherence"],
+                        expect_before_hash=validated["result"]["validation"]["beforeContentHash"],
+                        emit=coherence_emit_callback,
+                        resolved_by="dietcode_kernel",
+                    )
+                else:
+                    applied = coherence_mod.recover_and_apply_patch(
+                        sock,
+                        token,
+                        task_id=resolved_task,
+                        path=norm_path,
+                        stale_patch=patch_text,
+                        stale_coherence=read_result["coherence"],
+                        build_patch_from_content=_rebuild_from_content,
+                        resolved_by="dietcode_kernel",
+                        emit=coherence_emit_callback,
+                    )
             else:
                 # TODO: coherence-aware recovery requires taskId + dietcode_coherence module.
                 read_resp = client.send_rpc(
@@ -986,6 +1170,7 @@ def apply_kernel_patch(
                             string_code=BRIDGE_RPC_ERROR,
                         )
 
+                _emit_progress("patch.validate", path=norm_path)
                 validated = client.send_rpc(
                     sock,
                     token,
@@ -1014,6 +1199,7 @@ def apply_kernel_patch(
                 }
                 if resolved_task:
                     params["taskId"] = resolved_task
+                _emit_progress("patch.apply", path=norm_path, taskId=resolved_task or None)
                 applied = client.send_rpc(
                     sock,
                     token,
@@ -1046,6 +1232,7 @@ def apply_kernel_patch(
                 rpc=applied,
             )
     except (TimeoutError, socket.timeout) as exc:
+        _bridge_cache_module().invalidate_on_error(BRIDGE_RPC_TIMEOUT)
         return _patch_receipt(
             ok=False,
             action="patch",
@@ -1056,6 +1243,7 @@ def apply_kernel_patch(
             string_code=BRIDGE_RPC_TIMEOUT,
         )
     except Exception as exc:
+        _bridge_cache_module().invalidate_on_error(BRIDGE_TRANSPORT_ERROR)
         return _patch_receipt(
             ok=False,
             action="patch",
@@ -1199,9 +1387,9 @@ def apply_kernel_verify(
             string_code=str((err_body or {}).get("string_code") or BRIDGE_WORKSPACE_UNSAFE),
         )
 
-    socket_step = ensure_socket_ready(timeout=cfg.connect_timeout_sec, start=True)
-    if not socket_step.get("ok"):
-        err_body = socket_step.get("error", {})
+    ready_step = _ensure_bridge_ready(cfg, start=True)
+    if not ready_step.get("ok"):
+        err_body = ready_step.get("error", {})
         return _verify_receipt(
             ok=False,
             workspace_root=ws,
@@ -1210,19 +1398,6 @@ def apply_kernel_verify(
             cwd=cwd,
             error=err_body if isinstance(err_body, dict) else {},
             string_code=str((err_body or {}).get("string_code") or BRIDGE_SOCKET_UNAVAILABLE),
-        )
-
-    token_step = read_kernel_token()
-    if not token_step.get("ok"):
-        err_body = token_step.get("error", {})
-        return _verify_receipt(
-            ok=False,
-            workspace_root=ws,
-            task_id=task_id,
-            command=cmd,
-            cwd=cwd,
-            error=err_body if isinstance(err_body, dict) else {},
-            string_code=str((err_body or {}).get("string_code") or BRIDGE_TOKEN_UNAVAILABLE),
         )
 
     resolved_task = _resolve_task_id(task_id)
@@ -1245,17 +1420,43 @@ def apply_kernel_verify(
     if resolved_task:
         params["taskId"] = resolved_task
 
-    timeout_sec = cfg.request_timeout_sec
+    if cfg.verify_timeout_ms > 0:
+        timeout_sec = cfg.verify_timeout_ms / 1000.0
+    else:
+        timeout_sec = cfg.request_timeout_sec
+
+    locks = _mutation_lock_module()
     try:
-        with _kernel_rpc_session() as (client, sock, token, _cfg):
-            rpc = client.send_rpc(
-                sock,
-                token,
-                "verify.run",
-                params,
-                request_timeout=timeout_sec,
-            )
+        with locks.mutation_lock(ws, max_concurrent=cfg.max_concurrent_mutations_per_workspace):
+            with _kernel_rpc_session() as (client, sock, token, _cfg):
+                _emit_progress("verify.running", command=cmd, taskId=resolved_task or None)
+                try:
+                    from plugins.dietcode.lib.agent.kernel_progress import PROGRESS_HEARTBEAT_INTERVAL_MS
+                except ImportError:
+                    from lib.agent.kernel_progress import PROGRESS_HEARTBEAT_INTERVAL_MS
+
+                stop_heartbeat = threading.Event()
+
+                def _verify_heartbeat() -> None:
+                    interval = max(1.0, PROGRESS_HEARTBEAT_INTERVAL_MS / 1000.0)
+                    while not stop_heartbeat.wait(interval):
+                        _emit_progress("verify.running", command=cmd, heartbeat=True)
+
+                heartbeat_thread = threading.Thread(target=_verify_heartbeat, daemon=True)
+                heartbeat_thread.start()
+                try:
+                    rpc = client.send_rpc(
+                        sock,
+                        token,
+                        "verify.run",
+                        params,
+                        request_timeout=timeout_sec,
+                    )
+                finally:
+                    stop_heartbeat.set()
+                    heartbeat_thread.join(timeout=0.2)
     except (TimeoutError, socket.timeout) as exc:
+        _bridge_cache_module().invalidate_on_error(BRIDGE_RPC_TIMEOUT)
         return _verify_receipt(
             ok=False,
             workspace_root=ws,
@@ -1266,6 +1467,7 @@ def apply_kernel_verify(
             string_code=BRIDGE_RPC_TIMEOUT,
         )
     except Exception as exc:
+        _bridge_cache_module().invalidate_on_error(BRIDGE_TRANSPORT_ERROR)
         return _verify_receipt(
             ok=False,
             workspace_root=ws,

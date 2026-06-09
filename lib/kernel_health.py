@@ -272,6 +272,13 @@ def build_kernel_health() -> dict[str, Any]:
 
     payload["verify_bridge"] = build_verify_bridge_health(probe_runtime=supported and subtree and binary)
 
+    try:
+        from plugins.dietcode.lib.agent.kernel_progress import build_progress_health
+    except ImportError:
+        from lib.agent.kernel_progress import build_progress_health
+
+    payload["progress"] = build_progress_health()
+
     payload["status_summary"] = build_kernel_bridge_status_summary(
         probe_runtime=supported and subtree and binary,
         workspace=workspace,
@@ -398,6 +405,24 @@ def format_kernel_status_report(summary: dict[str, Any] | None = None) -> str:
         lines.append(f"✅ verify available | allowlist={verify_n} prefixes")
     else:
         lines.append(f"ℹ️  verify unavailable | allowlist={verify_n} prefixes (when bridge up)")
+
+    try:
+        from plugins.dietcode.lib.agent.kernel_progress import build_progress_health
+    except ImportError:
+        from lib.agent.kernel_progress import build_progress_health
+
+    progress = build_progress_health()
+    current = progress.get("current") if isinstance(progress.get("current"), dict) else None
+    if current:
+        lines.append(
+            f"ℹ️  progress phase={current.get('phase')} "
+            f"action={current.get('action')} elapsed_ms={current.get('elapsed_ms')}"
+        )
+    if progress.get("stale_progress_ms"):
+        lines.append(
+            f"⚠️  stale kernel progress ({progress['stale_progress_ms']}ms) — "
+            f"run /dietcode kernel progress --current"
+        )
 
     lines.append("")
     lines.append("Docs: docs/kernel-bridge-operations.md")

@@ -40,6 +40,15 @@ Subcommands:
   broccolidb               BroccoliDB root + RPC availability
   kernel                   Kernel subtree + socket/token health
   kernel status            Compact operator summary (bridge, policy, gates)
+  kernel progress              Human summary of current operation
+  kernel progress --timeline   Ordered phase timeline with durations
+  kernel progress --last N     Summarize last N operations
+  kernel progress --operation <id>  Filter tail/timeline by operation_id
+  kernel progress --tail       JSON tail of kernel-progress.jsonl
+  kernel progress --current    Full current-state JSON snapshot
+  kernel last-error            Last normalized kernel bridge error envelope
+  kernel explain-gate          Closed gates, fixes, raw-write behavior
+  kernel perf --last 10        Phase timing breakdown (p50/p95 by bucket)
 """
 
 
@@ -375,6 +384,19 @@ def format_status_report(
                 "   Receipt journal: JoyZoning disabled — kernel patches succeed without lifecycle journal"
             )
 
+    progress = kern.get("progress") or {}
+    current = progress.get("current") if isinstance(progress.get("current"), dict) else None
+    if current:
+        lines.append(
+            f"ℹ️  Kernel progress: phase={current.get('phase')} "
+            f"action={current.get('action')} elapsed_ms={current.get('elapsed_ms')}"
+        )
+    if progress.get("stale_progress_ms"):
+        lines.append(
+            f"⚠️  Kernel progress stale ({progress['stale_progress_ms']}ms) — "
+            "/dietcode kernel progress --current"
+        )
+
     verify = kern.get("verify_bridge") or {}
     if verify.get("phase"):
         allowlist = verify.get("allowlist_prefixes") or []
@@ -456,12 +478,47 @@ def handle_dietcode_command(raw_args: str) -> Optional[str]:
 
     if sub == "kernel":
         rest = argv[1:] if len(argv) > 1 else []
-        if rest and rest[0].lower() == "status":
+        if not rest:
+            return json.dumps(_kernel_health(), indent=2)
+        kernel_sub = rest[0].lower()
+        if kernel_sub == "status":
             try:
                 from plugins.dietcode.lib.kernel_health import format_kernel_status_report
             except ImportError:
                 from lib.kernel_health import format_kernel_status_report
             return format_kernel_status_report()
+        if kernel_sub == "progress":
+            try:
+                from plugins.dietcode.lib.agent import kernel_progress as kp
+            except ImportError:
+                from lib.agent import kernel_progress as kp
+            opts = kp.parse_progress_args(rest[1:])
+            return kp.format_progress_report(
+                tail=bool(opts.get("tail")),
+                current_only=bool(opts.get("current")),
+                timeline=bool(opts.get("timeline")),
+                operation_id=opts.get("operation"),
+                last=opts.get("last"),
+            )
+        if kernel_sub == "last-error":
+            try:
+                from plugins.dietcode.lib.agent import kernel_progress as kp
+            except ImportError:
+                from lib.agent import kernel_progress as kp
+            return json.dumps(kp.read_last_error(), indent=2, ensure_ascii=False)
+        if kernel_sub == "explain-gate":
+            try:
+                from plugins.dietcode.lib.agent import kernel_progress as kp
+            except ImportError:
+                from lib.agent import kernel_progress as kp
+            return kp.format_gate_explanation()
+        if kernel_sub == "perf":
+            try:
+                from plugins.dietcode.lib.agent.kernel_bridge_perf import format_perf_report, parse_perf_args
+            except ImportError:
+                from lib.agent.kernel_bridge_perf import format_perf_report, parse_perf_args
+            last_n = parse_perf_args(rest[1:])
+            return format_perf_report(last_operations=last_n)
         return json.dumps(_kernel_health(), indent=2)
 
     return f"Unknown subcommand: {sub}\n\n{_HELP}"

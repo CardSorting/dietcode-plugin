@@ -254,6 +254,59 @@ failure-mode tests, and e2e rehearsal without auto-completion.
 
 Tests: `tests/test_kernel_failure_modes.py`
 
+## Phase 6 — agent ergonomics and kernel observability
+
+Make long coherent mutation cycles legible without adding mutation authority.
+
+| Deliverable | Location |
+| --- | --- |
+| Progress telemetry | `lib/agent/kernel_progress.py` |
+| JSONL + current snapshot | `~/.dietcode/session/kernel-progress.jsonl` |
+| Slash commands | `/dietcode kernel progress`, `last-error`, `explain-gate` |
+| Agent hints | `_kernel_operator_hints` on `dietcode_kernel` results |
+| Docs | `docs/agent-ergonomics.md`, `docs/kernel-bridge-operations.md` |
+
+Tests: `tests/test_kernel_progress.py`
+
+## Phase 6B — observability polish under stress
+
+Human summaries, timeline views, multi-operation filtering, enriched error
+envelopes, upgraded gate explanation, silence/stress regression tests.
+
+| Deliverable | Location |
+| --- | --- |
+| Human summaries | `human_progress_summary()` |
+| Timeline / last N / operation filter | `format_progress_report()` flags |
+| Error envelopes | `next_action`, `safe_to_retry`, `retry_command`, etc. |
+| Gate explanation | closed gates, fixes, raw-write behavior |
+| Release | v1.9.1 — [docs/releases/v1.9.1.md](../docs/releases/v1.9.1.md) |
+
+Tests: `tests/test_kernel_progress.py` (`KernelProgressPolishTests`)
+
+## Phase 7 — kernel bridge performance and throughput
+
+Conservative latency reductions without weakening mutation safety.
+
+| Deliverable | Location |
+| --- | --- |
+| Phase timing + perf buckets | `lib/agent/kernel_progress.py`, `lib/agent/kernel_bridge_perf.py` |
+| Preflight readiness cache | `lib/agent/kernel_bridge_cache.py` |
+| Workspace open cache | `lib/agent/kernel_bridge_cache.py` + `open_workspace()` |
+| Progress JSONL batching | `lib/agent/kernel_progress.py` |
+| Patch fast path (no drift) | `apply_patch_with_coherence` in `_apply_kernel_patch_rpc` |
+| Verify heartbeat + optional timeout | `apply_kernel_verify()` |
+| Per-workspace mutation lock | `lib/agent/kernel_mutation_lock.py` |
+| Journal dedup TTL index | `kernel_receipt_journal.py`, `kernel_verify_journal.py` |
+| Bench script | `scripts/kernel_bridge_perf.py` |
+| Operator command | `/dietcode kernel perf --last 10` |
+
+Config (`dietcode.kernel.bridge`): `preflight_cache_ttl_ms`, `workspace_open_cache`,
+`progress_flush_interval_ms`, `verify_timeout_ms` (0 = default), `max_concurrent_mutations_per_workspace`.
+
+Tests: `tests/test_kernel_bridge_perf.py`
+
+**Release:** v1.9.2 — [docs/releases/v1.9.2.md](../docs/releases/v1.9.2.md)
+
 ## Next phase
 
 - JoyZoning `taskId` ↔ `HERMES_KANBAN_TASK` alignment
