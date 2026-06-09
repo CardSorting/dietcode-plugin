@@ -1,8 +1,9 @@
 # Tools Reference
 
-DietCode exposes both slash commands and registered Hermes tools.
+DietCode exposes slash commands and registered Hermes tools across BroccoliDB,
+JoyZoning, convergence, kanban bridge, and the **kernel authority bridge**.
 
-## Slash Commands
+## Slash commands
 
 ### `/dietcode`
 
@@ -14,6 +15,8 @@ Integration console.
 | `doctor` | Strict health report with refreshed tool load state. |
 | `tools` | Tool module load report. |
 | `broccolidb` | BroccoliDB root and RPC availability. |
+| `kernel` | Full kernel health JSON (binary, socket, bridge, workspace, verify). |
+| `kernel status` | Compact operator summary (bridge, policy, gates, allowlist count). |
 
 ### `/broccolidb`
 
@@ -47,7 +50,33 @@ Layering and governance console.
 | `suggest <file>` | Suggest a layer assignment. |
 | `refactor <file>` | Produce a dependency inversion refactor blueprint. |
 
-## BroccoliDB Tools
+## Kernel bridge tool
+
+### `dietcode_kernel`
+
+Governed macOS kernel bridge. Requires opt-in config (`mutations_enabled: true`
+for patch; verify available when bridge healthy).
+
+| Action | Purpose | Gate |
+| --- | --- | --- |
+| `status` | Kernel workspace status via RPC | Bridge enabled |
+| `search` | Literal search in workspace | Safe workspace + socket |
+| `patch` | Coherent file mutation with `mutationReceipt` | Patch gate open |
+| `verify` | Run allowlisted `verify.run` command | Safe workspace + socket |
+
+Patch parameters: `workspace`, `path`, `unified_diff` or `line_search`/`line_replace`, optional `task_id`.
+
+Verify parameters: `workspace`, `command`, optional `cwd`, `task_id`.
+
+Default verify allowlist prefixes: `make test`, `make kernel`, `git diff --check`,
+`npm test`, `./verify.sh`. Extend via `dietcode.kernel.bridge.verify_allowlist`.
+
+Successful patch/verify results are journaled into JoyZoning automatically via
+hooks. Kanban completion is **not** auto-triggered.
+
+Implementation: `lib/tools/kernel_bridge_tools.py`, `lib/agent/kernel_bridge_client.py`.
+
+## BroccoliDB tools
 
 | Tool | Purpose |
 | --- | --- |
@@ -64,16 +93,14 @@ Layering and governance console.
 | `broccolidb_shard_status` | Report shard health. |
 | `broccolidb_hive_integrity` | Run a sharded integrity audit. |
 
-Additional structural tools are registered from
-`lib/tools/broccolidb_tools/structural_tools.py` and JoyZoning-specific
-BroccoliDB helpers are registered from
+Additional tools: `lib/tools/broccolidb_tools/structural_tools.py`,
 `lib/tools/broccolidb_tools/joyzoning_tools.py`.
 
-## JoyZoning Tools
+## JoyZoning tools
 
 ### `joyzoning`
 
-Unified governed-work primitive. Supported actions:
+Unified governed-work primitive.
 
 | Action | Purpose |
 | --- | --- |
@@ -81,18 +108,21 @@ Unified governed-work primitive. Supported actions:
 | `doctor` | Run JoyZoning checks. |
 | `status` | Read convergence state. |
 | `begin` | Start a mutation scope. |
-| `patch` | Record substantive patching. |
-| `verify` | Record verification results. |
+| `patch` | Record substantive patching (lifecycle journal). |
+| `verify` | Record verification results (lifecycle journal). |
 | `request_review` | Move the scope to review. |
 | `events` | Tail runtime journal events. |
 | `role_context` | Load JSDP role context. |
 | `validate_handoff` | Validate JSDP handoff text. |
 
+When the kernel bridge is active, prefer `dietcode_kernel(action='patch'|'verify')`
+for physical mutation — JoyZoning hooks journal kernel receipts automatically.
+
 ### Granular lifecycle tools
 
 | Tool | Purpose |
 | --- | --- |
-| `convergence_status` | Read convergence state. |
+| `convergence_status` | Read convergence state and `kanban_complete_allowed`. |
 | `mutation_begin` | Start a bounded mutation. |
 | `mutation_record_patch` | Record a patch summary. |
 | `mutation_verify` | Record verification results. |
@@ -109,10 +139,30 @@ Unified governed-work primitive. Supported actions:
 | `jsdp` | `guide`, `start`, `apply`, `advance` | Autonomous rolling-horizon delivery loop. |
 | `jsdp_horizon` | Alias actions | Compatibility alias for `jsdp`. |
 
-## Kanban Bridge Tools
+## Kanban bridge tools
 
-DietCode also registers kanban bridge tools from
-`lib/tools/kanban_broccolidb_tools.py` and
-`lib/tools/kanban_broccolidb_bridge.py`. These tools mirror kanban state into
+Registered from `lib/tools/kanban_broccolidb_tools.py` and
+`lib/tools/kanban_broccolidb_bridge.py`. Mirror kanban state into
 BroccoliDB/BroccoliQ and enforce JoyZoning completion gates when kanban task
 environment is available.
+
+## Raw Hermes write tools
+
+| Tool | Kernel bridge interaction |
+| --- | --- |
+| `write_file` | Warn/block when patch gate open (policy-dependent) |
+| `patch` | Warn/block when patch gate open (policy-dependent) |
+| `read_file` | Never blocked by kernel router |
+| `dietcode_kernel` | Never blocked — preferred mutation path |
+
+Warning metadata: `_kernel_raw_write_warning` with `string_code: kernel_raw_write_warn`.
+Block payload: `string_code: kernel_raw_write_blocked`, `preferred_tool: dietcode_kernel`.
+
+## Operator scripts
+
+| Script | Purpose |
+| --- | --- |
+| `scripts/kernel_phase3_rehearsal.py` | Raw write warn + kernel patch + journal |
+| `scripts/kernel_bridge_e2e.py` | Full loop: patch → verify → journal → convergence |
+
+See [kernel-bridge-operations.md](kernel-bridge-operations.md).

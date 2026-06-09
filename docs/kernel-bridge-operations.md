@@ -150,6 +150,9 @@ make -C kernel restart-agent-server-fast   # control.sock + token
 
 ## Related docs
 
+- [architecture.md](architecture.md) — authority split and hook flow
+- [dietcode-plugin.md](dietcode-plugin.md) — install, config, workflow
+- [tools-reference.md](tools-reference.md) — `dietcode_kernel` tool
 - [kernel/MIGRATION.md](../kernel/MIGRATION.md) — phase history
 - [kernel/docs/verify-gate.md](../kernel/docs/verify-gate.md) — verify.run allowlist
 - [CHANGELOG.md](../CHANGELOG.md) — release notes

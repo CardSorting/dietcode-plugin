@@ -242,6 +242,8 @@ _DOC_SCAN_PATHS: tuple[str, ...] = (
     "README.md",
     "docs/README.md",
     "docs/dietcode-plugin.md",
+    "docs/architecture.md",
+    "docs/kernel-bridge-operations.md",
     "docs/broccolidb-native-execution-throughput.md",
 )
 

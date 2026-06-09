@@ -1,13 +1,25 @@
 # DietCode Plugin
 
 DietCode is a Hermes plugin that installs a governed agent execution substrate:
-BroccoliDB for repository and knowledge graph context, BroccoliQ for sharded
-queue coordination, JoyZoning for mutation lifecycle governance, and JSDP for
-rolling-horizon planning.
+BroccoliDB for repository context, BroccoliQ for queue coordination, JoyZoning
+for mutation lifecycle governance, JSDP for rolling-horizon planning, and an
+**optional macOS kernel authority bridge** for coherent physical mutation.
+
+**Current version:** 1.9.0 — Kernel Authority Bridge
+
+## What changed in v1.9.0
+
+The kernel is no longer a standalone archive you run beside Hermes. It is an
+**optional authority layer** integrated through the plugin bridge:
+
+- `dietcode_kernel(action='patch')` — governed file mutation with coherence receipts.
+- `dietcode_kernel(action='verify')` — allowlisted verification journaled into JoyZoning.
+- Raw Hermes `write_file` / `patch` — warn or block when the patch gate is open (opt-in).
+- Safe defaults — mutations off, warn-only raw-write policy, no env fuse.
+
+See [releases/v1.9.0.md](releases/v1.9.0.md) and [kernel-bridge-operations.md](kernel-bridge-operations.md).
 
 ## Manifest
-
-The plugin is declared in `plugin.yaml`:
 
 ```yaml
 name: dietcode
@@ -16,7 +28,7 @@ kind: standalone
 auto_enable: true
 ```
 
-It provides these Hermes hooks:
+Hermes hooks:
 
 - `on_session_start`
 - `on_session_end`
@@ -24,103 +36,171 @@ It provides these Hermes hooks:
 - `post_tool_call`
 - `transform_tool_result`
 
-## Installation
+## Authority model
 
-Install the plugin at the canonical Hermes path:
+| Layer | Responsibility |
+| --- | --- |
+| **Kernel** | Physical mutation (`patch`) and verification (`verify.run`) via RPC |
+| **JoyZoning** | Lifecycle journal (`begin`, `patch`, `verify`, `request_review`) |
+| **Convergence gate** | Completion authority — no auto `kanban_complete` |
+| **BroccoliDB** | Repository graph, audit, queue — independent of kernel |
+| **Raw Hermes writes** | Default allow; warn/block when patch gate open |
+
+Closed loop:
+
+```text
+intent → patch → receipt → journal → verify → verification journal → convergence
+```
+
+### Integration phases (complete arc)
+
+| Phase | Scope |
+| --- | --- |
+| 1 | Kernel quarantined in `kernel/` |
+| 1.5 | Workspace boundary — never mutate plugin or kernel roots |
+| 2A | Bridge preflight (read-only RPC) |
+| 2B | Opt-in `dietcode_kernel(action='patch')` |
+| 2C | Kernel receipt → JoyZoning journal |
+| 3A | Raw write warning when patch gate open |
+| 3B | Hard block with config + `DIETCODE_KERNEL_RAW_WRITE_BLOCK=1` |
+| 4 | Verify loop → verification journal |
+| 5 | Operations manual, `/dietcode kernel status`, failure audit |
+
+Details: [../kernel/MIGRATION.md](../kernel/MIGRATION.md)
+
+## Installation
 
 ```bash
 mkdir -p ~/.hermes/plugins
 cp -R dietcode-plugin ~/.hermes/plugins/dietcode
 cd ~/.hermes/plugins/dietcode/broccolidb
 npm ci
+python ../install.py
 ```
 
-The install helper can enable the plugin and add the `dietcode` toolset to the
-Hermes configuration:
+Flags:
 
-```bash
-python ~/.hermes/plugins/dietcode/install.py
+| Flag | Effect |
+| --- | --- |
+| `--skip-npm` | Skip `npm ci` (dependencies already installed) |
+| `--build-kernel` | Build `kernel/build/dietcode-kernel` on macOS |
+
+Install seeds safe kernel defaults:
+
+```yaml
+dietcode:
+  kernel:
+    workspace_root_source: hermes_project
+    bridge:
+      enabled: true
+      mutations_enabled: false
+      raw_write_policy: warn
 ```
 
-## Runtime Verification
-
-Use the DietCode doctor after installation:
+## Runtime verification
 
 ```text
 /dietcode doctor
+/dietcode kernel status
+/dietcode kernel          # full JSON health payload
 ```
 
-The report covers:
+Doctor covers:
 
-- Plugin registration.
-- Governance transform hook wiring.
-- Tool module load status.
-- Toolset completeness.
+- Plugin registration and hook wiring.
+- Tool module load status and toolset completeness.
 - Runtime layout and stale shim detection.
-- BroccoliDB root, `node_modules`, and RPC availability.
+- BroccoliDB root, `node_modules`, RPC availability.
 - JoyZoning and JSDP configuration.
-- Kernel subtree, bridge preflight, and mutation authority split.
+- Kernel subtree, bridge preflight, workspace safety, patch gate, raw-write policy, verify bridge.
 
-## Mutation authority (kernel vs JoyZoning)
+Shell validation (macOS):
 
-| Layer | Responsibility |
-| --- | --- |
-| **Kernel** | Physical file mutations via `dietcode_kernel(action="patch")` when the bridge patch gate is open |
-| **JoyZoning** | Lifecycle journal and completion gates (`begin`, `patch`, `verify`, `request_review`) |
-
-Phase 2C bridges successful kernel patch receipts into the JoyZoning journal
-automatically.
-
-Phase 3A warns (non-blocking) on raw Hermes `write_file` / `patch` when the
-kernel patch gate is open. Set `dietcode.kernel.bridge.raw_write_policy: allow`
-to silence hints.
-
-Phase 3B blocks raw writes when `raw_write_policy: block` and
-`DIETCODE_KERNEL_RAW_WRITE_BLOCK=1` with the patch gate fully open.
-
-Phase 4 adds `dietcode_kernel(action='verify')` — kernel `verify.run` with
-allowlisted commands, journaled into JoyZoning `mutation_verify`. Convergence
-gates remain the completion authority; kanban is never auto-completed.
+```bash
+python scripts/kernel_phase3_rehearsal.py
+python scripts/kernel_bridge_e2e.py
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
 
 ## Configuration
 
-DietCode reads Hermes config when available and falls back to scoped
-environment variables in worker contexts.
+### Kernel bridge
 
-Common environment variables:
+```yaml
+dietcode:
+  kernel:
+    workspace_root_source: hermes_project   # or env:DIETCODE_WORKSPACE_ROOT, explicit
+    bridge:
+      enabled: true
+      mutations_enabled: false              # set true to open patch gate
+      raw_write_policy: warn                # allow | warn | block
+      verify_allowlist: []                  # extends default prefixes
+```
+
+| `raw_write_policy` | Behavior when patch gate open |
+| --- | --- |
+| `allow` | No hints on raw writes |
+| `warn` | Non-blocking hint to prefer `dietcode_kernel` |
+| `block` | Hard block only with `DIETCODE_KERNEL_RAW_WRITE_BLOCK=1` |
+
+### Environment variables
 
 | Variable | Purpose |
 | --- | --- |
-| `HERMES_BROCCOLIDB_ROOT` | Explicit path to the bundled or workspace BroccoliDB root. |
-| `HERMES_BROCCOLIDB_DB` | Explicit SQLite database path for the BroccoliDB worker. |
-| `HERMES_BROCCOLIDB_RPC` | Set to `0`, `false`, or `no` to disable the persistent RPC worker. |
-| `HERMES_KANBAN_WORKSPACE` | Workspace root used for BroccoliDB and JSDP discovery. |
-| `HERMES_KANBAN_TASK` | Active task scope for JoyZoning and kanban gates. |
-| `JOYZONING_SCOPE_ID` | Explicit JoyZoning scope override. |
-| `JOYZONING_JSDP_ROLE` | JSDP role for bounded-role context. |
-| `JOYZONING_JSDP_CHAIN_ID` | JSDP chain identifier. |
-| `JOYZONING_WORKSPACE_ROOT` | Workspace root passed to the JSDP harness. |
-| `JOYZONING_JZ_CLI` | Explicit path to the JoyZoning CLI. |
+| `HERMES_KANBAN_WORKSPACE` | User project root (required for safe kernel mutation) |
+| `HERMES_KANBAN_TASK` | Active task scope for JoyZoning and coherence |
+| `JOYZONING_SCOPE_ID` | Explicit JoyZoning scope override |
+| `DIETCODE_KERNEL_RAW_WRITE_BLOCK` | Env fuse for Phase 3B hard block (`1` to enable) |
+| `DIETCODE_WORKSPACE_ROOT` | Explicit workspace when `workspace_root_source: env:...` |
+| `HERMES_BROCCOLIDB_ROOT` | Explicit BroccoliDB root path |
+| `HERMES_BROCCOLIDB_DB` | Explicit SQLite database path |
+| `HERMES_BROCCOLIDB_RPC` | Set `0`/`false` to disable persistent RPC worker |
+| `JOYZONING_JSDP_ROLE` | JSDP role for bounded-role context |
+| `JOYZONING_JSDP_CHAIN_ID` | JSDP chain identifier |
+| `JOYZONING_WORKSPACE_ROOT` | Workspace root for JSDP harness |
+| `JOYZONING_JZ_CLI` | Explicit JoyZoning CLI path |
 
-## Operational Model
+Kernel socket paths (global, not plugin-local):
 
-The plugin is designed to be installed as one directory. Python files register
-Hermes hooks and tools, while the nested `broccolidb/` package provides the
-TypeScript runtime used by the CLI and RPC worker.
+| Path | Role |
+| --- | --- |
+| `~/.dietcode/control.sock` | Kernel JSON-RPC socket |
+| `~/.dietcode/session.token` | RPC auth token |
 
-Recommended workflow:
+## Operational workflow
 
-1. Install the plugin and run `npm ci` in `broccolidb/`.
+### Without kernel (Linux or macOS default)
+
+1. Install plugin and run `npm ci` in `broccolidb/`.
 2. Run `/dietcode doctor`.
-3. Run `/broccolidb status` or `broccolidb_status` before graph-heavy work.
-4. Use `joyzoning(action="context")` before governed mutation work.
-5. Record mutation lifecycle with `begin`, `patch`, `verify`, and
-   `request_review`.
-6. Complete kanban work only after review/convergence gates allow it.
+3. Use `joyzoning(action="context")` before governed work.
+4. Record lifecycle with `begin` → `patch` → `verify` → `request_review`.
+5. Complete kanban only after convergence gates allow it.
+
+### With kernel bridge (macOS, opt-in)
+
+1. Build kernel: `make -C kernel kernel && make -C kernel restart-agent-server-fast`
+2. Set `HERMES_KANBAN_WORKSPACE` to your project (not the plugin directory).
+3. Enable mutations: `dietcode.kernel.bridge.mutations_enabled: true`
+4. Confirm: `/dietcode kernel status` → `patch_allowed=true`
+5. Mutate via `dietcode_kernel(action='patch', ...)`.
+6. Verify via `dietcode_kernel(action='verify', command='./verify.sh')`.
+7. Review convergence: `convergence_status` — kanban blocked until operator marks converged.
+
+Rollback to raw writes: [kernel-bridge-operations.md](kernel-bridge-operations.md#rollback-to-raw-writes)
+
+## Platform notes
+
+| Platform | Kernel bridge |
+| --- | --- |
+| **macOS** | Full bridge when binary built and socket running |
+| **Linux** | `platform_supported: false` — plugin degrades gracefully; no blocking |
+
+BroccoliDB, BroccoliQ, JoyZoning, and JSDP are fully usable on all platforms.
 
 ## Development
 
-Run TypeScript checks for the bundled package:
+BroccoliDB TypeScript:
 
 ```bash
 cd broccolidb
@@ -128,9 +208,17 @@ npm run build
 npm test
 ```
 
-For Python-facing changes, restart Hermes or reload the plugin, then run:
+Python / kernel bridge:
+
+```bash
+python3 -m unittest discover -s tests -p 'test_*.py'
+make -C kernel validate    # macOS kernel coherence baseline
+```
+
+After changes, restart Hermes or reload the plugin:
 
 ```text
 /dietcode doctor
 /dietcode tools
+/dietcode kernel status
 ```

@@ -55,3 +55,16 @@ echo '{"id":1,"method":"rpc_health","params":{}}' | node_modules/.bin/tsx infras
 
 The first stdout object should indicate readiness, and the second should contain
 the response for request id `1`.
+
+## Relationship to kernel authority
+
+BroccoliDB throughput optimization is **orthogonal** to the kernel authority
+bridge. BroccoliDB handles repository graph, audit, and queue RPC; the kernel
+handles physical file mutation and `verify.run` through `dietcode_kernel`.
+
+| Concern | Runtime boundary |
+| --- | --- |
+| Graph / queue hot path | `broccolidb/infrastructure/hermes/hermes_rpc.ts` |
+| Governed file patch | `dietcode_kernel` → `kernel/build/dietcode-kernel` |
+
+See [architecture.md](architecture.md) and [kernel-bridge-operations.md](kernel-bridge-operations.md).

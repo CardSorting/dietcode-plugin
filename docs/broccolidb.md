@@ -4,6 +4,12 @@ DietCode bundles BroccoliDB under `broccolidb/`. It is a TypeScript package that
 provides repository indexing, knowledge graph storage, structural audit,
 BroccoliQ queue infrastructure, and Hermes-native RPC workers.
 
+BroccoliDB is **independent of the kernel authority bridge**. Repository graph
+and queue operations continue on Linux and macOS without the kernel binary.
+Physical file mutation authority is optional and handled separately via
+`dietcode_kernel` when the bridge is enabled — see
+[kernel-bridge-operations.md](kernel-bridge-operations.md).
+
 ## Setup
 
 Install dependencies inside the nested package:

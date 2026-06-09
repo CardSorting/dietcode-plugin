@@ -6,6 +6,10 @@ Adds optional DietCode kernel authority bridge for coherent patching, verificati
 JoyZoning journaling, and gated raw-write interception, with safe defaults and
 rollback controls.
 
+Documentation updated to reflect the full integration arc (Phases 1–5), authority
+split, and operator workflow. Start at [README.md](README.md) and
+[docs/README.md](docs/README.md).
+
 ### Integration arc
 
 | Phase | Scope |
