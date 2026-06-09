@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.9.3 — Kernel Cockpit Responsiveness (2026-06-09)
+
+Adds live cockpit views, operation states, next-action hints, heartbeat UX, and
+responsiveness metrics for long-running kernel bridge operations.
+
+### Highlights
+
+- **Cockpit** — `/dietcode kernel cockpit` one-screen summary (gates, state, last patch/verify, next action).
+- **Operation states** — idle, accepted, preparing, validating, applying, verifying, stalled, complete, etc.
+- **UX perf budgets** — `/dietcode kernel perf --ux` with ack / first-progress / silent-window thresholds.
+- **Watch polish** — state symbols (UTF-8 or ASCII fallback) and single recommended next action.
+- **Smoke** — `scripts/kernel_cockpit_smoke.py`.
+- **Tests** — `tests/test_kernel_cockpit.py`.
+
+See [docs/releases/v1.9.3.md](docs/releases/v1.9.3.md).
+
 ## v1.9.2 — Kernel Bridge Performance Pass (2026-06-09)
 
 Adds bridge readiness caching, workspace-open reuse, progress write batching, mutation

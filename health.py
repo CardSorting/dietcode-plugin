@@ -49,6 +49,10 @@ Subcommands:
   kernel last-error            Last normalized kernel bridge error envelope
   kernel explain-gate          Closed gates, fixes, raw-write behavior
   kernel perf --last 10        Phase timing breakdown (p50/p95 by bucket)
+  kernel perf --ux --last 10   Perceived responsiveness metrics (ack, silent gaps)
+  kernel watch                 Compact single-line live operation summary
+  kernel watch --follow        Auto-refresh summary every ~1.5s (up to 30s)
+  kernel cockpit               One-screen operator summary (gates, state, next action)
 """
 
 
@@ -515,10 +519,31 @@ def handle_dietcode_command(raw_args: str) -> Optional[str]:
         if kernel_sub == "perf":
             try:
                 from plugins.dietcode.lib.agent.kernel_bridge_perf import format_perf_report, parse_perf_args
+                from plugins.dietcode.lib.agent.kernel_progress_ux import format_ux_perf_report, parse_perf_ux_args
             except ImportError:
                 from lib.agent.kernel_bridge_perf import format_perf_report, parse_perf_args
-            last_n = parse_perf_args(rest[1:])
-            return format_perf_report(last_operations=last_n)
+                from lib.agent.kernel_progress_ux import format_ux_perf_report, parse_perf_ux_args
+            last_n, ux = parse_perf_ux_args(rest[1:])
+            if ux:
+                return format_ux_perf_report(last_operations=last_n)
+            return format_perf_report(last_operations=parse_perf_args(rest[1:]))
+        if kernel_sub == "watch":
+            try:
+                from plugins.dietcode.lib.agent.kernel_progress_ux import format_watch_report, parse_watch_args
+            except ImportError:
+                from lib.agent.kernel_progress_ux import format_watch_report, parse_watch_args
+            opts = parse_watch_args(rest[1:])
+            return format_watch_report(
+                follow=bool(opts.get("follow")),
+                interval_sec=float(opts.get("interval_sec") or 1.5),
+                max_sec=float(opts.get("max_sec") or 30.0),
+            )
+        if kernel_sub == "cockpit":
+            try:
+                from plugins.dietcode.lib.agent.kernel_cockpit import format_cockpit_report
+            except ImportError:
+                from lib.agent.kernel_cockpit import format_cockpit_report
+            return format_cockpit_report()
         return json.dumps(_kernel_health(), indent=2)
 
     return f"Unknown subcommand: {sub}\n\n{_HELP}"

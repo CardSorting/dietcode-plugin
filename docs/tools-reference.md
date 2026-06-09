@@ -26,6 +26,10 @@ Integration console.
 | `kernel last-error` | Last normalized kernel bridge error envelope. |
 | `kernel explain-gate` | Closed gates, config/env fixes, raw-write behavior. |
 | `kernel perf --last 10` | Phase timing breakdown (p50/p95 per bucket). |
+| `kernel perf --ux --last 10` | Perceived responsiveness (ack latency, silent gaps). |
+| `kernel watch` | Compact single-line live operation summary. |
+| `kernel watch --follow` | Auto-refresh summary every ~1.5s (up to 30s). |
+| `kernel cockpit` | One-screen summary: state, gates, last patch/verify, next action. |
 
 ### `/broccolidb`
 

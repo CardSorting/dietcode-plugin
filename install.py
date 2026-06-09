@@ -151,6 +151,9 @@ def apply_seamless_defaults(*, save: bool = True) -> dict[str, Any]:
                 "workspace_open_cache": True,
                 "progress_flush_interval_ms": 250,
                 "max_concurrent_mutations_per_workspace": 1,
+                "keep_warm": False,
+                "keep_warm_idle_timeout_ms": 120000,
+                "keep_warm_ping_interval_ms": 30000,
             }
             for key, value in perf_defaults.items():
                 if key not in bridge_cfg:

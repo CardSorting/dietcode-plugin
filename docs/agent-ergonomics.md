@@ -7,11 +7,14 @@ the system is in without adding mutation authority.
 ## Quick operator loop
 
 ```text
-1. /dietcode kernel status          → gates, socket, workspace
-2. dietcode_kernel(action='patch') → governed mutation
-3. /dietcode kernel progress       → live phase + elapsed_ms
-4. dietcode_kernel(action='verify')→ allowlisted verify.run
-5. /dietcode kernel last-error     → normalized failure envelope (if any)
+1. /dietcode kernel cockpit        → one-screen state, gates, next action
+2. /dietcode kernel status          → gates, socket, workspace
+3. dietcode_kernel(action='patch') → governed mutation (instant ack in progress + result)
+4. /dietcode kernel watch          → compact live line with operation state
+5. /dietcode kernel progress       → human summary + next-phase hints
+6. dietcode_kernel(action='verify')→ allowlisted verify.run
+7. /dietcode kernel perf --ux      → responsiveness budgets
+8. /dietcode kernel last-error     → normalized failure envelope (if any)
 ```
 
 Progress is written automatically. You do not need to opt in.
@@ -31,7 +34,10 @@ Events include: `correlation_id`, `operation_id`, monotonic `ts_mono`, `duration
 
 | Phase | Meaning |
 | --- | --- |
-| `bridge.preflight` | Operation started; config/workspace checks |
+| `operation.accepted` | Immediate ack — operation_id, phase sequence, next hint |
+| `patch.staging` | Pre-apply mutation summary (files, bytes, taskId, verify hint) |
+| `bridge.heartbeat` | Coalesced long-phase heartbeat (still verifying…, elapsed) |
+| `bridge.preflight` | Config/workspace checks after ack |
 | `socket.ready` | Control socket + token available |
 | `workspace.open` | Kernel workspace opened on validated root |
 | `coherence.read` | Coherence-aware file read |
@@ -58,6 +64,10 @@ Events include: `correlation_id`, `operation_id`, monotonic `ts_mono`, `duration
 | `/dietcode kernel progress --current` | Full current snapshot JSON |
 | `/dietcode kernel last-error` | Last normalized error envelope |
 | `/dietcode kernel explain-gate` | Closed gates, fixes, raw-write behavior |
+| `/dietcode kernel watch` | Compact single-line live summary |
+| `/dietcode kernel watch --follow` | Auto-refresh every ~1.5s (up to 30s) |
+| `/dietcode kernel perf --ux --last 10` | Ack latency, silent gaps, UX budget pass/fail |
+| `/dietcode kernel cockpit` | One-screen operator summary |
 
 Error and warn envelopes include: `next_action`, `safe_to_retry`, `retry_command`,
 `diagnostic_command`, `rollback_command` (when relevant).
@@ -131,6 +141,62 @@ dietcode:
 ```
 
 Bench script: `python scripts/kernel_bridge_perf.py --compact`
+
+## Responsiveness (Phase 7B)
+
+Perceived performance without weakening safety gates:
+
+- **Instant ack** — `operation.accepted` within ~100ms; `_kernel_acknowledgement` on tool results
+- **Next-phase hints** — `next: patch.validate`, etc.; stall events include `waiting_reason`
+- **Heartbeats** — coalesced `bridge.heartbeat` during verify/approval/coherence/patch/journal
+- **Watch mode** — `/dietcode kernel watch` compact lines like `PATCH 7fd2 applying src/foo.py (12s)`
+- **Pre-stage summary** — `patch.staging` before apply (files, bytes, taskId, verify hint)
+- **UX perf** — `/dietcode kernel perf --ux --last 10` (ack latency, silent windows)
+- **Long-run tiers** — 30s / 60s / 120s stress notes with suggested diagnostics
+
+Optional warm idle state:
+
+```yaml
+dietcode:
+  kernel:
+    bridge:
+      keep_warm: false
+      keep_warm_idle_timeout_ms: 120000
+      keep_warm_ping_interval_ms: 30000
+```
+
+## Cockpit (Phase 7C)
+
+Release-grade operator UX — no mutation semantics changes.
+
+### Operation states
+
+Progress, watch, cockpit, and `perf --ux` normalize phases into:
+
+`idle` · `accepted` · `preparing` · `validating` · `recovering` · `applying` ·
+`verifying` · `journaling` · `blocked` · `stalled` · `failed` · `complete`
+
+### Symbols
+
+UTF-8 terminals: `✓` complete · `!` warning · `✕` failed · `…` running  
+ASCII fallback: set `DIETCODE_ASCII_ONLY=1`
+
+### Next action (exactly one)
+
+Every cockpit/progress view recommends one of:
+
+`wait` · `check last-error` · `run explain-gate` · `retry` · `rollback block mode` ·
+`start kernel socket` · `enable mutations` · `set workspace root`
+
+### UX budgets (`perf --ux`)
+
+| Metric | Budget |
+| --- | --- |
+| Time to acknowledgement | < 100ms |
+| Time to first progress | < 500ms |
+| Silent window (active) | < 5s |
+
+Smoke: `python scripts/kernel_cockpit_smoke.py`
 
 ## Troubleshooting
 

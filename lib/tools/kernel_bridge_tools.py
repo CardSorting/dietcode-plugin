@@ -46,8 +46,14 @@ def _run_with_progress(
         task_id=task_id,
     )
     try:
+        from plugins.dietcode.lib.agent.kernel_progress_ux import build_acknowledgement_payload
+    except ImportError:
+        from lib.agent.kernel_progress_ux import build_acknowledgement_payload
+    ack = build_acknowledgement_payload(tracker)
+    try:
         result = runner()
         if isinstance(result, dict):
+            result["_kernel_acknowledgement"] = ack
             code = str(result.get("string_code") or "")
             if not code and isinstance(result.get("error"), dict):
                 code = str(result["error"].get("string_code") or "")
@@ -97,6 +103,11 @@ def dietcode_kernel(
         )
 
     cfg = kbc.KernelBridgeConfig.load()
+    try:
+        from plugins.dietcode.lib.agent.kernel_bridge_warm import ensure_keep_warm_started
+    except ImportError:
+        from lib.agent.kernel_bridge_warm import ensure_keep_warm_started
+    ensure_keep_warm_started()
     if not cfg.enabled:
         disabled = kbc.bridge_error(kbc.BRIDGE_DISABLED, "Kernel bridge is disabled in config")
         kp = _progress_module()

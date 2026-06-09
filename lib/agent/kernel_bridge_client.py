@@ -75,6 +75,9 @@ class KernelBridgeConfig:
     progress_flush_interval_ms: int = 250
     verify_timeout_ms: int = 0
     max_concurrent_mutations_per_workspace: int = 1
+    keep_warm: bool = False
+    keep_warm_idle_timeout_ms: int = 120_000
+    keep_warm_ping_interval_ms: int = 30_000
 
     @classmethod
     def load(cls) -> KernelBridgeConfig:
@@ -123,6 +126,13 @@ class KernelBridgeConfig:
                     "max_concurrent_mutations_per_workspace",
                     bridge.get("max_concurrent_mutations_per_workspace", 1),
                 )
+            ),
+            keep_warm=bool(raw.get("keep_warm", bridge.get("keep_warm", False))),
+            keep_warm_idle_timeout_ms=int(
+                raw.get("keep_warm_idle_timeout_ms", bridge.get("keep_warm_idle_timeout_ms", 120_000))
+            ),
+            keep_warm_ping_interval_ms=int(
+                raw.get("keep_warm_ping_interval_ms", bridge.get("keep_warm_ping_interval_ms", 30_000))
             ),
         )
 
@@ -441,10 +451,33 @@ def _kernel_rpc_session(
 
 def _emit_progress(phase: str, *, string_code: str = "", **extra: Any) -> None:
     try:
+        from plugins.dietcode.lib.agent.kernel_bridge_warm import touch_bridge_activity
         from plugins.dietcode.lib.agent.kernel_progress import emit_phase
     except ImportError:
+        from lib.agent.kernel_bridge_warm import touch_bridge_activity
         from lib.agent.kernel_progress import emit_phase
+    touch_bridge_activity()
     emit_phase(phase, string_code=string_code, **extra)
+
+
+def _emit_patch_staging(
+    *,
+    path: str,
+    patch_text: str,
+    task_id: str,
+    workspace_root: str,
+) -> None:
+    try:
+        from plugins.dietcode.lib.agent.kernel_progress_ux import build_mutation_preview
+    except ImportError:
+        from lib.agent.kernel_progress_ux import build_mutation_preview
+    preview = build_mutation_preview(
+        path=path,
+        patch_text=patch_text,
+        task_id=task_id,
+        workspace_root=workspace_root,
+    )
+    _emit_progress("patch.staging", path=path, taskId=task_id or None, mutation_preview=preview)
 
 
 def _bridge_cache_module() -> Any:
@@ -1081,6 +1114,12 @@ def _apply_kernel_patch_rpc(
                         coherence_mod=coherence_mod,
                     )
 
+                _emit_patch_staging(
+                    path=norm_path,
+                    patch_text=patch_text,
+                    task_id=resolved_task,
+                    workspace_root=ws,
+                )
                 if not drift:
                     _emit_progress("patch.validate", path=norm_path)
                     validated = client.send_rpc(
@@ -1170,6 +1209,12 @@ def _apply_kernel_patch_rpc(
                             string_code=BRIDGE_RPC_ERROR,
                         )
 
+                _emit_patch_staging(
+                    path=norm_path,
+                    patch_text=patch_text,
+                    task_id=resolved_task,
+                    workspace_root=ws,
+                )
                 _emit_progress("patch.validate", path=norm_path)
                 validated = client.send_rpc(
                     sock,
@@ -1430,31 +1475,13 @@ def apply_kernel_verify(
         with locks.mutation_lock(ws, max_concurrent=cfg.max_concurrent_mutations_per_workspace):
             with _kernel_rpc_session() as (client, sock, token, _cfg):
                 _emit_progress("verify.running", command=cmd, taskId=resolved_task or None)
-                try:
-                    from plugins.dietcode.lib.agent.kernel_progress import PROGRESS_HEARTBEAT_INTERVAL_MS
-                except ImportError:
-                    from lib.agent.kernel_progress import PROGRESS_HEARTBEAT_INTERVAL_MS
-
-                stop_heartbeat = threading.Event()
-
-                def _verify_heartbeat() -> None:
-                    interval = max(1.0, PROGRESS_HEARTBEAT_INTERVAL_MS / 1000.0)
-                    while not stop_heartbeat.wait(interval):
-                        _emit_progress("verify.running", command=cmd, heartbeat=True)
-
-                heartbeat_thread = threading.Thread(target=_verify_heartbeat, daemon=True)
-                heartbeat_thread.start()
-                try:
-                    rpc = client.send_rpc(
-                        sock,
-                        token,
-                        "verify.run",
-                        params,
-                        request_timeout=timeout_sec,
-                    )
-                finally:
-                    stop_heartbeat.set()
-                    heartbeat_thread.join(timeout=0.2)
+                rpc = client.send_rpc(
+                    sock,
+                    token,
+                    "verify.run",
+                    params,
+                    request_timeout=timeout_sec,
+                )
     except (TimeoutError, socket.timeout) as exc:
         _bridge_cache_module().invalidate_on_error(BRIDGE_RPC_TIMEOUT)
         return _verify_receipt(

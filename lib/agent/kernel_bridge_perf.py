@@ -7,6 +7,9 @@ from typing import Any
 
 # Progress phase → perf bucket for operator reports.
 PHASE_PERF_BUCKETS: dict[str, str] = {
+    "operation.accepted": "ux/ack",
+    "patch.staging": "patch.staging",
+    "bridge.heartbeat": "ux/heartbeat",
     "bridge.preflight": "socket/preflight",
     "socket.ready": "socket/preflight",
     "workspace.open": "workspace.open",

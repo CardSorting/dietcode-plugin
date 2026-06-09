@@ -14,6 +14,9 @@ from typing import Any, Iterator, Optional
 
 logger = logging.getLogger(__name__)
 
+PHASE_OPERATION_ACCEPTED = "operation.accepted"
+PHASE_PATCH_STAGING = "patch.staging"
+PHASE_HEARTBEAT = "bridge.heartbeat"
 PHASE_BRIDGE_PREFLIGHT = "bridge.preflight"
 PHASE_SOCKET_READY = "socket.ready"
 PHASE_WORKSPACE_OPEN = "workspace.open"
@@ -30,6 +33,9 @@ PHASE_ERROR = "error"
 PHASE_PROGRESS_STALLED = "bridge.progress_stalled"
 
 PROGRESS_PHASES = frozenset({
+    PHASE_OPERATION_ACCEPTED,
+    PHASE_PATCH_STAGING,
+    PHASE_HEARTBEAT,
     PHASE_BRIDGE_PREFLIGHT,
     PHASE_SOCKET_READY,
     PHASE_WORKSPACE_OPEN,
@@ -178,7 +184,7 @@ def reset_progress_write_buffer() -> None:
     _last_jsonl_flush_mono = 0.0
 
 
-def _write_progress_event(event: dict[str, Any]) -> None:
+def _write_progress_event(event: dict[str, Any], *, skip_jsonl: bool = False) -> None:
     _ensure_session_dir()
     redacted = redact_secrets(event)
     line = json.dumps(redacted, ensure_ascii=False, separators=(",", ":"))
@@ -188,8 +194,9 @@ def _write_progress_event(event: dict[str, Any]) -> None:
             json.dumps(redacted, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        _progress_jsonl_buffer.append(line)
-    force = phase in _TERMINAL_PHASES
+        if not skip_jsonl:
+            _progress_jsonl_buffer.append(line)
+    force = phase in _TERMINAL_PHASES or phase == PHASE_OPERATION_ACCEPTED
     _flush_progress_jsonl(force=force)
 
 
@@ -231,6 +238,13 @@ class KernelProgressTracker:
         self.last_phase = PHASE_BRIDGE_PREFLIGHT
         self.finished = False
         self._phase_count = 0
+        self._heartbeat_stop = threading.Event()
+        self._heartbeat_thread: threading.Thread | None = None
+        self._ux_metrics: dict[str, Any] = {
+            "time_to_first_feedback_ms": None,
+            "time_to_first_progress_ms": None,
+            "total_silent_window_ms": 0,
+        }
 
     def elapsed_ms(self) -> int:
         return int((time.monotonic() - self.started_mono) * 1000)
@@ -238,15 +252,85 @@ class KernelProgressTracker:
     def since_last_emit_ms(self) -> int:
         return int((time.monotonic() - self.last_emit_mono) * 1000)
 
+    def _ux_module(self) -> Any:
+        try:
+            from plugins.dietcode.lib.agent import kernel_progress_ux as ux
+        except ImportError:
+            from lib.agent import kernel_progress_ux as ux
+        return ux
+
+    def _record_ux_timing(self, phase_name: str, *, now_mono: float) -> None:
+        ux = self._ux_module()
+        elapsed = self.elapsed_ms()
+        if phase_name == PHASE_OPERATION_ACCEPTED and self._ux_metrics["time_to_first_feedback_ms"] is None:
+            self._ux_metrics["time_to_first_feedback_ms"] = elapsed
+        elif (
+            self._ux_metrics["time_to_first_progress_ms"] is None
+            and phase_name not in {PHASE_OPERATION_ACCEPTED, PHASE_HEARTBEAT}
+        ):
+            self._ux_metrics["time_to_first_progress_ms"] = elapsed
+        gap_ms = int((now_mono - self.last_emit_mono) * 1000) if self._phase_count else 0
+        if gap_ms >= ux.SILENT_GAP_THRESHOLD_MS and self._phase_count > 0:
+            self._ux_metrics["total_silent_window_ms"] = int(
+                self._ux_metrics.get("total_silent_window_ms") or 0
+            ) + gap_ms
+
+    def _stop_heartbeat(self) -> None:
+        self._heartbeat_stop.set()
+        if self._heartbeat_thread is not None:
+            self._heartbeat_thread.join(timeout=0.2)
+            self._heartbeat_thread = None
+        self._ux_module().clear_heartbeat_coalesce(self.operation_id)
+
+    def _maybe_start_heartbeat(self, phase_name: str) -> None:
+        ux = self._ux_module()
+        if phase_name not in ux.SLOW_HEARTBEAT_PHASES:
+            self._stop_heartbeat()
+            return
+        if self._heartbeat_thread is not None and self._heartbeat_thread.is_alive():
+            return
+        self._heartbeat_stop.clear()
+        phase_ref = phase_name
+
+        def _loop() -> None:
+            interval = ux.heartbeat_interval_ms(phase_ref) / 1000.0
+            while not self._heartbeat_stop.wait(interval):
+                if self.finished or self.last_phase != phase_ref:
+                    break
+                summary = ux.build_heartbeat_summary(
+                    phase=phase_ref,
+                    elapsed_ms=self.elapsed_ms(),
+                    attempt=self.attempt,
+                    command=self.command,
+                )
+                if not ux.should_emit_heartbeat(self.operation_id, summary):
+                    continue
+                self.emit(
+                    PHASE_HEARTBEAT,
+                    heartbeat=True,
+                    heartbeat_summary=summary,
+                    heartbeat_phase=phase_ref,
+                )
+
+        self._heartbeat_thread = threading.Thread(
+            target=_loop,
+            name=f"kernel-progress-heartbeat-{self.operation_id}",
+            daemon=True,
+        )
+        self._heartbeat_thread.start()
+
     def emit(self, phase: str, *, string_code: str = "", **extra: Any) -> dict[str, Any]:
         if self.finished and phase not in {PHASE_PROGRESS_STALLED, PHASE_DONE, PHASE_ERROR}:
             return {}
         phase_name = str(phase or "").strip()
         if phase_name not in PROGRESS_PHASES:
             phase_name = PHASE_BRIDGE_PREFLIGHT
+        ux = self._ux_module()
         now_mono = time.monotonic()
         phase_duration_ms = int((now_mono - self.last_emit_mono) * 1000) if self._phase_count else 0
-        self.last_phase = phase_name
+        self._record_ux_timing(phase_name, now_mono=now_mono)
+        if not extra.get("heartbeat"):
+            self.last_phase = phase_name
         self.last_emit_mono = now_mono
         self._phase_count += 1
         if phase_name != PHASE_PROGRESS_STALLED:
@@ -267,7 +351,21 @@ class KernelProgressTracker:
             "phase_duration_ms": phase_duration_ms,
             "perf_bucket": None,
             "string_code": string_code or None,
+            "next_phase_hint": ux.next_phase_hint(phase_name, self.action),
+            **self._ux_metrics,
         }
+        event.update(ux.run_duration_tier(self.elapsed_ms()))
+        try:
+            from plugins.dietcode.lib.agent.kernel_cockpit import normalize_operation_state, recommend_next_action
+        except ImportError:
+            from lib.agent.kernel_cockpit import normalize_operation_state, recommend_next_action
+        event["operation_state"] = normalize_operation_state(
+            phase=phase_name,
+            heartbeat_phase=str(extra.get("heartbeat_phase") or ""),
+        )
+        if phase_name not in {PHASE_DONE, PHASE_ERROR, PHASE_HEARTBEAT}:
+            rec = recommend_next_action(operation_state=str(event["operation_state"]))
+            event["recommended_next_action"] = rec.get("action")
         try:
             from plugins.dietcode.lib.agent.kernel_bridge_perf import PHASE_PERF_BUCKETS
         except ImportError:
@@ -277,8 +375,28 @@ class KernelProgressTracker:
             event.update(extra)
             if extra.get("command"):
                 self.command = str(extra["command"])
-        event["summary"] = human_progress_summary(event)
-        _write_progress_event(event)
+        if phase_name == PHASE_OPERATION_ACCEPTED:
+            event["phase_sequence"] = ux.estimated_phase_sequence(self.action)
+            event["status"] = "accepted"
+        if phase_name == PHASE_PROGRESS_STALLED:
+            event["waiting_reason"] = ux.stall_waiting_reason(
+                str(extra.get("last_phase") or self.last_phase),
+                attempt=self.attempt,
+            )
+        if extra.get("heartbeat_summary"):
+            event["summary"] = str(extra["heartbeat_summary"])
+        else:
+            event["summary"] = human_progress_summary(event)
+        suppress_jsonl = ux.should_suppress_jsonl_emit(
+            phase=phase_name,
+            phase_duration_ms=phase_duration_ms,
+            heartbeat=bool(extra.get("heartbeat")),
+        )
+        _write_progress_event(event, skip_jsonl=suppress_jsonl)
+        if phase_name in {PHASE_DONE, PHASE_ERROR}:
+            self._stop_heartbeat()
+        elif not extra.get("heartbeat"):
+            self._maybe_start_heartbeat(phase_name)
         return event
 
     def finish(
@@ -293,6 +411,7 @@ class KernelProgressTracker:
         payload = dict(extra)
         if error:
             payload["error"] = redact_secrets(error)
+        self._stop_heartbeat()
         event = self.emit(phase, string_code=string_code, **payload)
         self.finished = True
         flush_progress_writes(force=True)
@@ -306,11 +425,13 @@ class KernelProgressTracker:
         if self.operation_id in _stall_emitted_for:
             return None
         _stall_emitted_for.add(self.operation_id)
+        ux = self._ux_module()
         return self.emit(
             PHASE_PROGRESS_STALLED,
             string_code="bridge_progress_stalled",
             last_phase=self.last_phase,
             stalled_ms=self.since_last_emit_ms(),
+            waiting_reason=ux.stall_waiting_reason(self.last_phase, attempt=self.attempt),
         )
 
 
@@ -332,14 +453,18 @@ def start_operation(
     )
     tracker.command = str(command or "")
     _local.tracker = tracker
+    tracker.emit(PHASE_OPERATION_ACCEPTED, immediate_ack=True)
+    flush_progress_writes(force=True)
     tracker.emit(PHASE_BRIDGE_PREFLIGHT, command=tracker.command or None)
     return tracker
 
 
 def end_operation() -> None:
     tracker = current_tracker()
-    if tracker is not None and not tracker.finished:
-        tracker.finish(ok=False, string_code="operation_interrupted")
+    if tracker is not None:
+        tracker._stop_heartbeat()
+        if not tracker.finished:
+            tracker.finish(ok=False, string_code="operation_interrupted")
     _local.tracker = None
     flush_progress_writes(force=True)
 
@@ -376,6 +501,20 @@ def human_progress_summary(event: dict[str, Any]) -> str:
     command = event.get("command") or ""
     action = event.get("action") or ""
 
+    if phase == PHASE_OPERATION_ACCEPTED:
+        seq = event.get("phase_sequence") or []
+        preview = ", ".join(str(p) for p in seq[:5])
+        if len(seq) > 5:
+            preview += ", …"
+        nxt = event.get("next_phase_hint") or ""
+        return f"operation accepted: {action or 'kernel'} | {preview}" + (f" | {nxt}" if nxt else "")
+    if phase == PHASE_PATCH_STAGING:
+        preview = event.get("mutation_preview") or {}
+        if isinstance(preview, dict) and preview.get("human_summary"):
+            return str(preview["human_summary"])
+        return f"patch staging: {path or 'file'}, {elapsed_i}s elapsed"
+    if phase == PHASE_HEARTBEAT:
+        return str(event.get("heartbeat_summary") or event.get("summary") or f"active: {elapsed_i}s elapsed")
     if phase == PHASE_PATCH_APPLY:
         target = path or "patch"
         return f"patch applying: {target}, attempt {attempt}, {elapsed_i}s elapsed"
@@ -387,7 +526,9 @@ def human_progress_summary(event: dict[str, Any]) -> str:
     if phase == PHASE_PROGRESS_STALLED:
         last_phase = event.get("last_phase") or "unknown"
         stalled_s = int((event.get("stalled_ms") or 0) / 1000)
-        return f"stalled: last phase {last_phase}, no update for {stalled_s}s"
+        reason = event.get("waiting_reason") or ""
+        base = f"stalled: last phase {last_phase}, no update for {stalled_s}s"
+        return f"{base} — {reason}" if reason else base
     if phase == PHASE_COHERENCE_ANCHOR_REFRESH:
         target = path or "workspace"
         return f"coherence recover: {target}, attempt {attempt}, {elapsed_i}s elapsed"
@@ -787,16 +928,24 @@ def build_agent_operator_hints(
     ws_root = snap.get("resolved_workspace_root") or ""
     patch_allowed = bool(snap.get("patch_allowed"))
     safe = mutation_safe if mutation_safe is not None else bool(snap.get("workspace_safe_for_mutation"))
+    tracker = current_tracker()
     hints: dict[str, Any] = {
         "workspace_root": ws_root,
         "mutation_safe": safe,
         "patch_allowed": patch_allowed,
         "preferred_command": _preferred_command_shape(action),
         "slash_commands": [
+            "/dietcode kernel watch",
             "/dietcode kernel progress --current",
             "/dietcode kernel explain-gate",
         ],
     }
+    if tracker is not None:
+        try:
+            from plugins.dietcode.lib.agent.kernel_progress_ux import build_acknowledgement_payload
+        except ImportError:
+            from lib.agent.kernel_progress_ux import build_acknowledgement_payload
+        hints["acknowledgement"] = build_acknowledgement_payload(tracker)
     if string_code:
         envelope = normalize_bridge_error(string_code, "", phase="", raw_error=None)
         hints["error"] = envelope
@@ -1110,6 +1259,11 @@ def check_stalled_operations() -> list[dict[str, Any]]:
         "last_phase": snap.get("phase"),
         "stalled_ms": stale_ms,
     }
+    try:
+        from plugins.dietcode.lib.agent.kernel_progress_ux import stall_waiting_reason
+    except ImportError:
+        from lib.agent.kernel_progress_ux import stall_waiting_reason
+    event["waiting_reason"] = stall_waiting_reason(str(snap.get("phase") or ""))
     event["summary"] = human_progress_summary(event)
     if op_id:
         _stall_emitted_for.add(op_id)
@@ -1192,19 +1346,39 @@ def format_progress_report(
     if last is not None:
         return format_recent_operations_report(count=last)
 
+    try:
+        from plugins.dietcode.lib.agent.kernel_cockpit import (
+            normalize_operation_state,
+            recommend_next_action,
+            state_symbol,
+        )
+    except ImportError:
+        from lib.agent.kernel_cockpit import normalize_operation_state, recommend_next_action, state_symbol
+
     current = read_progress_current()
     lines = ["🥦 Kernel progress", ""]
     if not current.get("ok"):
         lines.append(f"ℹ️  {current.get('message', 'No progress recorded')}")
         lines.append(f"   log: {progress_log_path()}")
+        rec = recommend_next_action(operation_state="idle")
+        lines.append(f"   next action: {rec.get('action')} → {rec.get('command')}")
         return "\n".join(lines)
     snap = current.get("current") or {}
+    stale = bool(current.get("stale"))
+    op_state = normalize_operation_state(
+        phase=str(snap.get("phase") or ""),
+        stale=stale,
+        heartbeat_phase=str(snap.get("heartbeat_phase") or ""),
+    )
+    sym = state_symbol(op_state)
     summary = snap.get("summary") or human_progress_summary(snap)
-    lines.append(summary)
+    lines.append(f"{sym} [{op_state}] {summary}")
     lines.append(
         f"   phase={snap.get('phase')} | operation_id={snap.get('operation_id')} | "
         f"action={snap.get('action')}"
     )
+    if snap.get("next_phase_hint"):
+        lines.append(f"   {snap.get('next_phase_hint')}")
     if current.get("stale"):
         stalled_summary = human_progress_summary({
             "phase": PHASE_PROGRESS_STALLED,
@@ -1212,10 +1386,15 @@ def format_progress_report(
             "stalled_ms": current.get("stale_ms"),
         })
         lines.append(f"⚠️  {stalled_summary}")
+    rec = recommend_next_action(operation_state=op_state, stale=stale)
+    lines.append(f"   next action: {rec.get('action')}")
+    lines.append(f"   {rec.get('detail')}")
+    if rec.get("command"):
+        lines.append(f"   → {rec['command']}")
     lines.append(f"   current: {progress_current_path()}")
     lines.append(f"   log: {progress_log_path()}")
     lines.append("")
-    lines.append("More: --timeline | --last 5 | --operation <id> | --tail | --current")
+    lines.append("More: cockpit | watch | --timeline | --last 5 | --operation <id>")
     return "\n".join(lines)
 
 

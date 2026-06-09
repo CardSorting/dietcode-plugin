@@ -307,6 +307,38 @@ Tests: `tests/test_kernel_bridge_perf.py`
 
 **Release:** v1.9.2 — [docs/releases/v1.9.2.md](../docs/releases/v1.9.2.md)
 
+## Phase 7B — perceived performance and responsiveness
+
+Operator confidence during long mutations — no safety gate changes.
+
+| Deliverable | Location |
+| --- | --- |
+| Immediate operation ack | `operation.accepted` in `kernel_progress.py` |
+| Next-phase hints + stall reasons | `lib/agent/kernel_progress_ux.py` |
+| Coalesced heartbeats | `KernelProgressTracker` + `bridge.heartbeat` |
+| Watch mode | `/dietcode kernel watch` in `health.py` |
+| Mutation pre-stage | `patch.staging` via `_emit_patch_staging()` |
+| Optional keep-warm | `lib/agent/kernel_bridge_warm.py` + `keep_warm` config |
+| UX perf metrics | `/dietcode kernel perf --ux` |
+| Long-run stress tiers | 30s / 60s / 120s on progress events |
+
+Tests: `tests/test_kernel_progress_ux.py`
+
+## Phase 7C — live kernel cockpit final polish
+
+Release-grade operator UX without mutation semantics changes.
+
+| Deliverable | Location |
+| --- | --- |
+| One-screen cockpit | `/dietcode kernel cockpit`, `lib/agent/kernel_cockpit.py` |
+| Operation states | `normalize_operation_state()` — used in progress/watch/cockpit/perf |
+| Terminal symbols + ASCII fallback | `kernel_cockpit.symbol()`, `DIETCODE_ASCII_ONLY` |
+| Single next-action hint | `recommend_next_action()` |
+| UX latency budgets | `perf --ux` enriched metrics + pass/fail |
+| Smoke script | `scripts/kernel_cockpit_smoke.py` |
+
+**Release:** v1.9.3 — [docs/releases/v1.9.3.md](../docs/releases/v1.9.3.md)
+
 ## Next phase
 
 - JoyZoning `taskId` ↔ `HERMES_KANBAN_TASK` alignment

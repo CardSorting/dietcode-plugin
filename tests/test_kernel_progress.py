@@ -87,9 +87,10 @@ class KernelProgressTests(unittest.TestCase):
         self.assertTrue(out["ok"])
         events = self._read_events()
         phases = [e["phase"] for e in events]
-        self.assertIn("bridge.preflight", phases)
+        self.assertIn("operation.accepted", phases)
         self.assertIn("done", phases)
         self.assertIn("_kernel_operator_hints", out)
+        self.assertIn("_kernel_acknowledgement", out)
 
     def test_verify_success_emits_progress(self) -> None:
         receipt = {
@@ -341,13 +342,16 @@ class KernelProgressPolishTests(unittest.TestCase):
     def test_silence_regression_periodic_updates(self) -> None:
         tracker = progress.KernelProgressTracker(action="patch", path="src/foo.py", operation_id="op_silence")
         interval = progress.PROGRESS_HEARTBEAT_INTERVAL_MS
-        phases = ["bridge.preflight", "socket.ready", "workspace.open", "patch.validate", "patch.apply"]
+        phases = ["operation.accepted", "bridge.preflight", "socket.ready", "workspace.open", "patch.validate", "patch.apply"]
         for phase in phases:
             tracker.emit(phase)
             self.assertLess(tracker.since_last_emit_ms(), interval * 2)
         progress.flush_progress_writes(force=True)
         events = progress.read_operation_events("op_silence")
-        self.assertGreaterEqual(len(events), len(phases))
+        current = progress.read_progress_current()
+        self.assertEqual((current.get("current") or {}).get("phase"), "patch.apply")
+        self.assertGreaterEqual(len(events), 2)
+        self.assertEqual(events[0]["phase"], "operation.accepted")
 
     def test_silence_regression_stall_without_update(self) -> None:
         tracker = progress.KernelProgressTracker(action="patch", path="src/foo.py", operation_id="op_stall")

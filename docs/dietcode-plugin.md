@@ -5,7 +5,18 @@ BroccoliDB for repository context, BroccoliQ for queue coordination, JoyZoning
 for mutation lifecycle governance, JSDP for rolling-horizon planning, and an
 **optional macOS kernel authority bridge** for coherent physical mutation.
 
-**Current version:** 1.9.2 — Kernel Bridge Performance Pass
+**Current version:** 1.9.3 — Kernel Cockpit Responsiveness
+
+## What changed in v1.9.3
+
+Release-grade operator UX for long kernel bridge operations:
+
+- `/dietcode kernel cockpit` — one-screen state, gates, next action
+- Normalized operation states across progress, watch, and perf UX
+- `/dietcode kernel perf --ux` — latency budgets (ack, first progress, silent window)
+- `scripts/kernel_cockpit_smoke.py` — smoke checks without live mutation
+
+See [releases/v1.9.3.md](releases/v1.9.3.md).
 
 ## What changed in v1.9.2
 
@@ -47,7 +58,7 @@ See [releases/v1.9.0.md](releases/v1.9.0.md) and [kernel-bridge-operations.md](k
 
 ```yaml
 name: dietcode
-version: 1.9.2
+version: 1.9.3
 kind: standalone
 auto_enable: true
 ```
@@ -92,6 +103,8 @@ intent → patch → receipt → journal → verify → verification journal →
 | 6 | Progress telemetry, slash commands, agent hints |
 | 6B | Human summaries, timeline, multi-op views, stress tests |
 | 7 | Readiness cache, workspace reuse, batching, mutation lock, perf telemetry |
+| 7B | Ack, heartbeats, watch mode, pre-stage, keep-warm, perf UX |
+| 7C | Cockpit, operation states, next-action hints, UX budgets |
 
 Details: [../kernel/MIGRATION.md](../kernel/MIGRATION.md)
 

@@ -112,17 +112,23 @@ python scripts/kernel_bridge_e2e.py
 ## Kernel subcommands
 
 ```text
-/dietcode kernel status              # operator summary (text)
-/dietcode kernel                     # full JSON health payload
-/dietcode kernel progress              # human summary (e.g. patch applying: src/foo.py, 38s elapsed)
+/dietcode kernel cockpit               # one-screen: state, gates, last patch/verify, next action
+/dietcode kernel watch                 # compact live operation line (with state symbols)
+/dietcode kernel watch --follow        # auto-refresh ~1.5s up to 30s
+/dietcode kernel status                # operator summary (text)
+/dietcode kernel                       # full JSON health payload
+/dietcode kernel progress              # human summary + normalized state + next action
 /dietcode kernel progress --timeline   # ordered phase timeline with durations
 /dietcode kernel progress --last 5     # summarize recent operations
 /dietcode kernel progress --operation <id>  # filter tail/timeline to one operation
 /dietcode kernel progress --tail       # JSONL tail (~/.dietcode/session/kernel-progress.jsonl)
 /dietcode kernel progress --current    # full current-state JSON snapshot
+/dietcode kernel perf --ux --last 10   # responsiveness budgets (ack, silent gaps)
 /dietcode kernel last-error            # last normalized bridge error envelope
 /dietcode kernel explain-gate          # closed gates, fixes, raw-write behavior
 ```
+
+Smoke (no live socket required): `python scripts/kernel_cockpit_smoke.py`
 
 Progress is emitted automatically for `dietcode_kernel` patch, verify, status,
 and search. Logs live under `~/.dietcode/session/` (see [agent-ergonomics.md](agent-ergonomics.md)).
