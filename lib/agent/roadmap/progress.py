@@ -190,6 +190,10 @@ def build_progress_snapshot(*, workspace: Optional[str] = None) -> dict[str, Any
         from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
 
         payload.update(attach_bootstrap_steering_fields(steering, tier="light"))
+    else:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_steering_digest_fields
+
+        payload.update(attach_steering_digest_fields(steering))
     return payload
 
 

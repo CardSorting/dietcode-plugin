@@ -60,6 +60,13 @@ def _project_context_lines(steering: dict[str, Any]) -> list[str]:
     if ci:
         lines.append(f"CI: {', '.join(ci[:2])}")
 
+    workflows = steering.get("ci_workflow_names") or []
+    if workflows:
+        lines.append(f"Workflows: {', '.join(workflows[:3])}")
+
+    if steering.get("has_pre_commit"):
+        lines.append("Hooks: pre-commit configured")
+
     git_remote = steering.get("git_remote")
     if git_remote:
         lines.append(f"Origin: {git_remote}")
@@ -185,8 +192,7 @@ def build_live_steering_brief(*, workspace: Optional[str] = None) -> dict[str, A
         "steering_line": format_agent_steering_line(workspace=steering.get("workspace") or workspace) or None,
         **steering,
     }
-    if steering.get("bootstrap_complete") is False:
-        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
+    from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
 
-        out.update(attach_bootstrap_steering_fields(steering, tier="light"))
+    out.update(attach_bootstrap_steering_fields(steering, tier="light"))
     return out

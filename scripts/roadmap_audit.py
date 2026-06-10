@@ -222,6 +222,15 @@ def main() -> int:
         fp_sec = build_project_fingerprint(root)
         if "SECURITY.md" not in (fp_sec.get("governance_files") or []):
             failures.append("fingerprint should detect SECURITY.md governance file")
+        wf_dir = root / ".github" / "workflows"
+        wf_dir.mkdir(parents=True, exist_ok=True)
+        (wf_dir / "ci.yml").write_text("name: ci\n", encoding="utf-8")
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import invalidate_fingerprint_cache
+
+        invalidate_fingerprint_cache(root)
+        fp_ci = build_project_fingerprint(root)
+        if "ci" not in (fp_ci.get("ci_workflow_names") or []):
+            failures.append("fingerprint should detect GitHub workflow names")
         if fp.get("project_archetype") not in {"project", "library", "application", "web-app", "cli-tool", "hermes-plugin", "monorepo"}:
             failures.append(f"unexpected project_archetype: {fp.get('project_archetype')}")
         roadmap_text = (root / "ROADMAP.md").read_text(encoding="utf-8")
@@ -359,6 +368,8 @@ def main() -> int:
         validated2 = validate_roadmap(workspace=str(root))
         if "bootstrap_fill_plan" not in validated2:
             failures.append("validate should include bootstrap_fill_plan when placeholders remain")
+        if not validated2.get("project_steering_digest"):
+            failures.append("validate missing project_steering_digest")
         if "recommended_next_action" not in validated2:
             failures.append("validate missing recommended_next_action")
         rec = validated2.get("recommended_next_action") or {}
@@ -446,8 +457,11 @@ def main() -> int:
             failures.append("explain_gate digest missing sample_fill_task")
 
         prog = build_progress_snapshot(workspace=str(root))
-        if "project_steering_digest" not in prog:
-            failures.append("progress missing project_steering_digest when bootstrap incomplete")
+        if not prog.get("project_steering_digest"):
+            failures.append("progress missing project_steering_digest")
+
+        if not (explain.get("project_steering_digest") or {}).get("steering_brief"):
+            failures.append("explain_gate missing project_steering_digest steering_brief")
 
         auto_ckpt = checkpoint_brief(workspace=str(root), context="apply autofill write")
         if "bootstrap_autofill_applied" not in auto_ckpt:

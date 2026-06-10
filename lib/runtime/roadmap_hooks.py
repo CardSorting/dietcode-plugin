@@ -215,6 +215,9 @@ def _post_tool_call(
                         "phase": payload.get("phase"),
                         "valid": payload.get("valid"),
                         "stale": (parsed.get("checkpoint_freshness") or {}).get("stale"),
+                        "steering_brief": parsed.get("steering_brief"),
+                        "project_archetype": parsed.get("project_archetype"),
+                        "verification_commands": (parsed.get("project_steering_digest") or {}).get("verification_commands"),
                     },
                     success=success,
                 )

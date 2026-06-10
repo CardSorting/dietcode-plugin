@@ -173,6 +173,8 @@ _STEERING_PAYLOAD_KEYS: tuple[str, ...] = (
     "compose_services",
     "governance_files",
     "workspace_packages",
+    "ci_workflow_names",
+    "has_pre_commit",
     "has_backstage_catalog",
     "catalog_name",
     "catalog_description",
@@ -199,4 +201,8 @@ def enrich_payload_with_steering(
         from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
 
         out.update(attach_bootstrap_steering_fields(steering, tier="light"))
+    elif "project_steering_digest" not in out:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_steering_digest_fields
+
+        out.update(attach_steering_digest_fields(steering))
     return out

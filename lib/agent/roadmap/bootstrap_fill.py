@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any, Optional
 
 from plugins.dietcode.lib.agent.roadmap.schema import find_bootstrap_placeholders
@@ -493,7 +494,7 @@ def apply_bootstrap_fill_draft(
         "operator_summary": (
             f"Applied {len(applied)} evidence-backed replacement(s); {len(remaining)} template phrase(s) remain."
             if applied
-            else f"No autofill applied — {len(remaining)} template phrase(s) remain — roadmap(action='apply_bootstrap_fill') or manual edits from bootstrap_fill_plan.tasks."
+            else f"No autofill applied — {len(remaining)} template phrase(s) remain — roadmap(action='apply_bootstrap_fill') or bootstrap_fill_plan.tasks."
         ),
     }
 
@@ -526,6 +527,8 @@ def build_project_steering_digest(
         "dependency_automation": fingerprint.get("dependency_automation"),
         "has_backstage_catalog": fingerprint.get("has_backstage_catalog"),
         "catalog_name": fingerprint.get("catalog_name"),
+        "ci_workflow_names": fingerprint.get("ci_workflow_names") or [],
+        "has_pre_commit": fingerprint.get("has_pre_commit"),
     }
     if fill_plan:
         digest["bootstrap_remaining"] = fill_plan.get("remaining_count")
@@ -564,15 +567,50 @@ def bootstrap_steering_bundle(
     return out
 
 
+def attach_steering_digest_fields(steering: dict[str, Any]) -> dict[str, Any]:
+    """Attach compact per-project digest whenever a workspace is resolved."""
+    root = steering.get("workspace")
+    if not root:
+        return {}
+    fp: dict[str, Any] = {}
+    try:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        fp = build_project_fingerprint(root)
+    except Exception:
+        fp = {
+            k: steering.get(k)
+            for k in (
+                "steering_brief",
+                "steering_identity",
+                "project_archetype",
+                "stack_summary",
+                "purpose_hint",
+                "verification_commands",
+                "entry_points",
+                "makefile_targets",
+                "agent_rules_files",
+                "git_remote",
+                "docs_roots",
+                "governance_files",
+                "workspace_packages",
+            )
+            if steering.get(k) is not None
+        }
+    if not fp:
+        fp = {"steering_identity": Path(str(root)).name}
+    return {"project_steering_digest": build_project_steering_digest(fp)}
+
+
 def attach_bootstrap_steering_fields(
     steering: dict[str, Any],
     *,
     tier: str = "light",
     include_preview: bool = False,
 ) -> dict[str, Any]:
-    """Attach fill plan + digest when bootstrap placeholders remain (shared by session/progress/gate)."""
+    """Attach per-project digest; include fill plan when bootstrap placeholders remain."""
     if steering.get("bootstrap_complete") is not False:
-        return {}
+        return attach_steering_digest_fields(steering)
 
     from pathlib import Path as PathCls
 

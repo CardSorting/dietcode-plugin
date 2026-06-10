@@ -1296,6 +1296,37 @@ class RoadmapBootstrapFillTests(unittest.TestCase):
             self.assertTrue(hints.get("project_steering_brief"))
             self.assertIn("make verify", hints.get("verification_commands") or [])
 
+    def test_steering_digest_always_attached_when_bootstrap_complete(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton_from_evidence_autofilled
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Complete Project\n\nDone.\n", encoding="utf-8")
+            from plugins.dietcode.lib.agent.roadmap.evidence import gather_evidence
+
+            evidence = gather_evidence(root, tier="standard")
+            skeleton = bootstrap_skeleton_from_evidence_autofilled(evidence, workspace=str(root))
+            (root / "ROADMAP.md").write_text(skeleton, encoding="utf-8")
+            from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
+
+            steering = build_steering_context(workspace=str(root))
+            attached = attach_bootstrap_steering_fields(steering, tier="light")
+            digest = attached.get("project_steering_digest") or {}
+            self.assertTrue(digest.get("steering_brief"))
+            self.assertNotIn("bootstrap_fill_plan", attached)
+
+    def test_fingerprint_ci_workflow_names(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            wf = root / ".github" / "workflows"
+            wf.mkdir(parents=True)
+            (wf / "test.yml").write_text("name: test\n", encoding="utf-8")
+            fp = build_project_fingerprint(root)
+            self.assertIn("test", fp.get("ci_workflow_names") or [])
+
 
 class RoadmapWorkspaceResolutionTests(unittest.TestCase):
     def setUp(self) -> None:

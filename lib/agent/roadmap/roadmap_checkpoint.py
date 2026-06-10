@@ -431,6 +431,11 @@ def validate_roadmap(*, workspace: Optional[str] = None) -> dict[str, Any]:
             evidence=evidence,
             bootstrap_inc=True,
         )
+    elif validation.valid:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_steering_digest_fields
+        from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
+
+        payload.update(attach_steering_digest_fields(build_steering_context(workspace=root)))
     return clarity_envelope(payload, phase_info=phase_info)
 
 

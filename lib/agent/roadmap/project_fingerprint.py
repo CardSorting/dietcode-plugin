@@ -103,9 +103,23 @@ def _fingerprint_cache_token(root: Path) -> float:
         "pnpm-workspace.yaml",
         "turbo.json",
         "SECURITY.md",
+        "compose.yml",
+        ".pre-commit-config.yaml",
     ):
         path = root / rel
         if path.is_file():
+            try:
+                token = max(token, path.stat().st_mtime)
+            except OSError:
+                continue
+    wf_dir = root / ".github" / "workflows"
+    if wf_dir.is_dir():
+        for path in wf_dir.glob("*.yml"):
+            try:
+                token = max(token, path.stat().st_mtime)
+            except OSError:
+                continue
+        for path in wf_dir.glob("*.yaml"):
             try:
                 token = max(token, path.stat().st_mtime)
             except OSError:
@@ -460,6 +474,19 @@ def _compose_services(root: Path) -> list[str]:
     return []
 
 
+def _ci_workflow_names(root: Path) -> list[str]:
+    wf_dir = root / ".github" / "workflows"
+    if not wf_dir.is_dir():
+        return []
+    names: list[str] = []
+    for path in sorted(list(wf_dir.glob("*.yml")) + list(wf_dir.glob("*.yaml"))):
+        if path.stem not in names:
+            names.append(path.stem)
+        if len(names) >= 6:
+            break
+    return names
+
+
 def _governance_files(root: Path) -> list[str]:
     found: list[str] = []
     for rel in ("SECURITY.md", "CODE_OF_CONDUCT.md", ".editorconfig", "CHANGELOG.md"):
@@ -637,6 +664,8 @@ def _build_project_fingerprint(root: Path) -> dict[str, Any]:
     compose_services = _compose_services(root)
     governance_files = _governance_files(root)
     workspace_packages = _workspace_packages(root)
+    ci_workflow_names = _ci_workflow_names(root)
+    has_pre_commit = (root / ".pre-commit-config.yaml").is_file()
     has_codeowners = (root / ".github" / "CODEOWNERS").is_file() or (root / "CODEOWNERS").is_file()
     verification_commands = _verification_commands(
         root,
@@ -719,6 +748,8 @@ def _build_project_fingerprint(root: Path) -> dict[str, Any]:
         "compose_services": compose_services or None,
         "governance_files": governance_files or None,
         "workspace_packages": workspace_packages or None,
+        "ci_workflow_names": ci_workflow_names or None,
+        "has_pre_commit": has_pre_commit,
         "has_backstage_catalog": has_backstage,
         "catalog_name": catalog_meta.get("catalog_name"),
         "catalog_description": catalog_meta.get("catalog_description"),

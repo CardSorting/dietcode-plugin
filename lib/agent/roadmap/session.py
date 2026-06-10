@@ -84,6 +84,10 @@ def session_brief(*, workspace: Optional[str] = None) -> dict[str, Any] | None:
             from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
 
             result.update(attach_bootstrap_steering_fields(steering, tier="light"))
+        else:
+            from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_steering_digest_fields
+
+            result.update(attach_steering_digest_fields(steering))
         return result
     except Exception as exc:
         return {"enabled": True, "success": False, "error": str(exc)}
