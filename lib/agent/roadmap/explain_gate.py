@@ -63,8 +63,17 @@ def build_explain_gate_payload(*, workspace: Optional[str] = None) -> dict[str, 
             else f"{len(closed)} gate(s) closed — see closed_gates and report"
         ),
     }
+    report = payload.get("report") or ""
     if inputs.get("bootstrap_complete") is False:
         from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
 
         payload.update(attach_bootstrap_steering_fields(steering, tier="light"))
+        remaining = (payload.get("project_steering_digest") or {}).get("bootstrap_remaining")
+        suffix = (
+            f"\nBootstrap fill: {remaining} template phrase(s) remain — "
+            "roadmap(action='apply_bootstrap_fill', context='write') then validate."
+            if remaining
+            else "\nBootstrap fill: roadmap(action='apply_bootstrap_fill', context='write') then validate."
+        )
+        payload["report"] = report + suffix
     return clarity_envelope(payload)

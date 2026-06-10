@@ -186,6 +186,12 @@ def operational_status(
         "kanban_complete_allowed": gate_state.get("kanban_complete_allowed"),
         "workspace_state": ws_state or None,
     }
+    fingerprint = bundle.get("project_fingerprint") or {}
+    if fingerprint:
+        payload["project_fingerprint"] = fingerprint
+        payload["steering_brief"] = fingerprint.get("steering_brief")
+        payload["stack_summary"] = fingerprint.get("stack_summary")
+        payload["project_archetype"] = fingerprint.get("project_archetype")
     if ws_state.get("validation_pending"):
         payload["validation_pending"] = True
         payload["operator_summary"] = (
@@ -260,6 +266,8 @@ def checkpoint_brief(
         "bootstrap_template_available": not evidence.get("roadmap", {}).get("exists"),
         "skill_bootstrap": bootstrap,
         "operator_summary": status["operator_summary"],
+        "recommended_next_action": status.get("recommended_next_action"),
+        "steering_brief": (evidence.get("project_fingerprint") or {}).get("steering_brief"),
         "agent_next_call": (
             (status.get("recommended_next_action") or {}).get("command")
             or status.get("agent_next_call")
@@ -364,6 +372,14 @@ def validate_roadmap(*, workspace: Optional[str] = None) -> dict[str, Any]:
         validation_valid=validation.valid,
         bootstrap_incomplete=bootstrap_inc,
     )
+    from plugins.dietcode.lib.agent.roadmap.operator import recommend_next_action
+
+    next_rec = recommend_next_action(
+        phase=phase_info.get("phase") or "",
+        roadmap_exists=bool(text.strip()),
+        schema_valid=validation.valid,
+        bootstrap_incomplete=bootstrap_inc,
+    )
     payload = {
         "action": "validate",
         "success": validation.valid,
@@ -372,6 +388,7 @@ def validate_roadmap(*, workspace: Optional[str] = None) -> dict[str, Any]:
         "roadmap_path": str(roadmap_path),
         "validation": validation_dict,
         "bootstrap_completeness": completeness,
+        "recommended_next_action": next_rec,
         "operator_summary": (
             "ROADMAP.md passes schema validation."
             if validation.valid and completeness.get("bootstrap_complete", True)
@@ -421,22 +438,22 @@ def template_brief(*, workspace: Optional[str] = None) -> dict[str, Any]:
             "code_soup_risk": (evidence.get("code_soup_audit") or {}).get("overall_risk"),
             "steering_brief": (evidence.get("project_fingerprint") or {}).get("steering_brief"),
         },
-        "operator_summary": "Evidence-driven skeleton — replace any remaining guidance with project-specific facts, then validate.",
-        "agent_next_call": "Write skeleton to ROADMAP.md, evolve from checkpoint evidence, then validate.",
+        "operator_summary": "Evidence-driven skeleton — write to ROADMAP.md, apply remaining autofill if needed, then validate.",
+        "agent_next_call": "Write skeleton to ROADMAP.md, then roadmap(action='apply_bootstrap_fill', context='write') if placeholders remain.",
     }
-    from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import (
-        apply_bootstrap_fill_draft,
-        build_bootstrap_fill_plan,
-        build_project_steering_digest,
-    )
+    from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import bootstrap_steering_bundle
 
-    fill_plan = build_bootstrap_fill_plan(roadmap_text=skeleton, evidence=evidence)
-    payload["bootstrap_fill_plan"] = fill_plan
-    payload["project_steering_digest"] = build_project_steering_digest(
-        evidence.get("project_fingerprint") or {},
-        fill_plan=fill_plan,
+    payload.update(
+        bootstrap_steering_bundle(
+            roadmap_text=skeleton,
+            evidence=evidence,
+            include_preview=True,
+        )
     )
-    payload["bootstrap_autofill_preview"] = apply_bootstrap_fill_draft(skeleton, evidence)
+    fill_plan = payload.get("bootstrap_fill_plan") or {}
+    if fill_plan.get("tasks"):
+        payload["operator_summary"] = fill_plan.get("operator_summary") or payload["operator_summary"]
+        payload["agent_next_call"] = fill_plan.get("agent_next_call") or payload["agent_next_call"]
     return clarity_envelope(payload)
 
 
@@ -466,6 +483,11 @@ def apply_bootstrap_fill_brief(
     elif dry_run:
         payload["operator_summary"] = result.get("operator_summary") or "Autofill preview — pass context='write' to apply."
         payload["agent_next_call"] = "roadmap(action='apply_bootstrap_fill', context='write') to write preview_text"
+    from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
+
+    steering = build_steering_context(workspace=root)
+    payload["steering_brief"] = steering.get("steering_brief")
+    payload["project_archetype"] = steering.get("project_archetype")
     return clarity_envelope(payload)
 
 

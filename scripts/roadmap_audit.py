@@ -281,6 +281,11 @@ def main() -> int:
         validated2 = validate_roadmap(workspace=str(root))
         if "bootstrap_fill_plan" not in validated2:
             failures.append("validate should include bootstrap_fill_plan when placeholders remain")
+        if "recommended_next_action" not in validated2:
+            failures.append("validate missing recommended_next_action")
+        rec = validated2.get("recommended_next_action") or {}
+        if rec.get("action") != "apply_bootstrap_fill":
+            failures.append(f"validate bootstrap_fill recommended action: {rec}")
 
         from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import enrich_payload_with_bootstrap_context
 
@@ -305,6 +310,8 @@ def main() -> int:
             failures.append("template brief missing bootstrap_autofill_preview")
         if not (tmpl.get("project_steering_digest") or {}).get("steering_brief"):
             failures.append("template brief missing steering digest")
+        if "apply_bootstrap_fill" not in str((tmpl.get("bootstrap_fill_plan") or {}).get("agent_next_call") or ""):
+            failures.append("template brief fill plan should recommend apply_bootstrap_fill")
 
         record_validation(str(root), valid=True, phase="checkpoint")
         record_file_mutation(str(root), tool="write_file", path="ROADMAP.md")

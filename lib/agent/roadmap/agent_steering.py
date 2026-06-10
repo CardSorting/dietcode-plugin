@@ -42,6 +42,9 @@ def _project_context_lines(steering: dict[str, Any]) -> list[str]:
 
     if steering.get("has_backstage_catalog"):
         lines.append("Backstage: catalog-info.yaml present")
+        catalog = steering.get("catalog_name")
+        if catalog:
+            lines.append(f"Service catalog: {catalog}")
 
     cog = steering.get("center_of_gravity_excerpt")
     if cog:

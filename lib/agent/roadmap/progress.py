@@ -291,6 +291,12 @@ def format_progress_report(
     next_rec = snap.get("recommended_next_action") or {}
     if next_rec.get("command"):
         lines.append(f"Next: {next_rec.get('command')}")
+    digest = snap.get("project_steering_digest") or {}
+    remaining = digest.get("bootstrap_remaining")
+    if remaining and int(remaining) > 0:
+        lines.append(
+            f"Bootstrap fill: {remaining} phrase(s) — roadmap(action='apply_bootstrap_fill', context='write')"
+        )
     if snap.get("kanban_complete_allowed") is False:
         lines.append("⚠️  kanban_complete blocked")
 
@@ -346,5 +352,8 @@ def format_watch_report(*, workspace: Optional[str] = None) -> str:
     gate_mark = "" if gate.get("kanban_complete_allowed") else " ⛔"
     next_rec = snap.get("recommended_next_action") or {}
     cmd = next_rec.get("command") or ""
+    digest = snap.get("project_steering_digest") or {}
+    remaining = digest.get("bootstrap_remaining")
+    fill_mark = f" fill={remaining}" if remaining and int(remaining) > 0 else ""
     suffix = f" → {cmd}" if cmd else ""
-    return f"🗺️ ROADMAP [{ok}]{gate_mark} {phase} — {action}{suffix}"
+    return f"🗺️ ROADMAP [{ok}]{gate_mark} {phase} — {action}{fill_mark}{suffix}"

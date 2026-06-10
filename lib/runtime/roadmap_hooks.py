@@ -188,6 +188,9 @@ def _post_tool_call(
                     parsed = raw
                     payload["phase"] = parsed.get("phase")
                     payload["valid"] = (parsed.get("validation") or {}).get("valid")
+                    applied = (parsed.get("bootstrap_autofill_applied") or {})
+                    if applied.get("applied_count") is not None:
+                        payload["bootstrap_applied_count"] = applied.get("applied_count")
                     if parsed.get("success") is False or parsed.get("ok") is False:
                         success = False
                     elif action == "validate":

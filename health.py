@@ -525,6 +525,17 @@ def format_status_report(
             f"schema_valid={roadmap.get('schema_valid')} "
             f"stale={stale}"
         )
+        if roadmap.get("steering_brief"):
+            lines.append(f"   Project: {roadmap['steering_brief']}")
+        digest = roadmap.get("project_steering_digest") or {}
+        remaining = digest.get("bootstrap_remaining")
+        if remaining and int(remaining) > 0:
+            lines.append(
+                f"   Bootstrap fill: {remaining} phrase(s) — roadmap(action='apply_bootstrap_fill', context='write')"
+            )
+        rec = roadmap.get("recommended_next_action") or {}
+        if rec.get("command"):
+            lines.append(f"   Next: {rec['command']}")
     elif roadmap.get("enabled") is False:
         lines.append("ℹ️  Roadmap: disabled in config")
     elif roadmap.get("error"):

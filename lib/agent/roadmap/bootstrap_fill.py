@@ -194,7 +194,17 @@ def _suggest_replacement(
     if "code_soup" in phrase.lower():
         return centralize or signal_text or phrase, "code_soup_pre_audit"
 
-    return phrase, "manual — no automatic evidence mapping"
+    return _fallback_replacement(phrase, fingerprint=fingerprint)
+
+
+def _fallback_replacement(phrase: str, *, fingerprint: dict[str, Any]) -> tuple[str, str]:
+    brief = fingerprint.get("steering_brief") or fingerprint.get("steering_identity") or ""
+    purpose = fingerprint.get("purpose_hint") or ""
+    if purpose:
+        return purpose, "project_fingerprint.purpose_hint"
+    if brief:
+        return f"Document project-specific detail for {brief}.", "project_fingerprint.steering_brief"
+    return phrase, "manual — review bootstrap_fill_plan.tasks"
 
 
 def _architecture_hint(
@@ -629,11 +639,12 @@ def enrich_payload_with_bootstrap_context(
     if not bootstrap_inc or not text.strip():
         return payload
 
-    fill_plan = build_bootstrap_fill_plan(roadmap_text=text, evidence=bundle)
     out = dict(payload)
-    fingerprint = bundle.get("project_fingerprint") or {}
-    out["bootstrap_fill_plan"] = fill_plan
-    out["project_steering_digest"] = build_project_steering_digest(fingerprint, fill_plan=fill_plan)
-    if fill_plan.get("tasks"):
-        out["bootstrap_autofill_preview"] = apply_bootstrap_fill_draft(text, bundle)
+    out.update(
+        bootstrap_steering_bundle(
+            roadmap_text=text,
+            evidence=bundle,
+            include_preview=True,
+        )
+    )
     return out

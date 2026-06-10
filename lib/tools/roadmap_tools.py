@@ -199,6 +199,7 @@ def _dispatch(
 
     if act == "explain_stale":
         from plugins.dietcode.lib.agent.roadmap.snapshot import get_workspace_snapshot
+        from plugins.dietcode.lib.agent.roadmap.steering_context import enrich_payload_with_steering
 
         root = resolve_workspace_root(workspace)
         snap = get_workspace_snapshot(root, tier="light")
@@ -209,14 +210,17 @@ def _dispatch(
         )
         return _finish_payload(
             act,
-            {
-                "action": "explain_stale",
-                "freshness": fresh,
-                "checkpoint_freshness": fresh,
-                "report": format_explain_stale_report(fresh),
-                "success": not bool(fresh.get("stale")),
-                "ok": not bool(fresh.get("stale")),
-            },
+            enrich_payload_with_steering(
+                {
+                    "action": "explain_stale",
+                    "freshness": fresh,
+                    "checkpoint_freshness": fresh,
+                    "report": format_explain_stale_report(fresh),
+                    "success": not bool(fresh.get("stale")),
+                    "ok": not bool(fresh.get("stale")),
+                },
+                workspace=root,
+            ),
         )
 
     raise ValueError(f"unreachable action {act!r}")

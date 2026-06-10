@@ -91,6 +91,7 @@ def validate_roadmap_write_target(
 
     steering = build_steering_context(workspace=root)
     project_brief = steering.get("steering_brief") or steering.get("steering_identity")
+    bootstrap_inc = steering.get("bootstrap_complete") is False
 
     resolved, err = resolve_roadmap_write_path(write_path=write_path, workspace=root)
     if err:
@@ -111,6 +112,8 @@ def validate_roadmap_write_target(
         "roadmap_path": str(resolved),
         "expected_path": str(roadmap_file_path(root)),
         "project_steering_brief": project_brief,
+        "bootstrap_incomplete": bootstrap_inc,
+        "bootstrap_placeholder_count": steering.get("bootstrap_placeholder_count"),
     }
 
 
@@ -119,6 +122,7 @@ def roadmap_write_hint(*, tool_name: str = "", args: Any = None, workspace: Opti
     write_path = _normalized_path((args or {}).get("path"))
     check = validate_roadmap_write_target(write_path=write_path, workspace=workspace)
     project_brief = check.get("project_steering_brief")
+    bootstrap_inc = check.get("bootstrap_incomplete") is True
     brief_bit = f" Project: {project_brief}." if project_brief else ""
 
     if not check.get("allowed"):
@@ -140,16 +144,32 @@ def roadmap_write_hint(*, tool_name: str = "", args: Any = None, workspace: Opti
     followup = (
         f"ROADMAP.md was mutated — run schema validation before closing the checkpoint pass.{brief_bit}"
     )
-    if project_brief:
+    if bootstrap_inc:
+        followup += (
+            f" Bootstrap incomplete ({check.get('bootstrap_placeholder_count', '?')} phrase(s)) — "
+            "preview roadmap(action='apply_bootstrap_fill') or apply with context='write'."
+        )
+    elif project_brief:
         followup += " If bootstrap template phrases remain, preview roadmap(action='apply_bootstrap_fill') or apply with context='write'."
+
+    next_action = (
+        "roadmap(action='apply_bootstrap_fill', context='write') then roadmap(action='validate')"
+        if bootstrap_inc
+        else "roadmap(action='validate') then return checkpoint summary if pass complete"
+    )
+    preferred = (
+        "roadmap(action='apply_bootstrap_fill', context='write')"
+        if bootstrap_inc
+        else "roadmap(action='validate')"
+    )
 
     return {
         "string_code": "roadmap_write_followup",
         "preferred_tool": "roadmap",
-        "preferred_command": "roadmap(action='validate')",
+        "preferred_command": preferred,
         "recovery_suggestion": followup,
         "suggested_slash_command": "/roadmap validate",
-        "next_action": "roadmap(action='validate') then return checkpoint summary if pass complete",
+        "next_action": next_action,
         "source_tool": tool_name,
         "path": write_path,
         "workspace": check.get("workspace"),

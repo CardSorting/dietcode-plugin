@@ -264,6 +264,11 @@ def build_agent_operator_hints(
             "/roadmap explain-gate",
             "/roadmap progress --current",
             "/roadmap watch",
+            *(
+                ["roadmap(action='apply_bootstrap_fill')"]
+                if bootstrap_inc
+                else []
+            ),
         ],
         "next_action": next_rec.get("command"),
         "recovery_suggestion": next_rec.get("detail"),

@@ -979,6 +979,80 @@ class RoadmapBootstrapFillTests(unittest.TestCase):
             self.assertEqual(fp.get("catalog_name"), "my-service")
             self.assertIn("Core API", fp.get("catalog_description") or fp.get("purpose_hint") or "")
 
+    def test_validate_includes_recommended_next_action(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.roadmap_checkpoint import validate_roadmap
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Validate Rec"), encoding="utf-8")
+            payload = validate_roadmap(workspace=str(root))
+            rec = payload.get("recommended_next_action") or {}
+            self.assertEqual(rec.get("action"), "apply_bootstrap_fill")
+
+    def test_template_fill_plan_recommends_autofill(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.roadmap_checkpoint import template_brief
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Template Rec\n", encoding="utf-8")
+            tmpl = template_brief(workspace=str(root))
+            self.assertIn(
+                "apply_bootstrap_fill",
+                (tmpl.get("bootstrap_fill_plan") or {}).get("agent_next_call") or "",
+            )
+
+    def test_progress_report_mentions_bootstrap_fill(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.progress import format_progress_report
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Progress Test"), encoding="utf-8")
+            report = format_progress_report(workspace=str(root))
+            self.assertIn("apply_bootstrap_fill", report)
+
+    def test_native_bridge_write_hint_prioritizes_bootstrap_fill(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.native_bridge import roadmap_write_hint
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Bridge Test"), encoding="utf-8")
+            hint = roadmap_write_hint(
+                tool_name="write_file",
+                args={"path": "ROADMAP.md"},
+                workspace=str(root),
+            )
+            self.assertIn("apply_bootstrap_fill", hint.get("preferred_command") or "")
+            self.assertIn("apply_bootstrap_fill", hint.get("next_action") or "")
+
+    def test_fallback_replacement_uses_purpose_hint(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import build_bootstrap_fill_plan
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        skeleton = bootstrap_skeleton(project_hint="Fallback Test")
+        evidence = {
+            "project_fingerprint": {
+                "steering_brief": "Fallback Test",
+                "purpose_hint": "Unique purpose for fallback testing.",
+            },
+        }
+        plan = build_bootstrap_fill_plan(roadmap_text=skeleton + "\nUnmapped custom phrase xyz.\n", evidence=evidence)
+        unknown = [t for t in plan["tasks"] if "Unmapped custom phrase" in (t.get("template_phrase") or "")]
+        if unknown:
+            self.assertIn("Unique purpose", unknown[0]["suggested_replacement"])
+
+    def test_explain_gate_report_includes_bootstrap_fill(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.explain_gate import build_explain_gate_payload
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Explain Test"), encoding="utf-8")
+            payload = build_explain_gate_payload(workspace=str(root))
+            self.assertIn("apply_bootstrap_fill", payload.get("report") or "")
+
 
 class RoadmapWorkspaceResolutionTests(unittest.TestCase):
     def setUp(self) -> None:

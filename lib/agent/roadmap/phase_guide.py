@@ -82,7 +82,8 @@ def determine_phase(
         return {
             "phase": RoadmapPhase.BOOTSTRAP_FILL.value,
             "operator_summary": (
-                "ROADMAP.md exists but bootstrap template phrases remain — replace with project-specific evidence."
+                "Bootstrap template phrases remain — preview roadmap(action='apply_bootstrap_fill'), "
+                "apply with context='write', then validate."
             ),
             "agent_next_call": "roadmap(action='apply_bootstrap_fill', context='write')",
             "agent_blocked": False,
@@ -149,6 +150,7 @@ def clarity_envelope(payload: dict[str, Any], *, phase_info: Optional[dict[str, 
             or guide.get("operator_summary")
             or enriched.get("operator_summary"),
             "next_action": operator_hints.get("next_action")
+            or (enriched.get("recommended_next_action") or {}).get("command")
             or guide.get("agent_next_call")
             or enriched.get("agent_next_call"),
         },
