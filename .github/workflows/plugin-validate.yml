@@ -1,0 +1,41 @@
+name: plugin-validate
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "lib/agent/roadmap/**"
+      - "lib/tools/roadmap_tools.py"
+      - "lib/runtime/roadmap_hooks.py"
+      - "optional-skills/dietcode/auto-rolling-roadmap/**"
+      - "scripts/roadmap_*.py"
+      - "scripts/hermes_*.sh"
+      - "tests/test_roadmap*.py"
+      - "install.py"
+      - "contracts.py"
+      - ".github/workflows/plugin-validate.yml"
+  pull_request:
+    paths:
+      - "lib/agent/roadmap/**"
+      - "lib/tools/roadmap_tools.py"
+      - "lib/runtime/roadmap_hooks.py"
+      - "optional-skills/dietcode/auto-rolling-roadmap/**"
+      - "scripts/roadmap_*.py"
+      - "scripts/hermes_*.sh"
+      - "tests/test_roadmap*.py"
+      - "install.py"
+      - "contracts.py"
+      - ".github/workflows/plugin-validate.yml"
+
+jobs:
+  roadmap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Roadmap smoke, audit, and unit tests
+        run: make verify

@@ -76,6 +76,31 @@ python install.py
 Use `python install.py --skip-npm` when dependencies are already installed.
 Use `python install.py --build-kernel` on macOS to build the quarantined kernel binary.
 
+**One-command deploy** (sync plugin → reinstall Hermes → enable → verify):
+
+```bash
+# From dietcode-plugin dev checkout:
+./scripts/hermes_deploy.sh
+python install.py --deploy-hermes
+
+# From Hermes repo root (wrapper installed on first deploy):
+cd ~/Downloads/hermes-agent-main\ 2 && ./scripts/hermes_deploy.sh
+
+# Custom Hermes checkout:
+HERMES_SRC="/Users/you/Downloads/hermes-agent-main 2" ./scripts/hermes_deploy.sh
+```
+
+Options: `--skip-hermes-reinstall`, `--skip-verify`, `--skip-tests`, `--skip-npm`, `--build-kernel`, `--hermes-src PATH`.
+
+Makefile shortcuts: `make deploy`, `make deploy-fast`, `make verify`.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `HERMES_SRC` | auto-detect from venv / Downloads | Hermes checkout for `pip install -e` |
+| `HERMES_VENV` | `~/.hermes/hermes-agent/venv` | Python venv used by deploy scripts |
+| `HERMES_HOME` | `~/.hermes` | Plugin install root (`plugins/dietcode`) |
+| `DIETCODE_PLUGIN_SRC` | `~/Desktop/dietcode-plugin` when present | Source tree when deploying from Hermes root |
+
 ## Verify
 
 Inside Hermes:
