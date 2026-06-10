@@ -452,6 +452,30 @@ class RoadmapOperatorModuleTests(unittest.TestCase):
             third = get_workspace_snapshot(root, tier="light", force_refresh=True)
             self.assertIsNot(third, first)
 
+    def test_read_state_cache(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.workspace_state import (
+            invalidate_state_cache,
+            read_state,
+            record_validation,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            record_validation(tmp, valid=True, phase="checkpoint")
+            invalidate_state_cache(tmp)
+            first = read_state(tmp)
+            second = read_state(tmp)
+            self.assertEqual(first, second)
+            self.assertTrue(first.get("schema_valid"))
+
+    def test_ensure_primary_skill_fast_path(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.skill_install import ensure_primary_skill
+
+        with tempfile.TemporaryDirectory() as tmp:
+            first = ensure_primary_skill(tmp)
+            self.assertTrue(first.get("ok"))
+            second = ensure_primary_skill(tmp)
+            self.assertTrue(any("auto-rolling-roadmap" in s for s in (second.get("skipped") or [])))
+
     def test_roadmap_core_cache_reuses_validation(self) -> None:
         from plugins.dietcode.lib.agent.roadmap import roadmap_core as core_mod
         from plugins.dietcode.lib.agent.roadmap.roadmap_core import invalidate_roadmap_core, read_roadmap_core

@@ -136,12 +136,11 @@ def build_progress_snapshot(*, workspace: Optional[str] = None) -> dict[str, Any
     from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace_root
     from plugins.dietcode.lib.agent.roadmap.operator import recommend_next_action
     from plugins.dietcode.lib.agent.roadmap.snapshot import get_workspace_snapshot
-    from plugins.dietcode.lib.agent.roadmap.workspace_state import read_state
 
     root = resolve_workspace_root(workspace)
     current = read_current()
     snap = get_workspace_snapshot(root, tier="light")
-    ws_state = read_state(root)
+    ws_state = snap.gate_inputs.get("workspace_state") or {}
     gate = snap.gate_state
     freshness = gate.get("checkpoint_stale")
     last_err = read_last_error() or None

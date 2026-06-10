@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 REQUIRED_SECTIONS: tuple[str, ...] = (
     "1. Project Center of Gravity",
@@ -112,7 +112,14 @@ def _count_subsections(section_body: str) -> int:
     return len(re.findall(r"^###\s+\d+\.\s+", section_body, re.MULTILINE))
 
 
-def validate_roadmap_content(content: str) -> RoadmapValidation:
+def validate_roadmap_content(
+    content: str,
+    *,
+    sections_present: Optional[list[str]] = None,
+    sections_missing: Optional[list[str]] = None,
+    health_status: Optional[str] = None,
+    code_soup_risk: Optional[str] = None,
+) -> RoadmapValidation:
     """Validate ROADMAP.md against the skill schema contract."""
     result = RoadmapValidation()
     if not content.strip():
@@ -120,13 +127,17 @@ def validate_roadmap_content(content: str) -> RoadmapValidation:
         result.issues.append(ValidationIssue("error", "missing_file", "ROADMAP.md is empty or missing"))
         return result
 
-    present: list[str] = []
-    missing: list[str] = []
-    for section in REQUIRED_SECTIONS:
-        if re.search(rf"^##\s+{re.escape(section)}\s*$", content, re.MULTILINE):
-            present.append(section)
-        else:
-            missing.append(section)
+    if sections_present is not None and sections_missing is not None:
+        present = list(sections_present)
+        missing = list(sections_missing)
+    else:
+        present = []
+        missing = []
+        for section in REQUIRED_SECTIONS:
+            if re.search(rf"^##\s+{re.escape(section)}\s*$", content, re.MULTILINE):
+                present.append(section)
+            else:
+                missing.append(section)
 
     result.schema_complete = not missing
     for section in missing:
@@ -135,38 +146,44 @@ def validate_roadmap_content(content: str) -> RoadmapValidation:
         )
 
     health_body = _section_body(content, "2. Roadmap Health")
-    status_match = re.search(r"\*\*Status:\*\*\s*([A-Za-z]+)", health_body)
-    if status_match:
-        candidate = status_match.group(1).strip()
-        for status in HEALTH_STATUSES:
-            if status.lower() == candidate.lower():
-                result.health_status = status
-                break
-        if not result.health_status:
+    if health_status:
+        result.health_status = health_status
+    else:
+        status_match = re.search(r"\*\*Status:\*\*\s*([A-Za-z]+)", health_body)
+        if status_match:
+            candidate = status_match.group(1).strip()
+            for status in HEALTH_STATUSES:
+                if status.lower() == candidate.lower():
+                    result.health_status = status
+                    break
+            if not result.health_status:
+                result.issues.append(
+                    ValidationIssue(
+                        "error",
+                        "invalid_health_status",
+                        f"Invalid health status: {candidate}",
+                        "2. Roadmap Health",
+                    )
+                )
+        else:
             result.issues.append(
                 ValidationIssue(
-                    "error",
-                    "invalid_health_status",
-                    f"Invalid health status: {candidate}",
+                    "warning",
+                    "unparsed_health_status",
+                    "Could not parse **Status:** in section 2",
                     "2. Roadmap Health",
                 )
             )
-    else:
-        result.issues.append(
-            ValidationIssue(
-                "warning",
-                "unparsed_health_status",
-                "Could not parse **Status:** in section 2",
-                "2. Roadmap Health",
-            )
-        )
 
     soup_body = _section_body(content, "9. Centralization & Code Soup Audit")
-    soup_match = re.search(r"\*\*Overall Code Soup Risk:\*\*\s*(Low|Medium|High)", soup_body, re.IGNORECASE)
-    if soup_match:
-        label = soup_match.group(1).strip().title()
-        if label in SOUP_RISK_LEVELS:
-            result.code_soup_risk = label
+    if code_soup_risk and code_soup_risk in SOUP_RISK_LEVELS:
+        result.code_soup_risk = code_soup_risk
+    else:
+        soup_match = re.search(r"\*\*Overall Code Soup Risk:\*\*\s*(Low|Medium|High)", soup_body, re.IGNORECASE)
+        if soup_match:
+            label = soup_match.group(1).strip().title()
+            if label in SOUP_RISK_LEVELS:
+                result.code_soup_risk = label
     if not soup_body.strip():
         result.issues.append(
             ValidationIssue(

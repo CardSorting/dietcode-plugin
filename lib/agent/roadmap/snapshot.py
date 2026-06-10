@@ -36,13 +36,16 @@ def invalidate_snapshot(workspace: str | Path) -> None:
         if cache_key.startswith(prefix):
             _CACHE.pop(cache_key, None)
     try:
-        from plugins.dietcode.lib.agent.roadmap.evidence import invalidate_git_cache
+        from plugins.dietcode.lib.agent.roadmap.evidence import invalidate_doc_cache, invalidate_git_cache
         from plugins.dietcode.lib.agent.roadmap.roadmap_core import invalidate_roadmap_core
         from plugins.dietcode.lib.agent.roadmap.workspace_scan import invalidate_heavy_scan
+        from plugins.dietcode.lib.agent.roadmap.workspace_state import invalidate_state_cache
 
         invalidate_heavy_scan(workspace)
         invalidate_roadmap_core(workspace)
         invalidate_git_cache(workspace)
+        invalidate_doc_cache(workspace)
+        invalidate_state_cache(workspace)
     except Exception:
         pass
 

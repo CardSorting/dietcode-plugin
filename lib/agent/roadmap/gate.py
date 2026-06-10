@@ -264,11 +264,11 @@ def build_roadmap_gate_state(
     inputs: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Kernel-style gate snapshot for cockpit, explain_gate, and pre_tool_call."""
-    if inputs is None:
-        from plugins.dietcode.lib.agent.roadmap.snapshot import get_workspace_snapshot
+    if inputs is not None:
+        return gate_state_from_inputs(inputs)
+    from plugins.dietcode.lib.agent.roadmap.snapshot import get_workspace_snapshot
 
-        return get_workspace_snapshot(workspace, tier="light").gate_state
-    return gate_state_from_inputs(inputs)
+    return get_workspace_snapshot(workspace, tier="light").gate_state
 
 
 def require_fresh_checkpoint_before_complete(*, workspace: Optional[str] = None) -> Optional[str]:

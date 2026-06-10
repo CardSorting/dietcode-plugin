@@ -60,8 +60,15 @@ def read_roadmap_core(workspace: str | Path) -> RoadmapCore:
         except OSError:
             text = ""
 
-    parsed = parse_roadmap(text, path=str(roadmap_path)).to_dict()
-    validation = validate_roadmap_content(text) if text.strip() else None
+    parsed_obj = parse_roadmap(text, path=str(roadmap_path))
+    parsed = parsed_obj.to_dict()
+    validation = validate_roadmap_content(
+        text,
+        sections_present=parsed_obj.sections_present,
+        sections_missing=parsed_obj.sections_missing,
+        health_status=parsed_obj.health_status,
+        code_soup_risk=parsed_obj.code_soup_risk,
+    ) if text.strip() else None
     core = RoadmapCore(
         workspace=str(root),
         roadmap_path=str(roadmap_path),

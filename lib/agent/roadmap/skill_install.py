@@ -17,6 +17,47 @@ def bundled_skills_root() -> Path:
         return Path(__file__).resolve().parents[3] / "optional-skills"
 
 
+def ensure_primary_skill(workspace: str | Path) -> dict[str, Any]:
+    """Fast path — install only the auto-rolling-roadmap skill when missing."""
+    root = Path(workspace).expanduser().resolve()
+    dest = root / _SKILL_REL
+    if dest.is_file():
+        return {
+            "ok": True,
+            "workspace": str(root),
+            "installed": [],
+            "skipped": [_SKILL_REL],
+            "errors": [],
+            "primary_skill": _SKILL_REL,
+        }
+
+    src_root = bundled_skills_root()
+    src = src_root / "dietcode" / "auto-rolling-roadmap" / "SKILL.md"
+    if not src.is_file():
+        return ensure_workspace_skills(workspace)
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.copy2(src, dest)
+        return {
+            "ok": True,
+            "workspace": str(root),
+            "installed": [_SKILL_REL],
+            "skipped": [],
+            "errors": [],
+            "primary_skill": _SKILL_REL,
+        }
+    except OSError as exc:
+        return {
+            "ok": False,
+            "workspace": str(root),
+            "installed": [],
+            "skipped": [],
+            "errors": [str(exc)],
+            "primary_skill": _SKILL_REL,
+        }
+
+
 def ensure_workspace_skills(workspace: str | Path) -> dict[str, Any]:
     """Copy bundled optional-skills into *workspace* when missing or stale."""
     root = Path(workspace).expanduser().resolve()

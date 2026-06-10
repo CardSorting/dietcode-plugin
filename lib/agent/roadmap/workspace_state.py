@@ -6,20 +6,49 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+_STATE_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+
 
 def state_path(workspace: str | Path) -> Path:
     return Path(workspace).expanduser().resolve() / ".dietcode" / "roadmap-state.json"
 
 
+def _state_cache_key(workspace: str | Path) -> str:
+    return str(Path(workspace).expanduser().resolve())
+
+
+def _state_file_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime if path.is_file() else 0.0
+    except OSError:
+        return 0.0
+
+
+def invalidate_state_cache(workspace: str | Path) -> None:
+    _STATE_CACHE.pop(_state_cache_key(workspace), None)
+
+
 def read_state(workspace: str | Path) -> dict[str, Any]:
     path = state_path(workspace)
+    key = _state_cache_key(workspace)
+    mtime = _state_file_mtime(path)
+    cached = _STATE_CACHE.get(key)
+    if cached is not None and cached[0] == mtime:
+        return dict(cached[1])
+
     if not path.is_file():
-        return {}
+        data: dict[str, Any] = {}
+        _STATE_CACHE[key] = (mtime, data)
+        return data
+
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        data = raw if isinstance(raw, dict) else {}
     except (OSError, json.JSONDecodeError):
-        return {}
+        data = {}
+
+    _STATE_CACHE[key] = (mtime, data)
+    return dict(data)
 
 
 def write_state(workspace: str | Path, patch: dict[str, Any]) -> dict[str, Any]:
@@ -31,6 +60,8 @@ def write_state(workspace: str | Path, patch: dict[str, Any]) -> dict[str, Any]:
         path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
     except OSError:
         pass
+    invalidate_state_cache(workspace)
+    _STATE_CACHE[_state_cache_key(workspace)] = (_state_file_mtime(path), merged)
     return merged
 
 

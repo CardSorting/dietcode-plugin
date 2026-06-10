@@ -237,33 +237,38 @@ def parse_roadmap(content: str, *, path: str = "") -> RoadmapParse:
     return result
 
 
+_DOC_CACHE: dict[str, tuple[float, tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]]] = {}
+
+
+def _doc_cache_token(root: Path) -> float:
+    token = 0.0
+    for rel in (*_README_CANDIDATES, *_ARCH_DOC_CANDIDATES, *_CONFIG_CANDIDATES):
+        path = root / rel
+        if path.is_file():
+            try:
+                token = max(token, path.stat().st_mtime)
+            except OSError:
+                continue
+    return token
+
+
+def invalidate_doc_cache(workspace: str | Path) -> None:
+    _DOC_CACHE.pop(str(Path(workspace).expanduser().resolve()), None)
+
+
 def _load_doc_excerpts(root: Path) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
-    readmes: list[dict[str, str]] = []
-    arch: list[dict[str, str]] = []
-    configs: list[dict[str, str]] = []
-    seen: set[str] = set()
-    for rel in _README_CANDIDATES:
-        path = (root / rel).resolve()
-        key = str(path)
-        if key in seen or not path.is_file():
-            continue
-        seen.add(key)
-        readmes.append({"path": rel, "excerpt": _read_excerpt(path)})
-    for rel in _ARCH_DOC_CANDIDATES:
-        path = (root / rel).resolve()
-        key = str(path)
-        if key in seen or not path.is_file():
-            continue
-        seen.add(key)
-        arch.append({"path": rel, "excerpt": _read_excerpt(path)})
-    for rel in _CONFIG_CANDIDATES:
-        path = (root / rel).resolve()
-        key = str(path)
-        if key in seen or not path.is_file():
-            continue
-        seen.add(key)
-        configs.append({"path": rel, "excerpt": _read_excerpt(path)})
-    return readmes, arch, configs
+    key = str(root)
+    token = _doc_cache_token(root)
+    cached = _DOC_CACHE.get(key)
+    if cached is not None and cached[0] == token:
+        return cached[1]
+
+    readmes = _unique_existing_paths(root, _README_CANDIDATES)
+    arch = _unique_existing_paths(root, _ARCH_DOC_CANDIDATES)
+    configs = _unique_existing_paths(root, _CONFIG_CANDIDATES)
+    result = (readmes, arch, configs)
+    _DOC_CACHE[key] = (token, result)
+    return result
 
 
 def extend_evidence(
@@ -371,7 +376,11 @@ def gather_evidence(
         else {"available": False, "recent_commits": [], "status_short": [], "diff_stat_recent": [], "changed_files_recent": []}
     )
 
-    readmes = _unique_existing_paths(root, _README_CANDIDATES) if not light else []
+    readmes: list[dict[str, str]] = []
+    arch_docs: list[dict[str, str]] = []
+    configs: list[dict[str, str]] = []
+    if not light:
+        readmes, arch_docs, configs = _load_doc_excerpts(root)
     parsed = RoadmapParse(
         exists=bool(parsed_dict.get("exists")),
         sections_missing=parsed_dict.get("sections_missing") or [],
@@ -386,8 +395,8 @@ def gather_evidence(
         "user_request": user_request.strip() or None,
         "roadmap": parsed_dict,
         "readmes": readmes,
-        "architecture_docs": _unique_existing_paths(root, _ARCH_DOC_CANDIDATES) if not light else [],
-        "configs": _unique_existing_paths(root, _CONFIG_CANDIDATES) if not light else [],
+        "architecture_docs": arch_docs,
+        "configs": configs,
         "git": git_info,
         "todo_markers": [],
         "test_file_count": 0,

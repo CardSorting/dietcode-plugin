@@ -42,7 +42,7 @@ def _on_session_start(*, session_id: str = "", **_: Any) -> None:
     try:
         from plugins.dietcode.lib.agent.roadmap.config import get_roadmap_config, resolve_workspace_root
         from plugins.dietcode.lib.agent.roadmap.session import emit_roadmap_event, session_brief
-        from plugins.dietcode.lib.agent.roadmap.skill_install import ensure_workspace_skills
+        from plugins.dietcode.lib.agent.roadmap.skill_install import ensure_primary_skill
     except ImportError:
         return
 
@@ -51,7 +51,7 @@ def _on_session_start(*, session_id: str = "", **_: Any) -> None:
 
     if cfg.auto_install_skills:
         try:
-            result = ensure_workspace_skills(root)
+            result = ensure_primary_skill(root)
             if result.get("installed"):
                 logger.debug("DietCode roadmap: installed skills %s", result.get("installed"))
         except Exception as exc:

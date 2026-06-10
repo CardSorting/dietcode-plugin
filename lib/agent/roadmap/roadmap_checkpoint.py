@@ -26,7 +26,9 @@ def _skill_bootstrap(workspace: str) -> dict[str, Any]:
     cfg = get_roadmap_config()
     if not cfg.auto_install_skills:
         return {"skipped": True, "reason": "auto_install_skills disabled"}
-    return ensure_workspace_skills(workspace)
+    from plugins.dietcode.lib.agent.roadmap.skill_install import ensure_primary_skill
+
+    return ensure_primary_skill(workspace)
 
 
 def _phase_from_evidence(evidence: dict[str, Any], *, validation_valid: Optional[bool] = None) -> dict[str, Any]:
