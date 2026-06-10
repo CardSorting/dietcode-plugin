@@ -9,6 +9,44 @@ def roadmap_file_path(workspace: str | Path) -> Path:
     return Path(workspace).expanduser().resolve() / "ROADMAP.md"
 
 
+def _roadmap_steering_fields(root: Path, path: Path) -> dict[str, Any]:
+    """Live ROADMAP.md parse + bootstrap metrics for steering surfaces."""
+    fields: dict[str, Any] = {
+        "bootstrap_complete": None,
+        "bootstrap_placeholder_count": None,
+        "health_status": None,
+        "code_soup_risk": None,
+        "recent_checkpoint_date": None,
+        "center_of_gravity_excerpt": None,
+        "now_item_count": None,
+    }
+    if not path.is_file():
+        return fields
+
+    try:
+        from plugins.dietcode.lib.agent.roadmap.evidence import parse_roadmap
+        from plugins.dietcode.lib.agent.roadmap.schema import (
+            bootstrap_completeness_metrics,
+            find_bootstrap_placeholders,
+        )
+
+        text = path.read_text(encoding="utf-8", errors="replace")
+        parsed = parse_roadmap(text, path=str(path))
+        fields["bootstrap_placeholder_count"] = len(find_bootstrap_placeholders(text))
+        metrics = bootstrap_completeness_metrics(text)
+        fields["bootstrap_complete"] = metrics.get("bootstrap_complete")
+        fields["health_status"] = parsed.health_status
+        fields["code_soup_risk"] = parsed.code_soup_risk
+        fields["recent_checkpoint_date"] = parsed.recent_checkpoint_date
+        fields["now_item_count"] = parsed.now_item_count
+        excerpt = (parsed.center_of_gravity_excerpt or "").strip()
+        if excerpt:
+            fields["center_of_gravity_excerpt"] = excerpt[:240] + ("…" if len(excerpt) > 240 else "")
+    except OSError:
+        pass
+    return fields
+
+
 def build_steering_context(*, workspace: Optional[str] = None) -> dict[str, Any]:
     """Resolve project workspace + ROADMAP path with safety signals (kernel cockpit pattern)."""
     from plugins.dietcode.lib.agent.roadmap.config import RoadmapWorkspaceError, resolve_workspace
@@ -42,6 +80,15 @@ def build_steering_context(*, workspace: Optional[str] = None) -> dict[str, Any]
     except ImportError:
         pass
 
+    roadmap_fields = _roadmap_steering_fields(root, path)
+    fingerprint: dict[str, Any] = {}
+    try:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        fingerprint = build_project_fingerprint(root)
+    except Exception:
+        fingerprint = {"steering_identity": root.name}
+
     return {
         "ok": workspace_safe,
         "workspace": root,
@@ -49,6 +96,8 @@ def build_steering_context(*, workspace: Optional[str] = None) -> dict[str, Any]
         "roadmap_path": str(path),
         "roadmap_exists": path.is_file(),
         "workspace_safe": workspace_safe,
+        **roadmap_fields,
+        **fingerprint,
         "operator_action": (
             None
             if workspace_safe
@@ -60,3 +109,58 @@ def build_steering_context(*, workspace: Optional[str] = None) -> dict[str, Any]
             else "Configure HERMES_KANBAN_WORKSPACE before editing ROADMAP.md"
         ),
     }
+
+
+_STEERING_PAYLOAD_KEYS: tuple[str, ...] = (
+    "workspace",
+    "workspace_source",
+    "roadmap_path",
+    "roadmap_exists",
+    "workspace_safe",
+    "bootstrap_complete",
+    "bootstrap_placeholder_count",
+    "health_status",
+    "code_soup_risk",
+    "recent_checkpoint_date",
+    "center_of_gravity_excerpt",
+    "now_item_count",
+    "project_name",
+    "package_name",
+    "readme_tagline",
+    "package_description",
+    "stack_summary",
+    "steering_identity",
+    "steering_brief",
+    "project_archetype",
+    "primary_language",
+    "frameworks",
+    "ci_systems",
+    "test_frameworks",
+    "monorepo_tools",
+    "package_managers",
+    "has_ci",
+    "has_tests",
+    "has_docker",
+    "purpose_hint",
+    "runtime_center_hint",
+    "operators_hint",
+)
+
+
+def enrich_payload_with_steering(
+    payload: dict[str, Any],
+    *,
+    workspace: Optional[str] = None,
+) -> dict[str, Any]:
+    """Merge workspace steering fields into any roadmap tool/slash payload."""
+    explicit = str(payload.get("workspace") or workspace or "").strip() or None
+    steering = build_steering_context(workspace=explicit)
+    out = dict(payload)
+    if steering.get("workspace") and not out.get("workspace"):
+        out["workspace"] = steering["workspace"]
+    for key in _STEERING_PAYLOAD_KEYS:
+        if key in steering and steering.get(key) is not None and key not in out:
+            out[key] = steering[key]
+    if steering.get("roadmap_path") and not out.get("roadmap_path"):
+        out["roadmap_path"] = steering["roadmap_path"]
+    return out

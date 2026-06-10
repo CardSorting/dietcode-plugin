@@ -49,6 +49,7 @@ def _ensure_handlers() -> None:
         _on_session_end as roadmap_end,
         _on_session_start as roadmap_start,
         _post_tool_call as roadmap_post,
+        _pre_tool_call as roadmap_pre,
         on_roadmap_write_transform,
     )
     from plugins.dietcode.lib.runtime.governance_hooks import on_transform_tool_result
@@ -72,7 +73,7 @@ def _ensure_handlers() -> None:
     _ON_SESSION_START = (kanban_start, jz_start, jsdp_start, roadmap_start)
     _ON_SESSION_END = (jz_end, roadmap_end)
     _POST_TOOL_CALL = (jz_post, kernel_post, kanban_post, roadmap_post)
-    _PRE_TOOL_CALL = (kernel_pre, jz_pre,)
+    _PRE_TOOL_CALL = (kernel_pre, jz_pre, roadmap_pre)
     _TRANSFORM_TOOL_RESULT = (
         on_kernel_journal_transform,
         on_kernel_raw_write_transform,

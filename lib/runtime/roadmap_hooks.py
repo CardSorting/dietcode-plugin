@@ -91,6 +91,68 @@ def _on_session_end(*, session_id: str = "", **_: Any) -> None:
         logger.debug("DietCode roadmap on_session_end skipped: %s", exc)
 
 
+def _pre_tool_call(
+    *,
+    tool_name: str = "",
+    args: Any = None,
+    **_: Any,
+) -> dict[str, str] | None:
+    """Block ROADMAP.md writes outside the Hermes project workspace (fail-closed)."""
+    if not _roadmap_enabled():
+        return None
+
+    try:
+        from plugins.dietcode.lib.agent.roadmap.config import get_roadmap_config, resolve_workspace_root
+        from plugins.dietcode.lib.agent.roadmap.native_bridge import targets_roadmap_file, validate_roadmap_write_target
+        from plugins.dietcode.lib.agent.roadmap.agent_steering import format_agent_steering_line
+    except ImportError:
+        return None
+
+    cfg = get_roadmap_config()
+    if not cfg.block_writes_outside_workspace:
+        return None
+    if not targets_roadmap_file(tool_name=tool_name, args=args):
+        return None
+
+    write_path = str((args or {}).get("path") or "")
+    try:
+        root = resolve_workspace_root()
+    except Exception as exc:
+        return {
+            "action": "block",
+            "message": f"ROADMAP write blocked — workspace unresolved: {exc}",
+        }
+
+    check = validate_roadmap_write_target(write_path=write_path, workspace=root)
+    if check.get("allowed"):
+        return None
+
+    steering_line = format_agent_steering_line(workspace=root)
+    message = (
+        f"ROADMAP write blocked — {check.get('error') or 'path outside project workspace'}. "
+        f"Expected: {check.get('expected_path')}. {steering_line}"
+    )
+    try:
+        from plugins.dietcode.lib.agent.roadmap.progress import emit_progress
+
+        emit_progress(
+            "roadmap.write_blocked",
+            action="pre_tool_call",
+            workspace=str(root),
+            payload={
+                "tool": tool_name,
+                "path": write_path,
+                "expected_path": check.get("expected_path"),
+                "error": check.get("error"),
+            },
+            success=False,
+        )
+    except Exception:
+        pass
+
+    return {"action": "block", "message": message}
+
+
 def _post_tool_call(
     *,
     tool_name: str = "",

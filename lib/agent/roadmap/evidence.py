@@ -15,9 +15,10 @@ from plugins.dietcode.lib.agent.roadmap.schema import HEALTH_STATUSES, REQUIRED_
 _README_CANDIDATES = ("README.md", "docs/README.md", "readme.md")
 _ARCH_DOC_CANDIDATES = (
     "docs/architecture.md",
-    "docs/dietcode-plugin.md",
     "ARCHITECTURE.md",
     "docs/design.md",
+    "docs/overview.md",
+    "CONTRIBUTING.md",
 )
 _CONFIG_CANDIDATES = (
     "package.json",
@@ -93,6 +94,15 @@ def _run_git(workspace: Path, *args: str) -> Optional[str]:
         return (proc.stdout or "").strip()
     except (OSError, subprocess.TimeoutExpired):
         return None
+
+
+def git_commits_since(workspace: str | Path, since_date: str) -> list[str]:
+    """Return one-line commit subjects since an ISO date (YYYY-MM-DD)."""
+    root = Path(workspace).expanduser().resolve()
+    if not since_date or not (root / ".git").exists():
+        return []
+    raw = _run_git(root, "log", "--oneline", f"--since={since_date.strip()}")
+    return raw.splitlines() if raw else []
 
 
 def _git_recent_changes(workspace: Path, *, light: bool = False) -> dict[str, Any]:
@@ -403,6 +413,13 @@ def gather_evidence(
         "uncertainty": _uncertainty_notes(parsed, readmes, git_info),
         "_roadmap_text": roadmap_text or None,
     }
+
+    try:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        evidence["project_fingerprint"] = build_project_fingerprint(root)
+    except Exception:
+        evidence["project_fingerprint"] = {"steering_identity": root.name}
 
     if do_todos or do_soup:
         from plugins.dietcode.lib.agent.roadmap.workspace_scan import get_heavy_scan

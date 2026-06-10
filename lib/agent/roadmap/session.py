@@ -31,6 +31,14 @@ def session_brief(*, workspace: Optional[str] = None) -> dict[str, Any] | None:
         ws_state = status.get("workspace_state") or {}
         gate_state = status.get("roadmap_gate") or {}
         next_rec = status.get("recommended_next_action") or {}
+        from plugins.dietcode.lib.agent.roadmap.agent_steering import format_agent_steering_line
+        from plugins.dietcode.lib.agent.roadmap.operator import build_agent_operator_hints
+
+        hints = build_agent_operator_hints(
+            action="session",
+            gate=gate_state if isinstance(gate_state, dict) else None,
+            workspace=str(root),
+        )
         return {
             "enabled": True,
             "success": True,
@@ -38,10 +46,19 @@ def session_brief(*, workspace: Optional[str] = None) -> dict[str, Any] | None:
             "workspace_source": steering.get("workspace_source") or status.get("workspace_source"),
             "roadmap_path": steering.get("roadmap_path"),
             "workspace_safe": steering.get("workspace_safe", True),
+            "bootstrap_complete": steering.get("bootstrap_complete"),
+            "bootstrap_placeholder_count": steering.get("bootstrap_placeholder_count"),
+            "steering_identity": steering.get("steering_identity"),
+            "steering_brief": steering.get("steering_brief"),
+            "stack_summary": steering.get("stack_summary"),
+            "project_archetype": steering.get("project_archetype"),
+            "readme_tagline": steering.get("readme_tagline"),
+            "center_of_gravity_excerpt": steering.get("center_of_gravity_excerpt"),
+            "health_status": steering.get("health_status") or status.get("health_status") or ws_state.get("health_status"),
+            "now_item_count": steering.get("now_item_count"),
             "phase": status.get("phase"),
             "roadmap_exists": status.get("roadmap_exists"),
-            "health_status": status.get("health_status") or ws_state.get("health_status"),
-            "code_soup_risk": status.get("code_soup_risk"),
+            "code_soup_risk": status.get("code_soup_risk") or steering.get("code_soup_risk"),
             "sections_missing_count": len(status.get("sections_missing") or []),
             "recent_checkpoint_date": status.get("recent_checkpoint_date") or ws_state.get("recent_checkpoint_date"),
             "checkpoint_freshness": status.get("checkpoint_freshness"),
@@ -55,6 +72,8 @@ def session_brief(*, workspace: Optional[str] = None) -> dict[str, Any] | None:
             "kanban_complete_allowed": gate_state.get("kanban_complete_allowed"),
             "operator_summary": status.get("operator_summary"),
             "skill_path": status.get("skill_path"),
+            "steering_line": format_agent_steering_line(workspace=str(root)),
+            "_roadmap_operator_hints": hints,
         }
     except Exception as exc:
         return {"enabled": True, "success": False, "error": str(exc)}

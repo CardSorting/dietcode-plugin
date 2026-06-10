@@ -20,11 +20,16 @@ def assess_checkpoint_freshness(
     git_commits: list[str],
     schema_valid: Optional[bool] = None,
     stale_days: int = 7,
+    git_commits_since_checkpoint: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     """Return staleness signals for operator ergonomics."""
     checkpoint = _parse_checkpoint_date(recent_checkpoint_date)
     today = datetime.now(timezone.utc).date()
-    git_activity = len(git_commits or [])
+    since_commits = git_commits_since_checkpoint
+    if since_commits is None:
+        since_commits = git_commits or []
+    git_activity = len(since_commits)
+    window_commits = len(git_commits or [])
 
     if not checkpoint:
         return {
@@ -33,6 +38,7 @@ def assess_checkpoint_freshness(
             "summary": "ROADMAP.md has no parsed Recent Checkpoint date — steering may be outdated.",
             "days_since_checkpoint": None,
             "git_commits_since_checkpoint": git_activity,
+            "git_commits_in_window": window_commits,
             "recommended_action": "roadmap(action='checkpoint', context='refresh checkpoint')",
         }
 
@@ -49,7 +55,7 @@ def assess_checkpoint_freshness(
         stale = True
         reason = "checkpoint_older_than_git_activity"
         summary = (
-            f"Checkpoint is {days_since}d old with {git_activity} recent git commits — "
+            f"Checkpoint is {days_since}d old with {git_activity} git commit(s) since that date — "
             "roadmap may not reflect current direction."
         )
     elif days_since > stale_days * 2:
@@ -63,6 +69,7 @@ def assess_checkpoint_freshness(
         "summary": summary,
         "days_since_checkpoint": days_since,
         "git_commits_since_checkpoint": git_activity,
+        "git_commits_in_window": window_commits,
         "recommended_action": (
             "roadmap(action='checkpoint', context='stale refresh')"
             if stale
@@ -81,6 +88,8 @@ def format_explain_stale_report(freshness: dict[str, Any]) -> str:
     ]
     if freshness.get("days_since_checkpoint") is not None:
         lines.append(f"Days since checkpoint: {freshness['days_since_checkpoint']}")
-    lines.append(f"Recent git commits in evidence window: {freshness.get('git_commits_since_checkpoint')}")
+    lines.append(f"Git commits since checkpoint: {freshness.get('git_commits_since_checkpoint')}")
+    if freshness.get("git_commits_in_window") is not None:
+        lines.append(f"Git commits in evidence window: {freshness.get('git_commits_in_window')}")
     lines.append(f"Next: {freshness.get('recommended_action')}")
     return "\n".join(lines)

@@ -149,12 +149,24 @@ def run_checks(*, workspace: Optional[str] = None) -> dict[str, Any]:
     if ws_state.get("validation_pending"):
         recommendations.append("ROADMAP.md mutated since last validate — roadmap(action='validate')")
 
+    bootstrap_inc = False
+    if roadmap_path.is_file():
+        from plugins.dietcode.lib.agent.roadmap.operator import is_bootstrap_incomplete
+
+        bootstrap_inc = is_bootstrap_incomplete(
+            roadmap_exists=True,
+            workspace_state=ws_state,
+            bootstrap_complete=gate_state.get("bootstrap_complete"),
+            bootstrap_placeholder_count=gate_state.get("bootstrap_placeholder_count"),
+        )
+
     next_rec = recommend_next_action(
         phase=str(ws_state.get("phase") or ""),
         roadmap_exists=roadmap_path.is_file(),
         schema_valid=(validation.valid if validation else ws_state.get("schema_valid")),
         stale=bool((freshness or {}).get("stale")),
         validation_pending=bool(ws_state.get("validation_pending")),
+        bootstrap_incomplete=bootstrap_inc,
         last_error=last_error or None,
     )
 

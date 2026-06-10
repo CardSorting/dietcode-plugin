@@ -7,6 +7,7 @@ from typing import Any, Optional
 ACTION_CHECKPOINT = "run_checkpoint"
 ACTION_VALIDATE = "run_validate"
 ACTION_BOOTSTRAP = "bootstrap_roadmap"
+ACTION_BOOTSTRAP_FILL = "bootstrap_fill"
 ACTION_REPAIR_SCHEMA = "repair_schema"
 ACTION_COHERENCE_RECOVERY = "coherence_recovery"
 ACTION_COCKPIT = "open_cockpit"
@@ -18,6 +19,30 @@ ACTION_CONFIGURE_WORKSPACE = "configure_workspace"
 ACTION_WAIT = "wait"
 
 
+def is_bootstrap_incomplete(
+    *,
+    roadmap_exists: bool = False,
+    workspace_state: Optional[dict[str, Any]] = None,
+    bootstrap_complete: Optional[bool] = None,
+    bootstrap_placeholder_count: Optional[int] = None,
+) -> bool:
+    """True when ROADMAP.md exists but evidence-driven template phrases remain."""
+    if not roadmap_exists:
+        return False
+    ws = workspace_state or {}
+    complete = bootstrap_complete if bootstrap_complete is not None else ws.get("bootstrap_complete")
+    count = (
+        bootstrap_placeholder_count
+        if bootstrap_placeholder_count is not None
+        else ws.get("bootstrap_placeholder_count")
+    )
+    if complete is False:
+        return True
+    if complete is True:
+        return False
+    return bool(count and int(count) > 0)
+
+
 def recommend_next_action(
     *,
     phase: str = "",
@@ -25,6 +50,7 @@ def recommend_next_action(
     schema_valid: Optional[bool] = None,
     stale: bool = False,
     validation_pending: bool = False,
+    bootstrap_incomplete: bool = False,
     last_error: Optional[dict[str, Any]] = None,
 ) -> dict[str, str]:
     """Return exactly one operator next action with command and detail."""
@@ -40,6 +66,13 @@ def recommend_next_action(
             "action": ACTION_VALIDATE,
             "command": "roadmap(action='validate')",
             "detail": "ROADMAP.md mutated since last validate — confirm schema before closing pass.",
+        }
+
+    if bootstrap_incomplete or phase == "bootstrap_fill":
+        return {
+            "action": ACTION_BOOTSTRAP_FILL,
+            "command": "roadmap(action='checkpoint', context='fill bootstrap placeholders')",
+            "detail": "Replace template/bootstrap guidance with project-specific facts from evidence, then validate.",
         }
 
     if not roadmap_exists:
@@ -189,22 +222,35 @@ def build_agent_operator_hints(
             "workspace_state": {},
         }
     ws_state = snap.get("workspace_state") or {}
+    bootstrap_inc = is_bootstrap_incomplete(
+        roadmap_exists=bool(snap.get("roadmap_present")),
+        workspace_state=ws_state,
+        bootstrap_complete=snap.get("bootstrap_complete"),
+        bootstrap_placeholder_count=snap.get("bootstrap_placeholder_count"),
+    )
+    roadmap_path = (
+        str(Path(str(snap.get("workspace") or "")).expanduser().resolve() / "ROADMAP.md")
+        if snap.get("workspace")
+        else snap.get("roadmap_path")
+    )
     next_rec = recommend_next_action(
         phase=str(ws_state.get("phase") or ""),
         roadmap_exists=bool(snap.get("roadmap_present")),
         schema_valid=snap.get("schema_valid"),
         stale=bool(snap.get("checkpoint_stale")),
         validation_pending=bool(snap.get("validation_pending") or ws_state.get("validation_pending")),
+        bootstrap_incomplete=bootstrap_inc,
         last_error=last_error,
     )
     hints: dict[str, Any] = {
         "preferred_tool": "roadmap",
         "skill": "auto-rolling-roadmap",
         "workspace": snap.get("workspace"),
-        "roadmap_path": (
-            str(Path(str(snap.get("workspace") or "")).expanduser().resolve() / "ROADMAP.md")
-            if snap.get("workspace")
-            else None
+        "roadmap_path": roadmap_path,
+        "write_guard": (
+            f"ROADMAP.md lives only at {roadmap_path}"
+            if roadmap_path
+            else "Set HERMES_KANBAN_WORKSPACE before editing ROADMAP.md"
         ),
         "kanban_complete_allowed": snap.get("kanban_complete_allowed"),
         "validation_pending": bool(snap.get("validation_pending")),

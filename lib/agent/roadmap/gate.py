@@ -56,13 +56,35 @@ def collect_gate_inputs(
     roadmap = evidence.get("roadmap") or {}
     if validation is None:
         validation = validate_roadmap_content(text) if text else None
+
+    checkpoint_date = roadmap.get("recent_checkpoint_date")
+    git_commits = (evidence.get("git") or {}).get("recent_commits") or []
+    since_commits: list[str] = []
+    if checkpoint_date:
+        from plugins.dietcode.lib.agent.roadmap.evidence import git_commits_since
+
+        since_commits = git_commits_since(root, checkpoint_date)
+
     freshness = assess_checkpoint_freshness(
-        recent_checkpoint_date=roadmap.get("recent_checkpoint_date"),
-        git_commits=(evidence.get("git") or {}).get("recent_commits") or [],
+        recent_checkpoint_date=checkpoint_date,
+        git_commits=git_commits,
         schema_valid=validation.valid if validation else None,
         stale_days=cfg.stale_checkpoint_days,
+        git_commits_since_checkpoint=since_commits,
     )
     ws_state = read_state(root)
+
+    bootstrap_complete: Optional[bool] = None
+    bootstrap_placeholder_count: Optional[int] = None
+    if text and text.strip():
+        from plugins.dietcode.lib.agent.roadmap.schema import (
+            bootstrap_completeness_metrics,
+            find_bootstrap_placeholders,
+        )
+
+        bootstrap_placeholder_count = len(find_bootstrap_placeholders(text))
+        metrics = bootstrap_completeness_metrics(text)
+        bootstrap_complete = metrics.get("bootstrap_complete")
 
     return {
         "config": cfg,
@@ -72,6 +94,8 @@ def collect_gate_inputs(
         "validation": validation.to_dict() if validation else None,
         "freshness": freshness,
         "workspace_state": ws_state or None,
+        "bootstrap_complete": bootstrap_complete,
+        "bootstrap_placeholder_count": bootstrap_placeholder_count,
     }
 
 
@@ -122,6 +146,16 @@ def _check_validation_current(_: dict[str, Any], inputs: dict[str, Any]) -> bool
         return True
     ws = inputs.get("workspace_state") or {}
     return not bool(ws.get("validation_pending"))
+
+
+def _check_bootstrap_complete(_: dict[str, Any], inputs: dict[str, Any]) -> bool:
+    if not inputs.get("roadmap_present"):
+        return True
+    complete = inputs.get("bootstrap_complete")
+    if complete is None:
+        ws = inputs.get("workspace_state") or {}
+        complete = ws.get("bootstrap_complete")
+    return complete is not False
 
 
 _GATE_CHECKS: tuple[GateCheck, ...] = (
@@ -188,6 +222,15 @@ _GATE_CHECKS: tuple[GateCheck, ...] = (
         "safe": True,
         "blocks_kanban_complete": True,
     },
+    {
+        "id": "bootstrap_complete",
+        "label": "Bootstrap placeholders filled",
+        "is_open": _check_bootstrap_complete,
+        "why_closed": "ROADMAP.md still contains unfilled bootstrap/template guidance phrases",
+        "fix": "roadmap(action='checkpoint', context='fill bootstrap placeholders') then validate",
+        "safe": True,
+        "blocks_kanban_complete": False,
+    },
 )
 
 
@@ -229,6 +272,8 @@ def _blocking_closed_gates(
             continue
         if gate_id == "validation_current" and not cfg.block_kanban_on_validation_pending:
             continue
+        if gate_id == "bootstrap_complete" and not cfg.block_kanban_on_bootstrap_incomplete:
+            continue
         blocking.append(gate)
     return blocking
 
@@ -246,6 +291,8 @@ def gate_state_from_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
 
     if ws_state.get("validation_pending"):
         preferred = "roadmap(action='validate')"
+    elif inputs.get("bootstrap_complete") is False:
+        preferred = "roadmap(action='checkpoint', context='fill bootstrap placeholders')"
     elif freshness.get("stale"):
         preferred = "roadmap(action='checkpoint')"
     elif validation.get("valid") is False:
@@ -272,6 +319,8 @@ def gate_state_from_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
         "checkpoint_allowed": kanban_allowed,
         "preferred_command": preferred,
         "validation_pending": bool(ws_state.get("validation_pending")),
+        "bootstrap_complete": inputs.get("bootstrap_complete"),
+        "bootstrap_placeholder_count": inputs.get("bootstrap_placeholder_count"),
         "workspace_state": ws_state or None,
     }
 

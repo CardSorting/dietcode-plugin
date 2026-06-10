@@ -161,6 +161,16 @@ def merge_roadmap_hint_into_result(result: Any, hint: dict[str, Any]) -> str:
         parsed = {"result": result}
 
     parsed["_roadmap_write_hint"] = hint
+    try:
+        from plugins.dietcode.lib.agent.roadmap.operator import build_agent_operator_hints
+
+        parsed["_roadmap_operator_hints"] = build_agent_operator_hints(
+            action="write_file",
+            workspace=str(hint.get("workspace") or ""),
+            last_error={"operator_action": hint.get("recovery_suggestion")} if hint.get("write_rejected") else None,
+        )
+    except Exception:
+        pass
     if hint.get("write_rejected"):
         parsed["_roadmap_write_rejected"] = True
         parsed["success"] = False

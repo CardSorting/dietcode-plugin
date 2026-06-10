@@ -461,6 +461,7 @@ def verify_hermes_deployment(
 
     _run("roadmap_smoke", [str(python), "scripts/roadmap_smoke.py"])
     _run("roadmap_audit", [str(python), "scripts/roadmap_audit.py"])
+    _run("roadmap_operator_smoke", [str(python), "scripts/roadmap_operator_smoke.py"])
     if run_tests:
         _run(
             "roadmap_tests",

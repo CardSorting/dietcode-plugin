@@ -140,6 +140,14 @@ def build_dietcode_guidance(valid_tool_names: AbstractSet[str]) -> str:
     has_kanban_worker = "kanban_show" in valid_tool_names
 
     if has_roadmap:
+        try:
+            from plugins.dietcode.lib.agent.roadmap.agent_steering import format_agent_steering_line
+
+            live = format_agent_steering_line()
+            if live:
+                parts.append(live)
+        except Exception:
+            pass
         parts.append(ROADMAP_GUIDANCE)
     if has_joyzoning:
         parts.append(JOYZONING_GUIDANCE)

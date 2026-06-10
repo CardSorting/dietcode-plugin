@@ -22,6 +22,8 @@ class RoadmapConfig:
     warn_on_stale_before_complete: bool = True
     block_kanban_on_invalid_schema: bool = False
     block_kanban_on_validation_pending: bool = True
+    block_kanban_on_bootstrap_incomplete: bool = False
+    block_writes_outside_workspace: bool = True
     evidence_cache_ttl_seconds: float = 15.0
     git_timeout_seconds: float = 5.0
     heavy_scan_cache_ttl_seconds: float = 60.0
@@ -51,6 +53,10 @@ class RoadmapConfig:
                 warn_on_stale_before_complete=bool(roadmap.get("warn_on_stale_before_complete", True)),
                 block_kanban_on_invalid_schema=bool(roadmap.get("block_kanban_on_invalid_schema", False)),
                 block_kanban_on_validation_pending=bool(roadmap.get("block_kanban_on_validation_pending", True)),
+                block_kanban_on_bootstrap_incomplete=bool(
+                    roadmap.get("block_kanban_on_bootstrap_incomplete", False)
+                ),
+                block_writes_outside_workspace=bool(roadmap.get("block_writes_outside_workspace", True)),
                 evidence_cache_ttl_seconds=max(0.0, float(roadmap.get("evidence_cache_ttl_seconds", 15))),
                 git_timeout_seconds=max(1.0, float(roadmap.get("git_timeout_seconds", 5))),
                 heavy_scan_cache_ttl_seconds=max(0.0, float(roadmap.get("heavy_scan_cache_ttl_seconds", 60))),

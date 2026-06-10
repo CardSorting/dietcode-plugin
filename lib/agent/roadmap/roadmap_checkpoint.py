@@ -35,11 +35,21 @@ def _skill_bootstrap(workspace: str) -> dict[str, Any]:
 
 def _phase_from_evidence(evidence: dict[str, Any], *, validation_valid: Optional[bool] = None) -> dict[str, Any]:
     roadmap = evidence.get("roadmap") or {}
+    bootstrap_inc = False
+    if roadmap.get("exists"):
+        from plugins.dietcode.lib.agent.roadmap.operator import is_bootstrap_incomplete
+
+        bootstrap_inc = is_bootstrap_incomplete(
+            roadmap_exists=True,
+            bootstrap_complete=roadmap.get("bootstrap_complete"),
+            bootstrap_placeholder_count=roadmap.get("bootstrap_placeholder_count"),
+        )
     return determine_phase(
         roadmap_exists=bool(roadmap.get("exists")),
         sections_missing=roadmap.get("sections_missing") or [],
         health_status=roadmap.get("health_status"),
         validation_valid=validation_valid,
+        bootstrap_incomplete=bootstrap_inc,
     )
 
 
@@ -101,12 +111,21 @@ def operational_status(
 
     roadmap = bundle.get("roadmap") or {}
     phase_info = _phase_from_evidence(bundle, validation_valid=validation_valid)
+    from plugins.dietcode.lib.agent.roadmap.operator import is_bootstrap_incomplete
+
+    bootstrap_inc = is_bootstrap_incomplete(
+        roadmap_exists=bool(roadmap.get("exists")),
+        workspace_state=ws_state,
+        bootstrap_complete=gate_state.get("bootstrap_complete"),
+        bootstrap_placeholder_count=gate_state.get("bootstrap_placeholder_count"),
+    )
     next_rec = recommend_next_action(
         phase=phase_info.get("phase") or "",
         roadmap_exists=bool(roadmap.get("exists")),
         schema_valid=validation_valid if validation_valid is not None else ws_state.get("schema_valid"),
         stale=bool(freshness.get("stale")),
         validation_pending=bool(ws_state.get("validation_pending")),
+        bootstrap_incomplete=bootstrap_inc,
     )
 
     payload = {
@@ -191,6 +210,7 @@ def checkpoint_brief(
         "algorithm_steps": algorithm_steps(),
         "required_sections": list(REQUIRED_SECTIONS),
         "evidence": evidence,
+        "project_fingerprint": evidence.get("project_fingerprint"),
         "existing_roadmap_summary": evidence.get("roadmap"),
         "code_soup_pre_audit": evidence.get("code_soup_audit"),
         "agent_instructions": _agent_instructions(status["phase"], evidence),
@@ -203,6 +223,10 @@ def checkpoint_brief(
     if not evidence.get("roadmap", {}).get("exists"):
         payload["suggested_bootstrap"] = bootstrap_skeleton_from_evidence(evidence, workspace=root)
         payload["bootstrap_evidence_driven"] = True
+    from plugins.dietcode.lib.agent.roadmap.agent_steering import format_agent_steering_line
+
+    payload["steering_line"] = format_agent_steering_line(workspace=root)
+    payload["open_todo_marker_count"] = len(evidence.get("todo_markers") or [])
     return clarity_envelope(payload, phase_info={"phase": status["phase"]})
 
 
@@ -237,11 +261,22 @@ def validate_roadmap(*, workspace: Optional[str] = None) -> dict[str, Any]:
         valid=validation.valid,
         health_status=validation.health_status,
         recent_checkpoint_date=parsed.recent_checkpoint_date if parsed else None,
-        phase="validate_pending" if not validation.valid else "checkpoint",
+        phase=(
+            "validate_pending"
+            if not validation.valid
+            else ("bootstrap_fill" if not completeness.get("bootstrap_complete", True) else "checkpoint")
+        ),
         issue_count=len(validation.issues),
         bootstrap_placeholder_count=int(completeness.get("bootstrap_placeholder_count") or 0),
     )
     invalidate_snapshot(root)
+    from plugins.dietcode.lib.agent.roadmap.operator import is_bootstrap_incomplete
+
+    bootstrap_inc = is_bootstrap_incomplete(
+        roadmap_exists=bool(text.strip()),
+        bootstrap_complete=completeness.get("bootstrap_complete"),
+        bootstrap_placeholder_count=completeness.get("bootstrap_placeholder_count"),
+    )
     phase_info = determine_phase(
         roadmap_exists=bool(text.strip()),
         sections_missing=[
@@ -250,6 +285,7 @@ def validate_roadmap(*, workspace: Optional[str] = None) -> dict[str, Any]:
         ],
         health_status=validation.health_status,
         validation_valid=validation.valid,
+        bootstrap_incomplete=bootstrap_inc,
     )
     payload = {
         "action": "validate",
@@ -305,6 +341,7 @@ def template_brief(*, workspace: Optional[str] = None) -> dict[str, Any]:
 
 
 def _agent_instructions(phase: str, evidence: dict[str, Any]) -> list[str]:
+    fingerprint = evidence.get("project_fingerprint") or {}
     instructions = [
         "Read optional-skills/dietcode/auto-rolling-roadmap/SKILL.md before editing.",
         "Create or evolve ROADMAP.md at the workspace root — never in ~/.hermes/plugins/dietcode or plugin install trees.",
@@ -314,6 +351,16 @@ def _agent_instructions(phase: str, evidence: dict[str, Any]) -> list[str]:
         "Mark uncertainty explicitly when evidence is missing.",
         "Finish with roadmap(action='validate') before returning the checkpoint summary.",
     ]
+    if fingerprint.get("steering_brief"):
+        instructions.append(f"Project identity: {fingerprint['steering_brief']}")
+    if fingerprint.get("project_archetype"):
+        instructions.append(
+            f"Archetype: {fingerprint['project_archetype']} — tailor center of gravity and anti-goals to this shape."
+        )
+    if fingerprint.get("test_frameworks"):
+        instructions.append(
+            f"Verification surface: {', '.join(fingerprint['test_frameworks'][:3])} — reference in Maintenance Gravity when relevant."
+        )
     uncertainty = evidence.get("uncertainty") or []
     if uncertainty:
         instructions.append(f"Uncertainty to surface: {'; '.join(uncertainty[:3])}")
@@ -332,6 +379,10 @@ def _agent_instructions(phase: str, evidence: dict[str, Any]) -> list[str]:
         )
     elif phase == "validate_pending":
         instructions.append("Fix schema validation errors reported by roadmap(action='validate').")
+    elif phase == "bootstrap_fill":
+        instructions.append(
+            "Replace every bootstrap/template guidance phrase with project-specific facts from README, git, and code_soup_pre_audit."
+        )
     else:
         instructions.append(
             "Update Recent Checkpoint (section 11) — replace the previous checkpoint with today's pass only."

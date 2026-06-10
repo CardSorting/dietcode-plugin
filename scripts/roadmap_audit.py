@@ -17,6 +17,9 @@ if str(_PLUGIN_ROOT) not in sys.path:
 _REQUIRED = (
     "lib/agent/roadmap/config.py",
     "lib/agent/roadmap/steering_context.py",
+    "lib/agent/roadmap/agent_steering.py",
+    "lib/agent/roadmap/project_fingerprint.py",
+    "lib/agent/roadmap/phase_guide.py",
     "lib/agent/roadmap/native_bridge.py",
     "lib/agent/roadmap/gate.py",
     "lib/agent/roadmap/operator.py",
@@ -30,6 +33,8 @@ _REQUIRED = (
     "lib/agent/roadmap/roadmap_checkpoint.py",
     "lib/tools/roadmap_tools.py",
     "lib/runtime/roadmap_hooks.py",
+    "hooks.py",
+    "prompts.py",
     "optional-skills/dietcode/auto-rolling-roadmap/SKILL.md",
 )
 
@@ -67,6 +72,8 @@ def _scan_production_sources() -> list[str]:
                 continue
             if "unfilled bootstrap" in line.lower():
                 continue
+            if "bootstrap_complete" in line or "placeholder guidance" in line:
+                continue
             if "_TODO_PATTERN" in line or "todo_markers" in line or "TODO|FIXME" in line:
                 continue
             if _FORBIDDEN_IN_PRODUCTION.search(line):
@@ -85,12 +92,14 @@ def main() -> int:
     for hit in _scan_production_sources():
         failures.append(f"production language audit: {hit}")
 
-    from plugins.dietcode.lib.agent.roadmap.cockpit import build_cockpit_payload
+    from plugins.dietcode.lib.agent.roadmap.cockpit import build_cockpit_payload, format_cockpit_report
     from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace
+    from plugins.dietcode.lib.agent.roadmap.explain_gate import build_explain_gate_payload
     from plugins.dietcode.lib.agent.roadmap.gate import build_roadmap_gate_state, require_fresh_checkpoint_before_complete
     from plugins.dietcode.lib.agent.roadmap.operator import build_agent_operator_hints
+    from plugins.dietcode.lib.agent.roadmap.phase_guide import clarity_envelope
     from plugins.dietcode.lib.agent.roadmap.progress import build_progress_snapshot
-    from plugins.dietcode.lib.agent.roadmap.roadmap_checkpoint import checkpoint_brief, template_brief
+    from plugins.dietcode.lib.agent.roadmap.roadmap_checkpoint import checkpoint_brief, template_brief, validate_roadmap
     from plugins.dietcode.lib.agent.roadmap.native_bridge import (
         validate_roadmap_write_target,
     )
@@ -113,7 +122,7 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        (root / "README.md").write_text("# Audit Project\n\nReal README evidence.\n", encoding="utf-8")
+        (root / "README.md").write_text("# Audit Project\n\nPurpose line.\n", encoding="utf-8")
 
         gate = build_roadmap_gate_state(workspace=str(root))
         if "blocking_gates" not in gate:
@@ -124,33 +133,42 @@ def main() -> int:
                 failures.append("workspace_safe gate closed for temp project")
 
         hints = build_agent_operator_hints(workspace=str(root))
-        for key in ("slash_commands", "preferred_tool", "next_action"):
+        for key in ("slash_commands", "preferred_tool", "next_action", "write_guard", "roadmap_path"):
             if key not in hints:
                 failures.append(f"operator hints missing {key}")
 
         snap = build_progress_snapshot(workspace=str(root))
         if snap.get("recommended_next_action") is None:
             failures.append("progress snapshot missing recommended_next_action")
+        if not snap.get("roadmap_path"):
+            failures.append("progress snapshot missing roadmap_path")
 
         evidence = {"readmes": [{"excerpt": "# Audit Project\n\nPurpose line."}], "git": {"recent_commits": ["abc init"]}}
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        evidence["project_fingerprint"] = build_project_fingerprint(root)
         skeleton = bootstrap_skeleton_from_evidence(evidence, workspace=str(root))
         if "Audit Project" not in skeleton:
             failures.append("evidence bootstrap missing README title")
         if "Describe from README" in skeleton:
             failures.append("evidence bootstrap still contains generic placeholder phrase")
-
-        (root / "ROADMAP.md").write_text(skeleton, encoding="utf-8")
-        placeholders = find_bootstrap_placeholders(skeleton)
-        if len(placeholders) > 6:
-            failures.append(f"bootstrap skeleton has {len(placeholders)} unfilled placeholders (max 6 tolerated)")
+        if "Purpose line" not in skeleton:
+            failures.append("evidence bootstrap should include README tagline in purpose")
 
         validated = validate_roadmap_content(skeleton)
         if not validated.schema_complete:
             failures.append("bootstrap skeleton not schema-complete")
 
-        metrics = bootstrap_completeness_metrics(skeleton)
-        if metrics.get("bootstrap_placeholder_count", 0) > 8:
-            failures.append("evidence bootstrap has too many template placeholders")
+        (root / "ROADMAP.md").write_text(
+            skeleton + "\n\nDescribe from README and project evidence\n",
+            encoding="utf-8",
+        )
+        placeholders = find_bootstrap_placeholders(skeleton)
+        if len(placeholders) < 5:
+            failures.append("bootstrap skeleton should retain detectable template guidance for bootstrap_fill phase")
+        if metrics := bootstrap_completeness_metrics(skeleton):
+            if metrics.get("bootstrap_complete"):
+                failures.append("evidence bootstrap skeleton must not report bootstrap_complete before agent fill pass")
 
         reject = validate_roadmap_write_target(
             write_path="/Users/bozoegg/.hermes/plugins/dietcode/ROADMAP.md",
@@ -166,10 +184,57 @@ def main() -> int:
         steering = build_steering_context(workspace=str(root))
         if Path(steering.get("roadmap_path") or "").resolve() != (root / "ROADMAP.md").resolve():
             failures.append("steering context roadmap_path mismatch")
+        if not steering.get("steering_identity"):
+            failures.append("steering context missing steering_identity")
+        if not steering.get("steering_brief"):
+            failures.append("steering context missing steering_brief")
+
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        fp = build_project_fingerprint(root)
+        if fp.get("readme_title") != "Audit Project":
+            failures.append("fingerprint should read README title")
+        if not fp.get("steering_brief"):
+            failures.append("fingerprint missing steering_brief")
+        if fp.get("project_archetype") not in {"project", "library", "application", "web-app", "cli-tool", "hermes-plugin", "monorepo"}:
+            failures.append(f"unexpected project_archetype: {fp.get('project_archetype')}")
+        roadmap_text = (root / "ROADMAP.md").read_text(encoding="utf-8")
+        ph_issues = find_bootstrap_placeholders(roadmap_text)
+        if len(ph_issues) < 5:
+            failures.append("expanded bootstrap placeholder detection too weak for skeleton boilerplate")
+        boilerplate_markers = (
+            "Preserve primary agent",
+            "Evidence-backed initial audit",
+            "Insufficient evidence during first pass",
+            "Populate Now with 1–3",
+        )
+        if not any(any(m in (i.message or "") for m in boilerplate_markers) for i in ph_issues):
+            failures.append("bootstrap detection missing skeleton boilerplate phrases")
 
         brief = session_brief(workspace=str(root))
         if not brief or not brief.get("roadmap_path"):
             failures.append("session_brief missing roadmap_path")
+        if not (brief or {}).get("_roadmap_operator_hints"):
+            failures.append("session_brief missing _roadmap_operator_hints")
+        if not (brief or {}).get("steering_line"):
+            failures.append("session_brief missing steering_line")
+
+        from plugins.dietcode.lib.agent.roadmap.agent_steering import format_agent_steering_line
+
+        steering_line = format_agent_steering_line(workspace=str(root))
+        if "ROADMAP live steering" not in steering_line:
+            failures.append("agent_steering line missing live steering header")
+        if "Project:" not in steering_line:
+            failures.append("agent_steering line missing project identity")
+        if "Purpose:" not in steering_line and "Stack:" not in steering_line:
+            failures.append("agent_steering line missing per-project stack or purpose context")
+
+        validated = validate_roadmap(workspace=str(root))
+        from plugins.dietcode.lib.agent.roadmap.workspace_state import read_state
+
+        state = read_state(root)
+        if validated.get("validation", {}).get("bootstrap_complete") is False and state.get("phase") != "bootstrap_fill":
+            failures.append("validate should persist bootstrap_fill phase when placeholders remain")
 
         record_validation(str(root), valid=True, phase="checkpoint")
         record_file_mutation(str(root), tool="write_file", path="ROADMAP.md")
@@ -178,6 +243,8 @@ def main() -> int:
             failures.append("validation_pending not reflected in gate state")
         if gate2.get("kanban_complete_allowed"):
             failures.append("kanban_complete should block when validation_pending")
+        if gate2.get("bootstrap_complete") is not False:
+            failures.append("live bootstrap scan should detect placeholders before validate")
         msg = require_fresh_checkpoint_before_complete(workspace=str(root))
         if not msg:
             failures.append("require_fresh should block when validation_pending")
@@ -186,20 +253,86 @@ def main() -> int:
         if Path(brief.get("workspace") or "").resolve() != root.resolve():
             failures.append("checkpoint brief workspace mismatch")
 
-        if "roadmap_path" not in brief:
-            failures.append("checkpoint brief missing roadmap_path")
-        if "agent_instructions" not in brief:
-            failures.append("checkpoint brief missing agent_instructions")
+        for key in ("roadmap_path", "agent_instructions", "steering_line", "open_todo_marker_count", "project_fingerprint"):
+            if key not in brief:
+                failures.append(f"checkpoint brief missing {key}")
 
         tmpl = template_brief(workspace=str(root))
         if "evidence_summary" not in tmpl:
             failures.append("template brief missing evidence_summary")
 
+        guide = clarity_envelope({"action": "guide", "workspace": str(root)})
+        if not guide.get("steering_line"):
+            failures.append("clarity_envelope missing steering_line")
+        if not (guide.get("_roadmap_operator_hints") or {}).get("write_guard"):
+            failures.append("clarity_envelope missing write_guard hint")
+
+        explain = build_explain_gate_payload(workspace=str(root))
+        if not explain.get("roadmap_path"):
+            failures.append("explain_gate missing roadmap_path")
+        if "bootstrap_incomplete" not in (explain.get("gates_closed") or {}):
+            failures.append("explain_gate gates_closed missing bootstrap_incomplete")
+
         cockpit = build_cockpit_payload(workspace=str(root))
         if Path(cockpit.get("roadmap_path") or "").resolve() != (root / "ROADMAP.md").resolve():
             failures.append("cockpit roadmap_path not under workspace")
-        if not cockpit.get("workspace_source") and not (root / "ROADMAP.md").exists():
-            pass  # explicit workspace may omit source in some paths
+        if not cockpit.get("steering_line"):
+            failures.append("cockpit payload missing steering_line")
+        report = format_cockpit_report(workspace=str(root))
+        if "Write guard:" not in report:
+            failures.append("cockpit report missing write guard line")
+        if "→" not in report:
+            failures.append("cockpit report missing kernel-style next action arrow")
+
+        import os
+
+        from plugins.dietcode.lib.runtime.roadmap_hooks import _pre_tool_call
+
+        prev_ws = os.environ.get("HERMES_KANBAN_WORKSPACE")
+        os.environ["HERMES_KANBAN_WORKSPACE"] = str(root)
+        try:
+            block = _pre_tool_call(
+                tool_name="write_file",
+                args={"path": "/Users/bozoegg/.hermes/plugins/dietcode/ROADMAP.md"},
+            )
+            if not block or block.get("action") != "block":
+                failures.append("pre_tool_call should block ROADMAP write outside workspace")
+            allow = _pre_tool_call(tool_name="write_file", args={"path": "ROADMAP.md"})
+            if allow is not None:
+                failures.append("pre_tool_call should allow ROADMAP.md at workspace root")
+        finally:
+            if prev_ws is None:
+                os.environ.pop("HERMES_KANBAN_WORKSPACE", None)
+            else:
+                os.environ["HERMES_KANBAN_WORKSPACE"] = prev_ws
+
+        hooks_text = (_PLUGIN_ROOT / "hooks.py").read_text(encoding="utf-8")
+        if "roadmap_pre" not in hooks_text:
+            failures.append("hooks.py missing roadmap pre_tool_call registration")
+
+        from importlib.util import module_from_spec, spec_from_file_location
+
+        wf_path = _PLUGIN_ROOT / "lib/agent/joyzoning/workflow.py"
+        wf_spec = spec_from_file_location("roadmap_audit_jz_workflow", wf_path)
+        assert wf_spec is not None and wf_spec.loader is not None
+        wf_mod = module_from_spec(wf_spec)
+        wf_spec.loader.exec_module(wf_mod)
+        merged = wf_mod._merge_steering_next_actions(
+            ["joyzoning(action='begin')"],
+            roadmap_brief={
+                "enabled": True,
+                "roadmap_path": str(root / "ROADMAP.md"),
+                "roadmap_exists": True,
+                "bootstrap_complete": False,
+                "steering_line": steering_line,
+                "phase": "bootstrap_fill",
+                "first_call": "roadmap(action='checkpoint')",
+            },
+        )
+        if not any("ROADMAP.md lives at" in h for h in merged):
+            failures.append("joyzoning merge missing roadmap_path hint")
+        if not any("fill bootstrap placeholders" in h for h in merged):
+            failures.append("joyzoning merge missing bootstrap fill hint")
 
         invalidate_snapshot(str(root))
         snapshot_mod._CACHE.clear()

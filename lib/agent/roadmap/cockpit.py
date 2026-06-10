@@ -8,7 +8,7 @@ from typing import Any, Optional
 from plugins.dietcode.lib.agent.roadmap.config import get_roadmap_config, resolve_workspace_root
 from plugins.dietcode.lib.agent.roadmap.phase_guide import clarity_envelope, determine_phase
 from plugins.dietcode.lib.agent.roadmap.freshness import assess_checkpoint_freshness
-from plugins.dietcode.lib.agent.roadmap.operator import recommend_next_action
+from plugins.dietcode.lib.agent.roadmap.operator import is_bootstrap_incomplete, recommend_next_action
 from plugins.dietcode.lib.agent.roadmap.progress import read_current, read_last_error
 from plugins.dietcode.lib.agent.roadmap.snapshot import get_workspace_snapshot
 from plugins.dietcode.lib.agent.roadmap.skill_install import _SKILL_REL
@@ -31,11 +31,21 @@ def build_cockpit_payload(*, workspace: Optional[str] = None) -> dict[str, Any]:
     roadmap_path = Path(snap.roadmap_path)
     validation = snap.validation
     code_soup = evidence.get("code_soup_audit") or {}
+    ws_state = snap.gate_inputs.get("workspace_state") or {}
+    gate_state = snap.gate_state
+    bootstrap_inc = is_bootstrap_incomplete(
+        roadmap_exists=bool(roadmap.get("exists")),
+        workspace_state=ws_state,
+        bootstrap_complete=steering.get("bootstrap_complete") or gate_state.get("bootstrap_complete"),
+        bootstrap_placeholder_count=steering.get("bootstrap_placeholder_count")
+        or gate_state.get("bootstrap_placeholder_count"),
+    )
     phase_info = determine_phase(
         roadmap_exists=bool(roadmap.get("exists")),
         sections_missing=roadmap.get("sections_missing") or [],
         health_status=roadmap.get("health_status"),
         validation_valid=validation.valid if validation else None,
+        bootstrap_incomplete=bootstrap_inc,
     )
 
     git = evidence.get("git") or {}
@@ -47,14 +57,13 @@ def build_cockpit_payload(*, workspace: Optional[str] = None) -> dict[str, Any]:
     )
     current_progress = read_current()
     last_error = read_last_error()
-    ws_state = snap.gate_inputs.get("workspace_state") or {}
-    gate_state = snap.gate_state
     next_rec = recommend_next_action(
         phase=phase_info.get("phase") or "",
         roadmap_exists=bool(roadmap.get("exists")),
         schema_valid=validation.valid if validation else ws_state.get("schema_valid"),
         stale=bool(freshness.get("stale")),
         validation_pending=bool(ws_state.get("validation_pending")),
+        bootstrap_incomplete=bootstrap_inc,
         last_error=last_error or None,
     )
 
@@ -67,8 +76,14 @@ def build_cockpit_payload(*, workspace: Optional[str] = None) -> dict[str, Any]:
             "workspace": root,
             "workspace_source": workspace_source,
             "workspace_safe": steering.get("workspace_safe", True),
-            "bootstrap_complete": ws_state.get("bootstrap_complete"),
-            "bootstrap_placeholder_count": ws_state.get("bootstrap_placeholder_count"),
+            "bootstrap_complete": steering.get("bootstrap_complete") if steering.get("bootstrap_complete") is not None else ws_state.get("bootstrap_complete"),
+            "bootstrap_placeholder_count": steering.get("bootstrap_placeholder_count") if steering.get("bootstrap_placeholder_count") is not None else ws_state.get("bootstrap_placeholder_count"),
+            "steering_identity": steering.get("steering_identity"),
+            "steering_brief": steering.get("steering_brief"),
+            "stack_summary": steering.get("stack_summary"),
+            "project_archetype": steering.get("project_archetype"),
+            "readme_tagline": steering.get("readme_tagline"),
+            "center_of_gravity_excerpt": steering.get("center_of_gravity_excerpt"),
             "enabled": cfg.enabled,
             "skill_path": _SKILL_REL,
             "roadmap_exists": bool(roadmap.get("exists")),
@@ -105,13 +120,36 @@ def build_cockpit_payload(*, workspace: Optional[str] = None) -> dict[str, Any]:
 
 def format_cockpit_report(*, workspace: Optional[str] = None) -> str:
     data = build_cockpit_payload(workspace=workspace)
+    hints = data.get("_roadmap_operator_hints") or {}
     lines = [
         "🗺️ Roadmap cockpit",
         f"Workspace: {data.get('workspace')}",
-        f"ROADMAP.md: {data.get('roadmap_path')}",
     ]
+    if data.get("steering_brief") or data.get("steering_identity"):
+        lines.append(f"Project: {data.get('steering_brief') or data['steering_identity']}")
+    if data.get("stack_summary"):
+        archetype = data.get("project_archetype")
+        stack_line = f"Stack: {data['stack_summary']}"
+        if archetype and archetype != "project":
+            stack_line += f" ({archetype.replace('-', ' ')})"
+        lines.append(stack_line)
+    if data.get("readme_tagline"):
+        tag = str(data["readme_tagline"])
+        if len(tag) > 90:
+            tag = tag[:89] + "…"
+        lines.append(f"Purpose: {tag}")
+    if data.get("center_of_gravity_excerpt"):
+        excerpt = str(data["center_of_gravity_excerpt"])
+        if len(excerpt) > 100:
+            excerpt = excerpt[:99] + "…"
+        lines.append(f"Center of gravity: {excerpt}")
+    lines.append(f"ROADMAP.md: {data.get('roadmap_path')}")
     if data.get("workspace_source"):
         lines.append(f"Workspace source: {data['workspace_source']}")
+    write_guard = hints.get("write_guard") or f"Write guard: ROADMAP.md only at {data.get('roadmap_path')}"
+    if not write_guard.startswith("Write guard:"):
+        write_guard = f"Write guard: {write_guard}"
+    lines.append(write_guard)
     lines.extend([
         f"Phase: {data.get('phase')}",
         f"Enabled: {data.get('enabled')}",
@@ -155,7 +193,9 @@ def format_cockpit_report(*, workspace: Optional[str] = None) -> str:
     next_rec = data.get("recommended_next_action") or {}
     if next_rec.get("action"):
         lines.append(f"Next action: {next_rec.get('action')} — {next_rec.get('detail')}")
-    lines.append(f"Command: {data.get('agent_next_call')}")
+        lines.append(f"→ {next_rec.get('command') or data.get('agent_next_call')}")
+    else:
+        lines.append(f"Command: {data.get('agent_next_call')}")
     if data.get("centralization_recommendation"):
         lines.append(f"Centralize: {data['centralization_recommendation']}")
 

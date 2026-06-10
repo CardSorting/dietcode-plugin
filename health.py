@@ -175,11 +175,23 @@ def _roadmap_health() -> dict[str, Any]:
         cfg = get_roadmap_config()
         root = resolve_workspace_root()
         doctor = run_checks(workspace=root)
+        steering_line = None
+        roadmap_path = None
+        try:
+            from plugins.dietcode.lib.agent.roadmap.agent_steering import build_live_steering_brief
+
+            live = build_live_steering_brief(workspace=root)
+            steering_line = live.get("steering_line")
+            roadmap_path = live.get("roadmap_path")
+        except Exception:
+            pass
         return {
             "ok": doctor.get("ok", False),
             "enabled": cfg.enabled,
             "auto_install_skills": cfg.auto_install_skills,
             "workspace": root,
+            "roadmap_path": roadmap_path,
+            "steering_line": steering_line,
             "roadmap_present": any(
                 c.get("ok") for c in doctor.get("checks", [])
                 if c.get("name") in {"roadmap_present", "roadmap_readable"}

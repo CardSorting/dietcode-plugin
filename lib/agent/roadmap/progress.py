@@ -134,28 +134,42 @@ def summarize_recent_events(*, last: int = 5) -> list[dict[str, Any]]:
 def build_progress_snapshot(*, workspace: Optional[str] = None) -> dict[str, Any]:
     """Full progress + steering snapshot (kernel progress --current analogue)."""
     from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace_root
-    from plugins.dietcode.lib.agent.roadmap.operator import recommend_next_action
+    from plugins.dietcode.lib.agent.roadmap.operator import is_bootstrap_incomplete, recommend_next_action
     from plugins.dietcode.lib.agent.roadmap.snapshot import get_workspace_snapshot
+    from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
 
     root = resolve_workspace_root(workspace)
+    steering = build_steering_context(workspace=root)
     current = read_current()
     snap = get_workspace_snapshot(root, tier="light")
     ws_state = snap.gate_inputs.get("workspace_state") or {}
     gate = snap.gate_state
     freshness = gate.get("checkpoint_stale")
     last_err = read_last_error() or None
+    bootstrap_inc = is_bootstrap_incomplete(
+        roadmap_exists=bool(gate.get("roadmap_present")),
+        workspace_state=ws_state,
+        bootstrap_complete=gate.get("bootstrap_complete") or steering.get("bootstrap_complete"),
+        bootstrap_placeholder_count=gate.get("bootstrap_placeholder_count")
+        or steering.get("bootstrap_placeholder_count"),
+    )
     next_rec = recommend_next_action(
         phase=str(ws_state.get("phase") or ""),
         roadmap_exists=bool(gate.get("roadmap_present")),
         schema_valid=gate.get("schema_valid"),
         stale=bool(freshness),
         validation_pending=bool(ws_state.get("validation_pending")),
+        bootstrap_incomplete=bootstrap_inc,
         last_error=last_err,
     )
     return {
         "success": True,
         "ok": True,
         "workspace": root,
+        "roadmap_path": steering.get("roadmap_path") or snap.roadmap_path,
+        "bootstrap_complete": steering.get("bootstrap_complete") or gate.get("bootstrap_complete"),
+        "bootstrap_placeholder_count": steering.get("bootstrap_placeholder_count")
+        or gate.get("bootstrap_placeholder_count"),
         "current": current or None,
         "current_path": str(progress_current_path()),
         "jsonl_path": str(progress_jsonl_path()),
@@ -284,13 +298,33 @@ def format_progress_report(
     return "\n".join(lines)
 
 
+def _current_for_workspace(current: dict[str, Any], workspace: Optional[str]) -> dict[str, Any]:
+    """Ignore global session noise when watch/progress targets a specific workspace."""
+    if not current:
+        return {}
+    if not workspace or not str(workspace).strip():
+        return current
+    try:
+        from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace_root
+
+        root = str(Path(resolve_workspace_root(workspace)).expanduser().resolve())
+        event_ws = str(current.get("workspace") or "").strip()
+        if event_ws and str(Path(event_ws).expanduser().resolve()) != root:
+            return {}
+    except Exception:
+        return current
+    return current
+
+
 def format_watch_report(*, workspace: Optional[str] = None) -> str:
     snap = build_progress_snapshot(workspace=workspace)
-    current = snap.get("current") or {}
+    current = _current_for_workspace(snap.get("current") or {}, workspace)
+    path_hint = snap.get("roadmap_path") or ""
+    prefix = f" @ {path_hint}" if path_hint else ""
     if not current:
         next_rec = snap.get("recommended_next_action") or {}
         hint = next_rec.get("command") or "/roadmap cockpit"
-        return f"🗺️ ROADMAP … idle — next: {hint}"
+        return f"🗺️ ROADMAP{prefix} … idle — next: {hint}"
 
     phase = current.get("phase") or "idle"
     action = current.get("action") or "guide"

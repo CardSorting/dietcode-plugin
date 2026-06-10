@@ -38,9 +38,38 @@ def _merge_steering_next_actions(
     if roadmap_brief and roadmap_brief.get("enabled"):
         phase = roadmap_brief.get("phase")
         first_call = roadmap_brief.get("first_call") or "roadmap(action='guide')"
-        if phase in {"bootstrap", "structure_repair", "coherence_recovery", "validate_pending"}:
+        roadmap_path = roadmap_brief.get("roadmap_path")
+        if roadmap_path:
+            path_hint = f"ROADMAP.md lives at {roadmap_path} — out-of-workspace writes blocked"
+            if path_hint not in base and path_hint not in hints:
+                hints.append(path_hint)
+
+        identity = roadmap_brief.get("steering_brief") or roadmap_brief.get("steering_identity") or roadmap_brief.get("project_name")
+        if identity:
+            id_hint = f"Project steering: {identity}"
+            if id_hint not in base and id_hint not in hints:
+                hints.append(id_hint)
+
+        stack = roadmap_brief.get("stack_summary")
+        if stack:
+            stack_hint = f"Stack: {stack}"
+            if stack_hint not in base and stack_hint not in hints:
+                hints.append(stack_hint)
+
+        steering_line = roadmap_brief.get("steering_line")
+        if steering_line and steering_line not in base and steering_line not in hints:
+            hints.append(steering_line)
+
+        if phase in {"bootstrap", "bootstrap_fill", "structure_repair", "coherence_recovery", "validate_pending"}:
             if first_call not in base and first_call not in hints:
                 hints.append(first_call)
+            if phase == "bootstrap_fill":
+                fill_hint = (
+                    "roadmap(action='checkpoint', context='fill bootstrap placeholders') — "
+                    "replace template text with project evidence"
+                )
+                if fill_hint not in base and fill_hint not in hints:
+                    hints.append(fill_hint)
         elif not roadmap_brief.get("roadmap_exists"):
             roadmap_hint = "roadmap(action='checkpoint') — create project steering surface"
             if roadmap_hint not in base and roadmap_hint not in hints:

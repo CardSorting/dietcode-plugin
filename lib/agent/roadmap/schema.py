@@ -40,18 +40,39 @@ ENTROPY_RISKS = frozenset({"Low", "Medium", "High"})
 # Template guidance lines agents must replace before treating bootstrap as complete.
 BOOTSTRAP_PLACEHOLDER_PHRASES: tuple[str, ...] = (
     "Describe from README and project evidence",
+    "Define from README and project evidence",
     "Identify from README and config evidence.",
+    "Derived from README and config evidence during bootstrap.",
     "Describe the main architectural shape from docs and code layout.",
+    "Document from architecture docs and repo layout.",
     "List the primary flows agents and humans must preserve.",
+    "Preserve primary agent and operator flows identified in README and recent commits.",
     "State where operational truth lives.",
     "List anti-goals that protect coherence.",
     "Describe what the project is becoming using README, architecture docs, and recent commits.",
     "Initial audit from evidence bundle.",
+    "Evidence-backed initial audit — see code_soup_pre_audit in checkpoint payload.",
     "Document runtime, state, mutation, and diagnostic authority.",
+    "Runtime and mutation authority documented in project docs; plugin/kernel trees are not project roots.",
     "Review recent git changes for isolated patterns.",
     "Confirm canonical patch and inspection paths are obvious.",
     "One recommendation to strengthen project gravity.",
     "Initial structure only — audit pending deeper pass.",
+    "Initial roadmap bootstrap.",
+    "Insufficient evidence during first pass.",
+    "Clear center of gravity before feature sprawl.",
+    "A fragmented patch surface without a documented center of gravity.",
+    "Hermes workspace project root — ROADMAP.md lives beside source, not in plugin install trees.",
+    "Run code_soup_pre_audit and document canonical paths.",
+    "Document canonical paths from code_soup_pre_audit.",
+    "No recent git activity in evidence.",
+    "No recent git commits captured in evidence.",
+    "Created initial ROADMAP.md from evidence.",
+    "Populate Now with 1–3 evidence-backed items connected to center of gravity.",
+    "Populated from code_soup_pre_audit during bootstrap.",
+    "Enable long-horizon coherence under agent-assisted development.",
+    "Strategic work routes through Now/Next/Later instead of ad-hoc task dumps.",
+    "Adopt ROADMAP.md as the project steering surface.",
 )
 
 _ALGORITHM_STEPS: tuple[str, ...] = (
@@ -299,9 +320,15 @@ def bootstrap_skeleton_from_evidence(evidence: dict[str, Any], *, workspace: str
     arch = evidence.get("architecture_docs") or []
     git = evidence.get("git") or {}
     soup = evidence.get("code_soup_audit") or {}
+    fingerprint = evidence.get("project_fingerprint") or {}
 
-    purpose = ""
-    if readmes:
+    purpose = (
+        fingerprint.get("purpose_hint")
+        or fingerprint.get("readme_tagline")
+        or fingerprint.get("package_description")
+        or ""
+    )
+    if not purpose and readmes:
         purpose = _first_meaningful_readme_line(readmes[0].get("excerpt") or "")
     if not purpose and workspace:
         purpose = f"{Path(workspace).name} — center of gravity from first checkpoint pass"
@@ -309,9 +336,43 @@ def bootstrap_skeleton_from_evidence(evidence: dict[str, Any], *, workspace: str
     narrative = ""
     if arch:
         narrative = _first_meaningful_readme_line(arch[0].get("excerpt") or "")
+    if not narrative:
+        narrative = purpose or fingerprint.get("steering_brief") or ""
     if not narrative and readmes:
         lines = [ln.strip() for ln in (readmes[0].get("excerpt") or "").splitlines() if ln.strip()]
         narrative = " ".join(lines[1:4])[:500] if len(lines) > 1 else purpose
+
+    operators = fingerprint.get("operators_hint") or ""
+    if operators and operators.strip() == (purpose or "").strip():
+        operators = ""
+    if not operators and fingerprint.get("project_archetype") == "hermes-plugin":
+        operators = "Hermes operators and agent-assisted developers extending the plugin surface."
+
+    runtime_center = fingerprint.get("runtime_center_hint") or ""
+    if not runtime_center:
+        stack = fingerprint.get("stack_summary") or fingerprint.get("primary_language") or ""
+        if stack:
+            runtime_center = f"Project workspace root — primary stack: {stack}"
+        else:
+            runtime_center = "Hermes workspace project root — ROADMAP.md lives beside source, not in plugin install trees."
+
+    canonical_arch = narrative
+    if fingerprint.get("frameworks"):
+        fw = ", ".join(fingerprint["frameworks"][:3])
+        canonical_arch = f"{narrative} Primary frameworks: {fw}." if narrative else f"Primary frameworks: {fw}."
+
+    workflows = ""
+    tests = fingerprint.get("test_frameworks") or []
+    ci = fingerprint.get("ci_systems") or []
+    if tests or ci:
+        parts = []
+        if tests:
+            parts.append(f"verification via {tests[0]}")
+        if ci:
+            parts.append(f"CI: {ci[0]}")
+        workflows = f"Preserve primary flows — {', '.join(parts)}; align roadmap checkpoints with README and recent commits."
+    if not workflows:
+        workflows = "Preserve primary agent and operator flows identified in README and recent commits."
 
     commits = git.get("recent_commits") or []
     git_line = commits[0][:120] if commits else "No recent git commits captured in evidence."
@@ -327,9 +388,26 @@ def bootstrap_skeleton_from_evidence(evidence: dict[str, Any], *, workspace: str
             f"{s.get('code')}: {s.get('detail')}" for s in signals[:3]
         )
 
+    anti_goals = "A fragmented patch surface without a documented center of gravity."
+    archetype = fingerprint.get("project_archetype") or ""
+    if archetype == "monorepo":
+        anti_goals = "A monorepo without documented package boundaries and shared center of gravity."
+    elif archetype == "hermes-plugin":
+        anti_goals = "A Hermes plugin that drifts from kernel conventions or stores ROADMAP.md outside the project workspace."
+
+    health_summary = "Initial roadmap bootstrap."
+    if fingerprint.get("steering_brief"):
+        health_summary = f"Bootstrap for {fingerprint['steering_brief'][:160]}."
+
     return bootstrap_skeleton(
         project_hint=purpose or "Define from README and project evidence",
         strategic_narrative=narrative or purpose,
+        operators_hint=operators,
+        canonical_architecture=canonical_arch,
+        canonical_workflows=workflows,
+        runtime_center=runtime_center,
+        anti_goals=anti_goals,
+        health_summary=health_summary,
         code_soup_risk=soup_risk,
         centralization_recommendation=centralize or signal_summary or "Run code_soup_pre_audit and document canonical paths.",
         recent_git_summary=git_line,
@@ -341,6 +419,12 @@ def bootstrap_skeleton(
     *,
     project_hint: str = "",
     strategic_narrative: str = "",
+    operators_hint: str = "",
+    canonical_architecture: str = "",
+    canonical_workflows: str = "",
+    runtime_center: str = "",
+    anti_goals: str = "",
+    health_summary: str = "",
     code_soup_risk: str = "Low",
     centralization_recommendation: str = "",
     recent_git_summary: str = "",
@@ -350,6 +434,14 @@ def bootstrap_skeleton(
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     hint = project_hint.strip() or "Define from README and project evidence"
     narrative = (strategic_narrative or hint).strip()
+    operators = operators_hint.strip() or "Derived from README and config evidence during bootstrap."
+    architecture = canonical_architecture.strip() or (
+        " ".join(narrative.split()[:40]) if narrative else "Document from architecture docs and repo layout."
+    )
+    workflows = canonical_workflows.strip() or "Preserve primary agent and operator flows identified in README and recent commits."
+    runtime = runtime_center.strip() or "Hermes workspace project root — ROADMAP.md lives beside source, not in plugin install trees."
+    must_not = anti_goals.strip() or "A fragmented patch surface without a documented center of gravity."
+    health = health_summary.strip() or "Initial roadmap bootstrap."
     risk = code_soup_risk if code_soup_risk in SOUP_RISK_LEVELS else "Low"
     centralize = centralization_recommendation.strip() or "Document canonical paths from code_soup_pre_audit."
     git_summary = recent_git_summary.strip() or "No recent git activity in evidence."
@@ -362,26 +454,26 @@ def bootstrap_skeleton(
 {hint}
 
 **Primary Users / Operators:**  
-Derived from README and config evidence during bootstrap.
+{operators}
 
 **Canonical Architecture:**  
-{(' '.join(narrative.split()[:40]) if narrative else 'Document from architecture docs and repo layout.')}
+{architecture}
 
 **Canonical Workflows:**  
-Preserve primary agent and operator flows identified in README and recent commits.
+{workflows}
 
 **Primary Runtime / Operational Center:**  
-Hermes workspace project root — ROADMAP.md lives beside source, not in plugin install trees.
+{runtime}
 
 **What This Project Must Not Become:**  
-A fragmented patch surface without a documented center of gravity.
+{must_not}
 
 ## 2. Roadmap Health
 
 **Status:** Coherent
 
 **Summary:**  
-Initial roadmap bootstrap.
+{health}
 
 **Why This Status:**  
 - ROADMAP.md created from gathered evidence

@@ -223,9 +223,13 @@ class RoadmapProgressTests(unittest.TestCase):
         import os
         import tempfile
 
-        with tempfile.TemporaryDirectory() as tmp:
-            report = format_watch_report(workspace=tmp)
-            self.assertIn("idle", report.lower())
+        with tempfile.TemporaryDirectory() as session_tmp, tempfile.TemporaryDirectory() as tmp:
+            os.environ["DIETCODE_SESSION_DIR"] = session_tmp
+            try:
+                report = format_watch_report(workspace=tmp)
+                self.assertIn("idle", report.lower())
+            finally:
+                os.environ.pop("DIETCODE_SESSION_DIR", None)
 
 
 class RoadmapFreshnessTests(unittest.TestCase):
@@ -612,6 +616,115 @@ class RoadmapBootstrapEvidenceTests(unittest.TestCase):
         issues = find_bootstrap_placeholders(sample)
         self.assertEqual(len(issues), 1)
         self.assertEqual(issues[0].code, "bootstrap_placeholder")
+
+    def test_expanded_bootstrap_placeholders_detect_skeleton_boilerplate(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton, find_bootstrap_placeholders
+
+        skeleton = bootstrap_skeleton(project_hint="Acme Widgets")
+        issues = find_bootstrap_placeholders(skeleton)
+        messages = " ".join(i.message for i in issues)
+        self.assertGreaterEqual(len(issues), 6)
+        self.assertIn("Preserve primary agent", messages)
+        self.assertIn("Acme Widgets", skeleton)
+        self.assertNotIn("Acme Widgets", messages)
+
+
+class RoadmapSteeringTests(unittest.TestCase):
+    def test_project_fingerprint_from_readme(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Invoice Portal\n\nSMB billing.", encoding="utf-8")
+            (root / "pyproject.toml").write_text('[project]\nname = "invoice-portal"\n', encoding="utf-8")
+            (root / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+            fp = build_project_fingerprint(root)
+            self.assertEqual(fp["readme_title"], "Invoice Portal")
+            self.assertEqual(fp["package_name"], "invoice-portal")
+            self.assertIn("Invoice Portal", fp["steering_identity"])
+            self.assertEqual(fp["readme_tagline"], "SMB billing.")
+            self.assertIn("pytest", fp["test_frameworks"])
+            self.assertTrue(fp["has_tests"])
+            self.assertIn("Invoice Portal", fp["steering_brief"])
+
+    def test_project_fingerprint_hermes_plugin_archetype(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "plugin.yaml").write_text("name: demo\n", encoding="utf-8")
+            (root / "README.md").write_text("# Demo Plugin\n\nExtends Hermes.", encoding="utf-8")
+            fp = build_project_fingerprint(root)
+            self.assertEqual(fp["project_archetype"], "hermes-plugin")
+            self.assertIn("Hermes plugin", fp["frameworks"])
+            self.assertIn("Hermes plugin workspace", fp["runtime_center_hint"] or "")
+
+    def test_bootstrap_from_evidence_uses_fingerprint(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton_from_evidence
+
+        evidence = {
+            "readmes": [{"excerpt": "# Billing API\n\nHandles invoices."}],
+            "git": {"recent_commits": ["feat: billing"], "changed_files_recent": ["src/billing.py"]},
+            "code_soup_audit": {"overall_risk": "Low", "centralization_recommendation": "Keep billing in src/billing."},
+            "project_fingerprint": {
+                "purpose_hint": "Handles invoices.",
+                "operators_hint": "Finance ops and API integrators.",
+                "runtime_center_hint": "FastAPI service root with Docker deploy.",
+                "steering_brief": "Billing API — Python",
+                "project_archetype": "web-app",
+                "frameworks": ["FastAPI"],
+                "test_frameworks": ["pytest"],
+                "ci_systems": ["GitHub Actions"],
+            },
+        }
+        skeleton = bootstrap_skeleton_from_evidence(evidence, workspace="/tmp/billing")
+        self.assertIn("Handles invoices.", skeleton)
+        self.assertIn("Finance ops and API integrators.", skeleton)
+        self.assertIn("FastAPI service root", skeleton)
+        self.assertNotIn("Derived from README and config evidence during bootstrap.", skeleton)
+
+    def test_steering_context_includes_identity_and_live_parse(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+        from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Steer Test\n", encoding="utf-8")
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Steer Test"), encoding="utf-8")
+            ctx = build_steering_context(workspace=str(root))
+            self.assertEqual(ctx["steering_identity"], "Steer Test")
+            self.assertFalse(ctx["bootstrap_complete"])
+            self.assertGreater(ctx["bootstrap_placeholder_count"], 0)
+            self.assertEqual(ctx["health_status"], "Coherent")
+
+    def test_agent_steering_line_includes_project_context(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.agent_steering import format_agent_steering_line
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Context App\n", encoding="utf-8")
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Context App"), encoding="utf-8")
+            line = format_agent_steering_line(workspace=str(root))
+            self.assertIn("ROADMAP live steering", line)
+            self.assertIn("Project:", line)
+            self.assertIn("Context App", line)
+            self.assertIn("health=Coherent", line)
+
+    def test_doctor_recommends_bootstrap_fill_when_placeholders_remain(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.doctor import run_checks
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Doctor Test"), encoding="utf-8")
+            with mock.patch(
+                "plugins.dietcode.lib.agent.roadmap.doctor.read_last_error",
+                return_value={},
+            ):
+                report = run_checks(workspace=str(root))
+            action = (report.get("recommended_next_action") or {}).get("action")
+            self.assertEqual(action, "bootstrap_fill")
 
 
 class RoadmapWorkspaceResolutionTests(unittest.TestCase):
