@@ -498,6 +498,7 @@ def build_project_steering_digest(
                 "suggested_replacement": first.get("suggested_replacement"),
                 "evidence_source": first.get("evidence_source"),
             }
+        digest["agent_next_call"] = fill_plan.get("agent_next_call")
     return digest
 
 

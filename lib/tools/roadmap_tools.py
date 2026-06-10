@@ -125,9 +125,12 @@ def _dispatch(
     if act == "doctor":
         root = resolve_workspace_root(workspace)
         install = ensure_workspace_skills(root)
+        from plugins.dietcode.lib.agent.roadmap.doctor import format_doctor_report
+
         report = run_checks(workspace=root)
         report["skill_install"] = install
         report["action"] = "doctor"
+        report["report"] = format_doctor_report(workspace=root)
         return _finish_payload(act, report)
 
     if act == "cockpit":

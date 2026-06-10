@@ -649,6 +649,12 @@ def handle_dietcode_command(raw_args: str) -> Optional[str]:
                 except ImportError:
                     from lib.agent.roadmap.cockpit import format_cockpit_report
                 return format_cockpit_report()
+            if roadmap_sub == "doctor":
+                try:
+                    from plugins.dietcode.lib.agent.roadmap.doctor import format_doctor_report
+                except ImportError:
+                    from lib.agent.roadmap.doctor import format_doctor_report
+                return format_doctor_report()
             if roadmap_sub == "progress":
                 try:
                     from plugins.dietcode.lib.agent.roadmap.progress import format_progress_report, read_tail

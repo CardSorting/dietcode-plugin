@@ -222,3 +222,49 @@ def run_checks(*, workspace: Optional[str] = None) -> dict[str, Any]:
         "last_error": last_error or None,
         "recommendations": recommendations,
     }
+
+
+def format_doctor_report(*, workspace: Optional[str] = None) -> str:
+    """Human-readable roadmap doctor summary."""
+    data = run_checks(workspace=workspace)
+    lines = [
+        "🗺️ Roadmap doctor",
+        f"Workspace: {data.get('workspace') or '(unresolved)'}",
+    ]
+    if data.get("steering_brief"):
+        lines.append(f"Project: {data['steering_brief']}")
+    if data.get("stack_summary"):
+        lines.append(f"Stack: {data['stack_summary']}")
+    lines.append(f"Enabled: {data.get('enabled')}")
+    lines.append("")
+
+    for check in data.get("checks") or []:
+        mark = "✓" if check.get("ok") else "✕"
+        detail = check.get("detail") or ""
+        suffix = f" — {detail}" if detail and detail not in ("ok", "enabled", "disabled in config") else ""
+        lines.append(f"{mark} {check.get('name')}{suffix}")
+
+    digest = data.get("project_steering_digest") or {}
+    remaining = digest.get("bootstrap_remaining")
+    if remaining and int(remaining) > 0:
+        lines.append("")
+        lines.append(
+            f"Bootstrap fill: {remaining} phrase(s) — roadmap(action='apply_bootstrap_fill', context='write')"
+        )
+        sample = digest.get("sample_fill_task") or {}
+        if sample.get("template_phrase"):
+            lines.append(f"  sample: “{sample['template_phrase'][:50]}…”")
+
+    recs = data.get("recommendations") or []
+    if recs:
+        lines.append("")
+        lines.append("Recommendations:")
+        for rec in recs[:6]:
+            lines.append(f"  • {rec}")
+
+    next_rec = data.get("recommended_next_action") or {}
+    if next_rec.get("command"):
+        lines.append("")
+        lines.append(f"→ {next_rec['command']}")
+
+    return "\n".join(lines)

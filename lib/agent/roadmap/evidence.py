@@ -335,6 +335,14 @@ def extend_evidence(
         if not evidence.get("code_soup_audit"):
             evidence["code_soup_audit"] = assess_code_soup(root, heavy_scan=heavy)
 
+    if not evidence.get("project_fingerprint"):
+        try:
+            from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+            evidence["project_fingerprint"] = build_project_fingerprint(root)
+        except Exception:
+            evidence["project_fingerprint"] = {"steering_identity": root.name}
+
     return evidence
 
 

@@ -240,6 +240,28 @@ def main() -> int:
             failures.append("bootstrap_fill_plan missing now_suggestions")
         if not fill_plan.get("project_brief"):
             failures.append("bootstrap_fill_plan missing project_brief")
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import build_project_steering_digest
+
+        digest = build_project_steering_digest(fp, fill_plan=fill_plan)
+        if fill_plan.get("tasks") and not digest.get("agent_next_call"):
+            failures.append("steering digest missing agent_next_call")
+
+        from plugins.dietcode.lib.agent.roadmap.doctor import format_doctor_report, run_checks
+
+        dr = run_checks(workspace=str(root))
+        if not dr.get("recommended_next_action"):
+            failures.append("doctor missing recommended_next_action")
+        if "apply_bootstrap_fill" not in format_doctor_report(workspace=str(root)):
+            failures.append("doctor report missing bootstrap fill hint")
+
+        from plugins.dietcode.lib.agent.roadmap.evidence import extend_evidence
+
+        extended = extend_evidence(
+            {"workspace": str(root), "evidence_tier": "light", "git": evidence.get("git") or {}, "roadmap": evidence.get("roadmap") or {}},
+            tier="standard",
+        )
+        if not extended.get("project_fingerprint"):
+            failures.append("extend_evidence missing project_fingerprint")
 
         brief = session_brief(workspace=str(root))
         if not brief or not brief.get("roadmap_path"):

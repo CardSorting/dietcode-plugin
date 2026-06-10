@@ -152,6 +152,18 @@ def roadmap_write_hint(*, tool_name: str = "", args: Any = None, workspace: Opti
     elif project_brief:
         followup += " If bootstrap template phrases remain, preview roadmap(action='apply_bootstrap_fill') or apply with context='write'."
 
+    digest: dict[str, Any] = {}
+    if bootstrap_inc and check.get("allowed") and check.get("workspace"):
+        try:
+            from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
+            from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
+
+            steering = build_steering_context(workspace=check.get("workspace"))
+            attached = attach_bootstrap_steering_fields(steering, tier="light")
+            digest = attached.get("project_steering_digest") or {}
+        except Exception:
+            digest = {}
+
     next_action = (
         "roadmap(action='apply_bootstrap_fill', context='write') then roadmap(action='validate')"
         if bootstrap_inc
@@ -176,6 +188,8 @@ def roadmap_write_hint(*, tool_name: str = "", args: Any = None, workspace: Opti
         "roadmap_path": check.get("roadmap_path"),
         "expected_path": check.get("expected_path"),
         "project_steering_brief": project_brief,
+        "bootstrap_incomplete": bootstrap_inc,
+        "project_steering_digest": digest or None,
         "write_rejected": False,
     }
 

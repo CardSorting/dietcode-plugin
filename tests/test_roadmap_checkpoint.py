@@ -1126,6 +1126,46 @@ class RoadmapBootstrapFillTests(unittest.TestCase):
         )
         self.assertIn("Stale Project", report)
 
+    def test_steering_digest_includes_agent_next_call(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
+        from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Digest Call"), encoding="utf-8")
+            steering = build_steering_context(workspace=str(root))
+            attached = attach_bootstrap_steering_fields(steering, tier="light")
+            digest = attached.get("project_steering_digest") or {}
+            self.assertIn("apply_bootstrap_fill", digest.get("agent_next_call") or "")
+
+    def test_format_doctor_report_bootstrap_hint(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.doctor import format_doctor_report
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Doctor Report"), encoding="utf-8")
+            report = format_doctor_report(workspace=str(root))
+            self.assertIn("Roadmap doctor", report)
+            self.assertIn("apply_bootstrap_fill", report)
+
+    def test_native_bridge_write_hint_includes_digest(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.native_bridge import roadmap_write_hint
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Bridge Digest"), encoding="utf-8")
+            hint = roadmap_write_hint(
+                tool_name="write_file",
+                args={"path": "ROADMAP.md"},
+                workspace=str(root),
+            )
+            digest = hint.get("project_steering_digest") or {}
+            self.assertTrue(hint.get("bootstrap_incomplete"))
+            self.assertTrue(digest.get("bootstrap_remaining") or digest.get("sample_fill_task"))
+
 
 class RoadmapWorkspaceResolutionTests(unittest.TestCase):
     def setUp(self) -> None:
