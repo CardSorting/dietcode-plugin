@@ -174,18 +174,25 @@ def run_checks(*, workspace: Optional[str] = None) -> dict[str, Any]:
     )
 
     fill_plan = None
-    if bootstrap_inc and roadmap_path.is_file():
+    steering_digest = None
+    if roadmap_path.is_file():
         try:
             from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import (
                 build_bootstrap_fill_plan,
                 build_project_steering_digest,
             )
+            from plugins.dietcode.lib.agent.roadmap.evidence import gather_evidence
+            from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
 
             text = roadmap_path.read_text(encoding="utf-8", errors="replace")
-            evidence = {"project_fingerprint": dict(steering), "git": (snap.evidence or {}).get("git") or {}}
-            fill_plan = build_bootstrap_fill_plan(roadmap_text=text, evidence=evidence)
+            evidence = gather_evidence(root, tier="light", roadmap_text=text)
+            fp = evidence.get("project_fingerprint") or build_project_fingerprint(root)
+            if bootstrap_inc:
+                fill_plan = build_bootstrap_fill_plan(roadmap_text=text, evidence=evidence)
+            steering_digest = build_project_steering_digest(fp, fill_plan=fill_plan)
         except OSError:
             fill_plan = None
+            steering_digest = None
 
     if bootstrap_inc:
         count = gate_state.get("bootstrap_placeholder_count") or steering.get("bootstrap_placeholder_count")
@@ -207,11 +214,7 @@ def run_checks(*, workspace: Optional[str] = None) -> dict[str, Any]:
         "project_archetype": steering.get("project_archetype"),
         "stack_summary": steering.get("stack_summary"),
         "bootstrap_fill_plan": fill_plan,
-        "project_steering_digest": (
-            build_project_steering_digest(dict(steering), fill_plan=fill_plan)
-            if fill_plan
-            else None
-        ),
+        "project_steering_digest": steering_digest,
         "enabled": cfg.enabled,
         "checks": checks,
         "validation": validation.to_dict() if validation else None,
@@ -235,6 +238,10 @@ def format_doctor_report(*, workspace: Optional[str] = None) -> str:
         lines.append(f"Project: {data['steering_brief']}")
     if data.get("stack_summary"):
         lines.append(f"Stack: {data['stack_summary']}")
+    digest = data.get("project_steering_digest") or {}
+    verify_cmds = digest.get("verification_commands") or []
+    if verify_cmds:
+        lines.append(f"Verify: {', '.join(verify_cmds[:3])}")
     lines.append(f"Enabled: {data.get('enabled')}")
     lines.append("")
 

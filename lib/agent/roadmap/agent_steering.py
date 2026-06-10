@@ -48,6 +48,22 @@ def _project_context_lines(steering: dict[str, Any]) -> list[str]:
     if compose:
         lines.append(f"Compose: {', '.join(compose[:4])}")
 
+    packages = steering.get("workspace_packages") or []
+    if packages:
+        lines.append(f"Packages: {', '.join(packages[:4])}")
+
+    governance = steering.get("governance_files") or []
+    if governance:
+        lines.append(f"Governance: {', '.join(governance[:3])}")
+
+    ci = steering.get("ci_systems") or []
+    if ci:
+        lines.append(f"CI: {', '.join(ci[:2])}")
+
+    git_remote = steering.get("git_remote")
+    if git_remote:
+        lines.append(f"Origin: {git_remote}")
+
     docs_roots = steering.get("docs_roots") or []
     if docs_roots:
         lines.append(f"Docs: {', '.join(docs_roots[:3])}")

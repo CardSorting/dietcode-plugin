@@ -201,7 +201,7 @@ _GATE_CHECKS: tuple[GateCheck, ...] = (
         "label": "ROADMAP.md schema valid",
         "is_open": _check_schema_valid,
         "why_closed": "Schema validation failed — checkpoint pass incomplete",
-        "fix": "Edit ROADMAP.md, then roadmap(action='validate')",
+        "fix": "roadmap(action='validate') — use /roadmap explain-gate for schema fixes",
         "safe": True,
         "blocks_kanban_complete": False,
     },

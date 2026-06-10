@@ -218,6 +218,10 @@ def main() -> int:
             failures.append("fingerprint should detect Makefile targets")
         if "make verify" not in (fp.get("verification_commands") or []):
             failures.append("fingerprint missing make verify from Makefile targets")
+        (root / "SECURITY.md").write_text("# Security\n", encoding="utf-8")
+        fp_sec = build_project_fingerprint(root)
+        if "SECURITY.md" not in (fp_sec.get("governance_files") or []):
+            failures.append("fingerprint should detect SECURITY.md governance file")
         if fp.get("project_archetype") not in {"project", "library", "application", "web-app", "cli-tool", "hermes-plugin", "monorepo"}:
             failures.append(f"unexpected project_archetype: {fp.get('project_archetype')}")
         roadmap_text = (root / "ROADMAP.md").read_text(encoding="utf-8")
@@ -300,6 +304,12 @@ def main() -> int:
                 failures.append(f"bootstrap phrase unmapped (same text): {phrase[:60]}")
             if str(task.get("evidence_source") or "").startswith("manual"):
                 failures.append(f"bootstrap phrase manual-only: {phrase[:60]}")
+
+        hints = build_agent_operator_hints(workspace=str(root))
+        if not hints.get("project_steering_brief"):
+            failures.append("operator hints missing project_steering_brief")
+        if "make verify" not in (hints.get("verification_commands") or []):
+            failures.append("operator hints missing verification_commands")
 
         import json as _json
         from plugins.dietcode.lib.agent.roadmap.native_bridge import merge_roadmap_hint_into_result, roadmap_write_hint

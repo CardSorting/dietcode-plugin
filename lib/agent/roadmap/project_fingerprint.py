@@ -100,7 +100,9 @@ def _fingerprint_cache_token(root: Path) -> float:
         "renovate.json",
         ".github/dependabot.yml",
         "docker-compose.yml",
-        "compose.yml",
+        "pnpm-workspace.yaml",
+        "turbo.json",
+        "SECURITY.md",
     ):
         path = root / rel
         if path.is_file():
@@ -458,6 +460,45 @@ def _compose_services(root: Path) -> list[str]:
     return []
 
 
+def _governance_files(root: Path) -> list[str]:
+    found: list[str] = []
+    for rel in ("SECURITY.md", "CODE_OF_CONDUCT.md", ".editorconfig", "CHANGELOG.md"):
+        if (root / rel).is_file() and rel not in found:
+            found.append(rel)
+    if (root / "docs" / "adr").is_dir():
+        found.append("docs/adr")
+    return found[:6]
+
+
+def _workspace_packages(root: Path) -> list[str]:
+    packages: list[str] = []
+    pnpm_ws = root / "pnpm-workspace.yaml"
+    if pnpm_ws.is_file():
+        for line in _read_text(pnpm_ws, limit=2000).splitlines():
+            match = re.match(r'^\s*-\s*["\']?([^"\']+)["\']?', line)
+            if match:
+                name = match.group(1).strip()
+                if name and name not in packages:
+                    packages.append(name[:60])
+    data = _package_json(root)
+    workspaces = data.get("workspaces")
+    if isinstance(workspaces, list):
+        for item in workspaces:
+            if len(packages) >= 8:
+                break
+            name = str(item).strip()
+            if name and name not in packages:
+                packages.append(name[:60])
+    elif isinstance(workspaces, dict):
+        for item in workspaces.get("packages") or []:
+            if len(packages) >= 8:
+                break
+            name = str(item).strip()
+            if name and name not in packages:
+                packages.append(name[:60])
+    return packages[:8]
+
+
 def _catalog_metadata(root: Path) -> dict[str, Optional[str]]:
     catalog = root / "catalog-info.yaml"
     if not catalog.is_file():
@@ -594,6 +635,8 @@ def _build_project_fingerprint(root: Path) -> dict[str, Any]:
     runtime_versions = _runtime_versions(root)
     dependency_automation = _dependency_automation(root)
     compose_services = _compose_services(root)
+    governance_files = _governance_files(root)
+    workspace_packages = _workspace_packages(root)
     has_codeowners = (root / ".github" / "CODEOWNERS").is_file() or (root / "CODEOWNERS").is_file()
     verification_commands = _verification_commands(
         root,
@@ -674,6 +717,8 @@ def _build_project_fingerprint(root: Path) -> dict[str, Any]:
         "dependency_automation": dependency_automation or None,
         "has_codeowners": has_codeowners,
         "compose_services": compose_services or None,
+        "governance_files": governance_files or None,
+        "workspace_packages": workspace_packages or None,
         "has_backstage_catalog": has_backstage,
         "catalog_name": catalog_meta.get("catalog_name"),
         "catalog_description": catalog_meta.get("catalog_description"),

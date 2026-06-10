@@ -50,6 +50,18 @@ def _merge_steering_next_actions(
             if id_hint not in base and id_hint not in hints:
                 hints.append(id_hint)
 
+        ci = roadmap_brief.get("ci_systems") or []
+        if ci:
+            ci_hint = f"CI: {ci[0]}"
+            if ci_hint not in base and ci_hint not in hints:
+                hints.append(ci_hint)
+
+        git_remote = roadmap_brief.get("git_remote")
+        if git_remote:
+            origin_hint = f"Origin: {git_remote}"
+            if origin_hint not in base and origin_hint not in hints:
+                hints.append(origin_hint)
+
         stack = roadmap_brief.get("stack_summary")
         if stack:
             stack_hint = f"Stack: {stack}"

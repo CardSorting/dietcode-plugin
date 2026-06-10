@@ -214,7 +214,17 @@ def _fallback_replacement(phrase: str, *, fingerprint: dict[str, Any]) -> tuple[
         return f"Document project-specific detail for {brief} ({stack}).", "project_fingerprint.stack_summary"
     if brief:
         return f"Document project-specific detail for {brief}.", "project_fingerprint.steering_brief"
-    return phrase, "manual — review bootstrap_fill_plan.tasks"
+    entry = fingerprint.get("entry_points") or fingerprint.get("makefile_targets") or []
+    if entry:
+        return f"Align with project workflows via `{entry[0]}` and documented center of gravity.", "project_fingerprint.entry_points"
+    git_remote = fingerprint.get("git_remote")
+    if git_remote:
+        return f"Document project-specific detail for repository {git_remote}.", "project_fingerprint.git_remote"
+    archetype = fingerprint.get("project_archetype") or "project"
+    return (
+        f"Replace template guidance with {archetype}-specific steering from README and repo evidence.",
+        "project_fingerprint.project_archetype",
+    )
 
 
 def _architecture_hint(
@@ -510,6 +520,8 @@ def build_project_steering_digest(
         "license": fingerprint.get("license"),
         "runtime_versions": fingerprint.get("runtime_versions"),
         "compose_services": fingerprint.get("compose_services"),
+        "governance_files": fingerprint.get("governance_files") or [],
+        "workspace_packages": fingerprint.get("workspace_packages") or [],
         "has_codeowners": fingerprint.get("has_codeowners"),
         "dependency_automation": fingerprint.get("dependency_automation"),
         "has_backstage_catalog": fingerprint.get("has_backstage_catalog"),

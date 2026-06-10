@@ -1260,6 +1260,42 @@ class RoadmapBootstrapFillTests(unittest.TestCase):
             self.assertTrue(bootstrap)
             self.assertIn("Gate Test", bootstrap[0].get("why") or "")
 
+    def test_fingerprint_governance_and_workspace_packages(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "SECURITY.md").write_text("# Security\n", encoding="utf-8")
+            (root / "pnpm-workspace.yaml").write_text("packages:\n  - apps/web\n  - packages/ui\n", encoding="utf-8")
+            fp = build_project_fingerprint(root)
+            self.assertIn("SECURITY.md", fp.get("governance_files") or [])
+            self.assertIn("apps/web", fp.get("workspace_packages") or [])
+
+    def test_fallback_never_manual_source(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import build_bootstrap_fill_plan
+
+        plan = build_bootstrap_fill_plan(
+            roadmap_text="# Test\n\nTotally unknown custom phrase xyz.\n",
+            evidence={
+                "project_fingerprint": {"project_archetype": "library"},
+                "git": {},
+                "code_soup_audit": {},
+            },
+        )
+        task = (plan.get("tasks") or [{}])[0]
+        self.assertFalse(str(task.get("evidence_source") or "").startswith("manual"))
+
+    def test_operator_hints_include_project_brief(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.operator import build_agent_operator_hints
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Hint Project\n\nTagline.\n", encoding="utf-8")
+            (root / "Makefile").write_text(".PHONY: verify\nverify:\n\ttrue\n", encoding="utf-8")
+            hints = build_agent_operator_hints(workspace=str(root))
+            self.assertTrue(hints.get("project_steering_brief"))
+            self.assertIn("make verify", hints.get("verification_commands") or [])
+
 
 class RoadmapWorkspaceResolutionTests(unittest.TestCase):
     def setUp(self) -> None:

@@ -299,13 +299,33 @@ def build_agent_operator_hints(
             from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
 
             steering = build_steering_context(workspace=workspace)
+            if steering.get("steering_brief"):
+                hints["project_steering_brief"] = steering["steering_brief"]
+            verify_cmds = steering.get("verification_commands") or []
+            if verify_cmds:
+                hints["verification_commands"] = verify_cmds
             attached = attach_bootstrap_steering_fields(steering, tier="light")
+            digest = attached.get("project_steering_digest") or {}
+            if digest:
+                hints["project_steering_digest"] = digest
             plan = attached.get("bootstrap_fill_plan") or {}
             hint = format_bootstrap_fill_hint(plan)
             if hint:
                 hints["bootstrap_fill_hint"] = hint
                 if not hints.get("recovery_suggestion"):
                     hints["recovery_suggestion"] = hint
+        except Exception:
+            pass
+    elif workspace and str(workspace).strip():
+        try:
+            from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
+
+            steering = build_steering_context(workspace=workspace)
+            if steering.get("steering_brief"):
+                hints["project_steering_brief"] = steering["steering_brief"]
+            verify_cmds = steering.get("verification_commands") or []
+            if verify_cmds:
+                hints["verification_commands"] = verify_cmds
         except Exception:
             pass
     return hints
