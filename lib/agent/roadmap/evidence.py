@@ -421,6 +421,14 @@ def gather_evidence(
     except Exception:
         evidence["project_fingerprint"] = {"steering_identity": root.name}
 
+    if parsed_dict.get("exists") and (roadmap_text or "").strip():
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_completeness_metrics
+
+        metrics = bootstrap_completeness_metrics(roadmap_text)
+        parsed_dict["bootstrap_complete"] = metrics.get("bootstrap_complete")
+        parsed_dict["bootstrap_placeholder_count"] = metrics.get("bootstrap_placeholder_count")
+        evidence["roadmap"] = parsed_dict
+
     if do_todos or do_soup:
         from plugins.dietcode.lib.agent.roadmap.workspace_scan import get_heavy_scan
 

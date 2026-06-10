@@ -87,6 +87,11 @@ def validate_roadmap_write_target(
     except RoadmapWorkspaceError as exc:
         return {"ok": False, "allowed": False, "error": str(exc), "code": "workspace_unresolved"}
 
+    from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
+
+    steering = build_steering_context(workspace=root)
+    project_brief = steering.get("steering_brief") or steering.get("steering_identity")
+
     resolved, err = resolve_roadmap_write_path(write_path=write_path, workspace=root)
     if err:
         return {
@@ -105,6 +110,7 @@ def validate_roadmap_write_target(
         "workspace": root,
         "roadmap_path": str(resolved),
         "expected_path": str(roadmap_file_path(root)),
+        "project_steering_brief": project_brief,
     }
 
 
@@ -112,29 +118,36 @@ def roadmap_write_hint(*, tool_name: str = "", args: Any = None, workspace: Opti
     """Operator hints merged after ROADMAP.md mutations."""
     write_path = _normalized_path((args or {}).get("path"))
     check = validate_roadmap_write_target(write_path=write_path, workspace=workspace)
+    project_brief = check.get("project_steering_brief")
+    brief_bit = f" Project: {project_brief}." if project_brief else ""
 
     if not check.get("allowed"):
         return {
             "string_code": check.get("code") or "roadmap_write_rejected",
             "preferred_tool": "roadmap",
             "preferred_command": "roadmap(action='guide')",
-            "recovery_suggestion": check.get("error") or "Write ROADMAP.md only in the Hermes project workspace root.",
+            "recovery_suggestion": (check.get("error") or "Write ROADMAP.md only in the Hermes project workspace root.") + brief_bit,
             "suggested_slash_command": "/roadmap cockpit",
             "next_action": check.get("agent_next_call") or "Set HERMES_KANBAN_WORKSPACE to your project root",
             "source_tool": tool_name,
             "path": write_path,
             "workspace": check.get("workspace"),
             "expected_path": check.get("expected_path"),
+            "project_steering_brief": project_brief,
             "write_rejected": True,
         }
+
+    followup = (
+        f"ROADMAP.md was mutated — run schema validation before closing the checkpoint pass.{brief_bit}"
+    )
+    if project_brief:
+        followup += " If bootstrap template phrases remain, preview roadmap(action='apply_bootstrap_fill') or apply with context='write'."
 
     return {
         "string_code": "roadmap_write_followup",
         "preferred_tool": "roadmap",
         "preferred_command": "roadmap(action='validate')",
-        "recovery_suggestion": (
-            "ROADMAP.md was mutated — run schema validation before closing the checkpoint pass."
-        ),
+        "recovery_suggestion": followup,
         "suggested_slash_command": "/roadmap validate",
         "next_action": "roadmap(action='validate') then return checkpoint summary if pass complete",
         "source_tool": tool_name,
@@ -142,6 +155,7 @@ def roadmap_write_hint(*, tool_name: str = "", args: Any = None, workspace: Opti
         "workspace": check.get("workspace"),
         "roadmap_path": check.get("roadmap_path"),
         "expected_path": check.get("expected_path"),
+        "project_steering_brief": project_brief,
         "write_rejected": False,
     }
 

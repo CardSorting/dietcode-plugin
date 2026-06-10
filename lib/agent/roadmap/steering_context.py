@@ -144,6 +144,15 @@ _STEERING_PAYLOAD_KEYS: tuple[str, ...] = (
     "purpose_hint",
     "runtime_center_hint",
     "operators_hint",
+    "entry_points",
+    "license",
+    "git_remote",
+    "docs_roots",
+    "agent_rules_files",
+    "makefile_targets",
+    "has_backstage_catalog",
+    "catalog_name",
+    "catalog_description",
 )
 
 
@@ -163,4 +172,8 @@ def enrich_payload_with_steering(
             out[key] = steering[key]
     if steering.get("roadmap_path") and not out.get("roadmap_path"):
         out["roadmap_path"] = steering["roadmap_path"]
+    if steering.get("bootstrap_complete") is False and "bootstrap_fill_plan" not in out:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
+
+        out.update(attach_bootstrap_steering_fields(steering, tier="light"))
     return out

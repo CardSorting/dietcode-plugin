@@ -60,6 +60,15 @@ def main() -> int:
     if fill.get("phase") != "bootstrap_fill":
         failures.append("determine_phase bootstrap_fill mismatch")
 
+    rec_fill = recommend_next_action(
+        phase="bootstrap_fill",
+        roadmap_exists=True,
+        schema_valid=True,
+        bootstrap_incomplete=True,
+    )
+    if rec_fill.get("action") != "apply_bootstrap_fill":
+        failures.append(f"recommend_next_action bootstrap_fill: {rec_fill}")
+
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         (root / "README.md").write_text("# Operator smoke\n", encoding="utf-8")
@@ -129,6 +138,8 @@ def main() -> int:
                 failures.append("joyzoning context missing roadmap_checkpoint")
             if brief and brief.get("steering_line") and not ctx.get("roadmap_steering_line"):
                 failures.append("joyzoning context missing roadmap_steering_line")
+            if (brief or {}).get("project_steering_digest") and not ctx.get("project_steering_digest"):
+                failures.append("joyzoning context missing project_steering_digest")
         except ImportError:
             pass
 

@@ -35,6 +35,7 @@ ROADMAP_GUIDANCE = (
     "| `roadmap(action='checkpoint', context=…)` | Before editing ROADMAP.md — evidence + algorithm + pre-audit |\n"
     "| `roadmap(action='validate')` | After editing — confirm 12-section schema before finishing |\n"
     "| `roadmap(action='template')` | Bootstrap skeleton when ROADMAP.md is missing |\n"
+    "| `roadmap(action='apply_bootstrap_fill')` | Preview/write evidence autofill to resolve bootstrap placeholders |\n"
     "| `roadmap(action='doctor')` | Install skill + run production health checks |\n"
     "| `roadmap(action='progress')` | Operator activity summary (JSONL telemetry) |\n"
     "| `roadmap(action='progress', context='--current')` | Full progress + gate snapshot JSON |\n"
@@ -53,6 +54,8 @@ ROADMAP_GUIDANCE = (
     "Skill: `auto-rolling-roadmap` at `optional-skills/dietcode/auto-rolling-roadmap/SKILL.md`.\n"
     "Section 9 (Centralization & Code Soup Audit) is mandatory — use `code_soup_pre_audit` from checkpoint.\n"
     "Keep Now to 1–5 actionable items; finish with validate, then return checkpoint summary (not full file).\n"
+    "Per-project steering: every response may include `project_steering_digest`, `bootstrap_fill_plan`, and `bootstrap_autofill_preview`.\n"
+    "Bootstrap fill: use `tasks[].suggested_replacement` from checkpoint, or `roadmap(action='apply_bootstrap_fill', context='write')` to apply evidence replacements.\n"
 )
 
 JOYZONING_GUIDANCE = (

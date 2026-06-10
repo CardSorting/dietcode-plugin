@@ -371,6 +371,9 @@ def bootstrap_skeleton_from_evidence(evidence: dict[str, Any], *, workspace: str
         if ci:
             parts.append(f"CI: {ci[0]}")
         workflows = f"Preserve primary flows — {', '.join(parts)}; align roadmap checkpoints with README and recent commits."
+    make_targets = fingerprint.get("makefile_targets") or []
+    if make_targets and (not tests and not ci):
+        workflows = f"Preserve primary flows — make {', '.join(make_targets[:3])}."
     if not workflows:
         workflows = "Preserve primary agent and operator flows identified in README and recent commits."
 
@@ -399,6 +402,16 @@ def bootstrap_skeleton_from_evidence(evidence: dict[str, Any], *, workspace: str
     if fingerprint.get("steering_brief"):
         health_summary = f"Bootstrap for {fingerprint['steering_brief'][:160]}."
 
+    from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import format_now_section, suggest_now_items
+
+    now_items = suggest_now_items(evidence)
+    now_section = format_now_section(now_items)
+    checkpoint_next = (
+        "Review Now items — refine goals and demote anything not truly in motion."
+        if now_section
+        else "Populate Now with 1–3 evidence-backed items connected to center of gravity."
+    )
+
     return bootstrap_skeleton(
         project_hint=purpose or "Define from README and project evidence",
         strategic_narrative=narrative or purpose,
@@ -408,11 +421,22 @@ def bootstrap_skeleton_from_evidence(evidence: dict[str, Any], *, workspace: str
         runtime_center=runtime_center,
         anti_goals=anti_goals,
         health_summary=health_summary,
+        now_section=now_section,
+        checkpoint_next_move=checkpoint_next,
         code_soup_risk=soup_risk,
         centralization_recommendation=centralize or signal_summary or "Run code_soup_pre_audit and document canonical paths.",
         recent_git_summary=git_line,
         changed_files=git.get("changed_files_recent") or [],
     )
+
+
+def bootstrap_skeleton_from_evidence_autofilled(evidence: dict[str, Any], *, workspace: str = "") -> str:
+    """Evidence skeleton with autofill draft applied — fewer template phrases on first write."""
+    from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import apply_bootstrap_fill_draft
+
+    skeleton = bootstrap_skeleton_from_evidence(evidence, workspace=workspace)
+    draft = apply_bootstrap_fill_draft(skeleton, evidence)
+    return draft.get("preview_text") or skeleton
 
 
 def bootstrap_skeleton(
@@ -425,6 +449,8 @@ def bootstrap_skeleton(
     runtime_center: str = "",
     anti_goals: str = "",
     health_summary: str = "",
+    now_section: str = "",
+    checkpoint_next_move: str = "",
     code_soup_risk: str = "Low",
     centralization_recommendation: str = "",
     recent_git_summary: str = "",
@@ -446,6 +472,8 @@ def bootstrap_skeleton(
     centralize = centralization_recommendation.strip() or "Document canonical paths from code_soup_pre_audit."
     git_summary = recent_git_summary.strip() or "No recent git activity in evidence."
     drift_lines = "\n".join(f"- {f}" for f in (changed_files or [])[:8]) or "- None captured"
+    now_block = now_section.strip()
+    next_move = checkpoint_next_move.strip() or "Populate Now with 1–3 evidence-backed items connected to center of gravity."
     return f"""# ROADMAP.md
 
 ## 1. Project Center of Gravity
@@ -490,6 +518,8 @@ Clear center of gravity before feature sprawl.
 {narrative}
 
 ## 4. Now
+
+{now_block}
 
 ## 5. Next
 
@@ -579,7 +609,7 @@ Created initial ROADMAP.md from evidence.
 Populated from code_soup_pre_audit during bootstrap.
 
 **Recommended Next Move:**  
-Populate Now with 1–3 evidence-backed items connected to center of gravity.
+{next_move}
 
 ## 12. Archive
 """

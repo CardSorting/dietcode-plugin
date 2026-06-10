@@ -162,7 +162,7 @@ def build_progress_snapshot(*, workspace: Optional[str] = None) -> dict[str, Any
         bootstrap_incomplete=bootstrap_inc,
         last_error=last_err,
     )
-    return {
+    payload: dict[str, Any] = {
         "success": True,
         "ok": True,
         "workspace": root,
@@ -179,9 +179,18 @@ def build_progress_snapshot(*, workspace: Optional[str] = None) -> dict[str, Any
         "roadmap_gate": gate,
         "kanban_complete_allowed": gate.get("kanban_complete_allowed"),
         "recommended_next_action": next_rec,
+        "steering_identity": steering.get("steering_identity"),
+        "steering_brief": steering.get("steering_brief"),
+        "project_archetype": steering.get("project_archetype"),
+        "stack_summary": steering.get("stack_summary"),
         "last_error": last_err,
         "recent_events": summarize_recent_events(last=5),
     }
+    if bootstrap_inc:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
+
+        payload.update(attach_bootstrap_steering_fields(steering, tier="light"))
+    return payload
 
 
 _ERROR_RECOVERY: dict[str, dict[str, Any]] = {
@@ -321,9 +330,13 @@ def format_watch_report(*, workspace: Optional[str] = None) -> str:
     current = _current_for_workspace(snap.get("current") or {}, workspace)
     path_hint = snap.get("roadmap_path") or ""
     prefix = f" @ {path_hint}" if path_hint else ""
+    brief = snap.get("steering_brief") or snap.get("steering_identity")
     if not current:
         next_rec = snap.get("recommended_next_action") or {}
         hint = next_rec.get("command") or "/roadmap cockpit"
+        if brief:
+            brief_short = brief if len(brief) <= 48 else brief[:47] + "…"
+            return f"🗺️ ROADMAP{prefix} [{brief_short}] idle — next: {hint}"
         return f"🗺️ ROADMAP{prefix} … idle — next: {hint}"
 
     phase = current.get("phase") or "idle"

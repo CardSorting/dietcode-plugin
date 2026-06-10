@@ -1,6 +1,7 @@
 """Live agent steering — compact lines for prompts, session start, and operator watch."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Optional
 
 
@@ -30,6 +31,17 @@ def _project_context_lines(steering: dict[str, Any]) -> list[str]:
     tagline = steering.get("readme_tagline") or steering.get("package_description")
     if tagline and tagline not in (brief or ""):
         lines.append(f"Purpose: {_truncate(str(tagline), 140)}")
+
+    agent_rules = steering.get("agent_rules_files") or []
+    if agent_rules:
+        lines.append(f"Agent rules: {', '.join(agent_rules[:3])}")
+
+    make_targets = steering.get("makefile_targets") or []
+    if make_targets:
+        lines.append(f"Makefile: {', '.join(make_targets[:4])}")
+
+    if steering.get("has_backstage_catalog"):
+        lines.append("Backstage: catalog-info.yaml present")
 
     cog = steering.get("center_of_gravity_excerpt")
     if cog:
@@ -103,6 +115,28 @@ def format_agent_steering_line(*, workspace: Optional[str] = None) -> str:
             parts.append(
                 f"Bootstrap incomplete ({steering.get('bootstrap_placeholder_count', '?')} template phrase(s) remain)."
             )
+            try:
+                from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import build_bootstrap_fill_plan
+                from plugins.dietcode.lib.agent.roadmap.evidence import gather_evidence
+
+                root = steering.get("workspace")
+                if root:
+                    path = steering.get("roadmap_path")
+                    text = ""
+                    if path:
+                        try:
+                            text = Path(str(path)).read_text(encoding="utf-8", errors="replace")
+                        except OSError:
+                            pass
+                    evidence = gather_evidence(root, tier="light", roadmap_text=text)
+                    plan = build_bootstrap_fill_plan(roadmap_text=text, evidence=evidence)
+                    from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import format_bootstrap_fill_hint
+
+                    hint = format_bootstrap_fill_hint(plan)
+                    if hint:
+                        parts.append(hint)
+            except Exception:
+                pass
         return "\n".join(parts)
     except Exception as exc:
         return (
@@ -116,7 +150,12 @@ def build_live_steering_brief(*, workspace: Optional[str] = None) -> dict[str, A
     from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
 
     steering = build_steering_context(workspace=workspace)
-    return {
+    out: dict[str, Any] = {
         "steering_line": format_agent_steering_line(workspace=steering.get("workspace") or workspace) or None,
         **steering,
     }
+    if steering.get("bootstrap_complete") is False:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
+
+        out.update(attach_bootstrap_steering_fields(steering, tier="light"))
+    return out

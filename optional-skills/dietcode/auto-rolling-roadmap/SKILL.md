@@ -914,13 +914,15 @@ When the DietCode plugin is active:
 1. Call `roadmap(action='guide')` to learn phase, health, `_roadmap_operator_hints`, and `agent_next_call`.
 2. Call `roadmap(action='cockpit')` or `/roadmap cockpit` for a one-screen operator summary.
 3. Call `roadmap(action='checkpoint', context=…)` before editing `ROADMAP.md` — returns evidence, `code_soup_pre_audit`, and the 16-step algorithm.
-4. Call `roadmap(action='template')` when bootstrapping the first `ROADMAP.md`.
-5. After editing, call `roadmap(action='validate')` to confirm schema compliance before finishing.
-6. Call `roadmap(action='doctor')` to install the skill and run production health checks.
-7. Call `roadmap(action='evidence')` for a read-only evidence bundle.
-8. Call `roadmap(action='status')` to parse the current roadmap without mutating it.
-9. Call `roadmap(action='explain_gate')` or `/roadmap explain-gate` when schema or freshness gates block progress (kernel explain-gate analogue).
-10. Call `joyzoning(action='roadmap')` for a native cockpit brief inside governed sessions.
+4. Call `roadmap(action='template')` when bootstrapping the first `ROADMAP.md` — returns `project_steering_digest` and `bootstrap_autofill_preview`.
+5. When bootstrap template phrases remain, call `roadmap(action='apply_bootstrap_fill')` to preview evidence-backed replacements; pass `context='write'` to apply, then `roadmap(action='validate')`.
+6. Use `project_steering_digest` and `bootstrap_fill_plan.tasks[].suggested_replacement` for per-project fill — each task maps template text to README/git/fingerprint evidence.
+7. After editing, call `roadmap(action='validate')` to confirm schema compliance before finishing.
+8. Call `roadmap(action='doctor')` to install the skill and run production health checks.
+9. Call `roadmap(action='evidence')` for a read-only evidence bundle with `project_fingerprint`.
+10. Call `roadmap(action='status')` to parse the current roadmap without mutating it.
+11. Call `roadmap(action='explain_gate')` or `/roadmap explain-gate` when schema or freshness gates block progress (kernel explain-gate analogue).
+12. Call `joyzoning(action='roadmap')` for a native cockpit brief inside governed sessions.
 
 Workspace state persists at `.dietcode/roadmap-state.json` after each `validate` pass.
 

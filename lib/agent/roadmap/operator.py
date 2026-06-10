@@ -8,6 +8,7 @@ ACTION_CHECKPOINT = "run_checkpoint"
 ACTION_VALIDATE = "run_validate"
 ACTION_BOOTSTRAP = "bootstrap_roadmap"
 ACTION_BOOTSTRAP_FILL = "bootstrap_fill"
+ACTION_APPLY_BOOTSTRAP_FILL = "apply_bootstrap_fill"
 ACTION_REPAIR_SCHEMA = "repair_schema"
 ACTION_COHERENCE_RECOVERY = "coherence_recovery"
 ACTION_COCKPIT = "open_cockpit"
@@ -70,9 +71,12 @@ def recommend_next_action(
 
     if bootstrap_incomplete or phase == "bootstrap_fill":
         return {
-            "action": ACTION_BOOTSTRAP_FILL,
-            "command": "roadmap(action='checkpoint', context='fill bootstrap placeholders')",
-            "detail": "Replace template/bootstrap guidance with project-specific facts from evidence, then validate.",
+            "action": ACTION_APPLY_BOOTSTRAP_FILL,
+            "command": "roadmap(action='apply_bootstrap_fill', context='write')",
+            "detail": (
+                "Apply per-project evidence replacements to resolve bootstrap placeholders, then validate. "
+                "Preview first: roadmap(action='apply_bootstrap_fill')."
+            ),
         }
 
     if not roadmap_exists:
@@ -281,4 +285,22 @@ def build_agent_operator_hints(
         if blocking:
             hints["missing_gate"] = blocking[0].get("id")
             hints["recovery_suggestion"] = blocking[0].get("fix")
+    if bootstrap_inc and workspace and str(workspace).strip():
+        try:
+            from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import (
+                attach_bootstrap_steering_fields,
+                format_bootstrap_fill_hint,
+            )
+            from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
+
+            steering = build_steering_context(workspace=workspace)
+            attached = attach_bootstrap_steering_fields(steering, tier="light")
+            plan = attached.get("bootstrap_fill_plan") or {}
+            hint = format_bootstrap_fill_hint(plan)
+            if hint:
+                hints["bootstrap_fill_hint"] = hint
+                if not hints.get("recovery_suggestion"):
+                    hints["recovery_suggestion"] = hint
+        except Exception:
+            pass
     return hints

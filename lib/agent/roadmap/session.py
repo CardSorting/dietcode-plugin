@@ -1,6 +1,7 @@
 """Session-native roadmap brief — injected into JoyZoning context and session.start."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Optional
 
 from plugins.dietcode.lib.agent.roadmap.config import get_roadmap_config, resolve_workspace_root
@@ -39,7 +40,7 @@ def session_brief(*, workspace: Optional[str] = None) -> dict[str, Any] | None:
             gate=gate_state if isinstance(gate_state, dict) else None,
             workspace=str(root),
         )
-        return {
+        result = {
             "enabled": True,
             "success": True,
             "workspace": root,
@@ -52,6 +53,9 @@ def session_brief(*, workspace: Optional[str] = None) -> dict[str, Any] | None:
             "steering_brief": steering.get("steering_brief"),
             "stack_summary": steering.get("stack_summary"),
             "project_archetype": steering.get("project_archetype"),
+            "agent_rules_files": steering.get("agent_rules_files"),
+            "makefile_targets": steering.get("makefile_targets"),
+            "has_backstage_catalog": steering.get("has_backstage_catalog"),
             "readme_tagline": steering.get("readme_tagline"),
             "center_of_gravity_excerpt": steering.get("center_of_gravity_excerpt"),
             "health_status": steering.get("health_status") or status.get("health_status") or ws_state.get("health_status"),
@@ -75,6 +79,11 @@ def session_brief(*, workspace: Optional[str] = None) -> dict[str, Any] | None:
             "steering_line": format_agent_steering_line(workspace=str(root)),
             "_roadmap_operator_hints": hints,
         }
+        if steering.get("bootstrap_complete") is False:
+            from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
+
+            result.update(attach_bootstrap_steering_fields(steering, tier="light"))
+        return result
     except Exception as exc:
         return {"enabled": True, "success": False, "error": str(exc)}
 

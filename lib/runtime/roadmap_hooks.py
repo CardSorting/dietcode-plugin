@@ -15,6 +15,7 @@ _EVENT_BY_ACTION = {
     "doctor": "doctor",
     "cockpit": "cockpit",
     "template": "template",
+    "apply_bootstrap_fill": "apply_bootstrap_fill",
     "evidence": "evidence",
     "status": "status",
     "explain_gate": "explain_gate",

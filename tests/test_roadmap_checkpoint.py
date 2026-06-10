@@ -683,6 +683,142 @@ class RoadmapSteeringTests(unittest.TestCase):
         self.assertIn("FastAPI service root", skeleton)
         self.assertNotIn("Derived from README and config evidence during bootstrap.", skeleton)
 
+
+class RoadmapBootstrapFillTests(unittest.TestCase):
+    def test_bootstrap_fill_plan_maps_placeholders_to_evidence(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import build_bootstrap_fill_plan
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton_from_evidence
+
+        evidence = {
+            "readmes": [{"excerpt": "# Shop\n\nE-commerce API."}],
+            "git": {"recent_commits": ["feat: checkout flow"], "changed_files_recent": ["src/checkout.py"]},
+            "code_soup_audit": {"overall_risk": "Low", "centralization_recommendation": "Keep checkout in src/checkout."},
+            "project_fingerprint": {
+                "steering_brief": "Shop — E-commerce API.",
+                "purpose_hint": "E-commerce API.",
+                "operators_hint": "Store operators and integrators.",
+                "runtime_center_hint": "API service root with Docker deploy.",
+                "project_archetype": "web-app",
+                "test_frameworks": ["pytest"],
+                "entry_points": ["dev", "test"],
+            },
+        }
+        skeleton = bootstrap_skeleton_from_evidence(evidence, workspace="/tmp/shop")
+        plan = build_bootstrap_fill_plan(roadmap_text=skeleton, evidence=evidence)
+        self.assertGreater(plan["remaining_count"], 0)
+        self.assertTrue(plan["now_suggestions"])
+        tasks = plan["tasks"]
+        self.assertTrue(any("Evidence-backed initial audit" in t["template_phrase"] for t in tasks))
+        mapped = next(t for t in tasks if "Evidence-backed initial audit" in t["template_phrase"])
+        self.assertIn("checkout", mapped["suggested_replacement"].lower())
+        self.assertNotEqual(mapped["suggested_replacement"], mapped["template_phrase"])
+
+    def test_autofilled_skeleton_fewer_placeholders(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.schema import (
+            bootstrap_skeleton,
+            bootstrap_skeleton_from_evidence,
+            bootstrap_skeleton_from_evidence_autofilled,
+            find_bootstrap_placeholders,
+        )
+
+        evidence = {
+            "readmes": [{"excerpt": "# App\n\nDoes things."}],
+            "git": {"recent_commits": ["abc init"]},
+            "project_fingerprint": {
+                "steering_brief": "App — Does things.",
+                "purpose_hint": "Does things.",
+                "project_archetype": "library",
+            },
+        }
+        raw = bootstrap_skeleton_from_evidence(evidence, workspace="/tmp/app")
+        filled = bootstrap_skeleton_from_evidence_autofilled(evidence, workspace="/tmp/app")
+        self.assertLess(len(find_bootstrap_placeholders(filled)), len(find_bootstrap_placeholders(raw)))
+
+    def test_fingerprint_detects_agents_md(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "AGENTS.md").write_text("# Agent rules\n", encoding="utf-8")
+            fp = build_project_fingerprint(root)
+            self.assertIn("AGENTS.md", fp.get("agent_rules_files") or [])
+
+    def test_apply_bootstrap_fill_dry_run(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import write_bootstrap_autofill
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Dry Run\n\nTest project.\n", encoding="utf-8")
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Dry Run"), encoding="utf-8")
+            preview = write_bootstrap_autofill(workspace=str(root), dry_run=True)
+            self.assertTrue(preview.get("ok"))
+            self.assertFalse(preview.get("written"))
+            self.assertGreater((preview.get("bootstrap_autofill_preview") or {}).get("applied_count", 0), 0)
+
+    def test_fingerprint_entry_points_from_package_json(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "package.json").write_text(
+                '{"name":"demo","scripts":{"dev":"vite","test":"vitest run"}}',
+                encoding="utf-8",
+            )
+            fp = build_project_fingerprint(root)
+            self.assertIn("dev", fp.get("entry_points") or [])
+            self.assertIn("test", fp.get("entry_points") or [])
+
+    def test_apply_bootstrap_fill_draft_reduces_placeholders(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import apply_bootstrap_fill_draft, build_bootstrap_fill_plan
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton, find_bootstrap_placeholders
+
+        skeleton = bootstrap_skeleton(project_hint="Acme App")
+        evidence = {
+            "project_fingerprint": {
+                "steering_brief": "Acme App",
+                "purpose_hint": "Acme application platform.",
+                "operators_hint": "Platform operators.",
+                "runtime_center_hint": "Acme monorepo root.",
+                "project_archetype": "web-app",
+                "test_frameworks": ["pytest"],
+                "entry_points": ["dev", "test"],
+            },
+            "git": {"recent_commits": ["abc feat: launch"], "changed_files_recent": ["src/app.py"]},
+            "code_soup_audit": {"overall_risk": "Low", "centralization_recommendation": "Keep app entry in src/app.py."},
+        }
+        before = len(find_bootstrap_placeholders(skeleton))
+        draft = apply_bootstrap_fill_draft(skeleton, evidence)
+        after = draft.get("remaining_count", before)
+        self.assertGreater(draft.get("applied_count", 0), 0)
+        self.assertLess(after, before)
+
+    def test_bootstrap_fill_maps_all_placeholder_phrases(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import build_bootstrap_fill_plan
+        from plugins.dietcode.lib.agent.roadmap.schema import BOOTSTRAP_PLACEHOLDER_PHRASES, bootstrap_skeleton
+
+        skeleton = bootstrap_skeleton(project_hint="Coverage Test")
+        evidence = {
+            "readmes": [{"excerpt": "# Coverage Test\n\nFull coverage project."}],
+            "git": {"recent_commits": ["init"], "changed_files_recent": ["src/main.py"]},
+            "code_soup_audit": {"overall_risk": "Low", "centralization_recommendation": "Single src tree."},
+            "project_fingerprint": {
+                "steering_brief": "Coverage Test — Full coverage project.",
+                "purpose_hint": "Full coverage project.",
+                "operators_hint": "Engineering team.",
+                "runtime_center_hint": "Repo root.",
+                "project_archetype": "library",
+                "test_frameworks": ["pytest"],
+                "entry_points": ["test"],
+            },
+        }
+        plan = build_bootstrap_fill_plan(roadmap_text=skeleton, evidence=evidence)
+        mapped_phrases = {t["template_phrase"] for t in plan["tasks"]}
+        for phrase in BOOTSTRAP_PLACEHOLDER_PHRASES:
+            if phrase in skeleton:
+                self.assertIn(phrase, mapped_phrases)
+        manual = [t for t in plan["tasks"] if t["evidence_source"].startswith("manual")]
+        self.assertEqual(len(manual), 0)
     def test_steering_context_includes_identity_and_live_parse(self) -> None:
         from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
         from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
@@ -724,7 +860,124 @@ class RoadmapSteeringTests(unittest.TestCase):
             ):
                 report = run_checks(workspace=str(root))
             action = (report.get("recommended_next_action") or {}).get("action")
-            self.assertEqual(action, "bootstrap_fill")
+            self.assertEqual(action, "apply_bootstrap_fill")
+            self.assertIsNotNone(report.get("bootstrap_fill_plan"))
+            digest = report.get("project_steering_digest") or {}
+            self.assertTrue(digest.get("steering_brief") or digest.get("bootstrap_remaining") is not None)
+
+    def test_fingerprint_cache_returns_consistent_results(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import (
+            build_project_fingerprint,
+            invalidate_fingerprint_cache,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Cache Test\n", encoding="utf-8")
+            fp1 = build_project_fingerprint(root)
+            fp2 = build_project_fingerprint(root)
+            self.assertEqual(fp1.get("readme_title"), fp2.get("readme_title"))
+            (root / "README.md").write_text("# Cache Test Updated\n", encoding="utf-8")
+            invalidate_fingerprint_cache(root)
+            fp3 = build_project_fingerprint(root)
+            self.assertEqual(fp3.get("readme_title"), "Cache Test Updated")
+
+    def test_enrich_payload_with_bootstrap_context(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import enrich_payload_with_bootstrap_context
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Enrich Test\n", encoding="utf-8")
+            skeleton = bootstrap_skeleton(project_hint="Enrich Test")
+            evidence = {"project_fingerprint": {"steering_brief": "Enrich Test — library"}}
+            payload = enrich_payload_with_bootstrap_context(
+                {"action": "evidence"},
+                roadmap_text=skeleton,
+                evidence=evidence,
+            )
+            self.assertIn("bootstrap_fill_plan", payload)
+            self.assertIn("project_steering_digest", payload)
+            self.assertIn("bootstrap_autofill_preview", payload)
+
+    def test_agent_rules_excerpt_enriches_operators_hint(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "AGENTS.md").write_text(
+                "# Agents\n\nAlways run make verify before committing roadmap changes.\n",
+                encoding="utf-8",
+            )
+            fp = build_project_fingerprint(root)
+            self.assertIn("AGENTS.md", fp.get("agent_rules_files") or [])
+            self.assertIn("make verify", fp.get("operators_hint") or "")
+
+    def test_steering_digest_includes_agent_rules_and_sample_task(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
+        from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Digest Test\n", encoding="utf-8")
+            (root / "Makefile").write_text(".PHONY: verify test\nverify:\n\ttrue\n", encoding="utf-8")
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Digest Test"), encoding="utf-8")
+            steering = build_steering_context(workspace=str(root))
+            attached = attach_bootstrap_steering_fields(steering, tier="light")
+            digest = attached.get("project_steering_digest") or {}
+            self.assertIn("makefile_targets", digest)
+            self.assertIn("sample_fill_task", digest)
+
+    def test_explain_gate_includes_bootstrap_digest(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.explain_gate import build_explain_gate_payload
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Gate Test"), encoding="utf-8")
+            payload = build_explain_gate_payload(workspace=str(root))
+            self.assertIn("bootstrap_fill_plan", payload)
+            self.assertIn("project_steering_digest", payload)
+
+    def test_status_includes_bootstrap_digest(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.roadmap_checkpoint import status_snapshot
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Status Test"), encoding="utf-8")
+            payload = status_snapshot(workspace=str(root))
+            self.assertIn("bootstrap_fill_plan", payload)
+            self.assertIn("project_steering_digest", payload)
+
+    def test_checkpoint_recommends_apply_bootstrap_fill(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.roadmap_checkpoint import checkpoint_brief
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Checkpoint Test\n", encoding="utf-8")
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Checkpoint Test"), encoding="utf-8")
+            brief = checkpoint_brief(workspace=str(root))
+            self.assertIn(
+                "apply_bootstrap_fill",
+                (brief.get("bootstrap_fill_plan") or {}).get("agent_next_call") or "",
+            )
+
+    def test_catalog_metadata_in_fingerprint(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "catalog-info.yaml").write_text(
+                "apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: my-service\n  description: Core API service\n",
+                encoding="utf-8",
+            )
+            fp = build_project_fingerprint(root)
+            self.assertTrue(fp.get("has_backstage_catalog"))
+            self.assertEqual(fp.get("catalog_name"), "my-service")
+            self.assertIn("Core API", fp.get("catalog_description") or fp.get("purpose_hint") or "")
 
 
 class RoadmapWorkspaceResolutionTests(unittest.TestCase):

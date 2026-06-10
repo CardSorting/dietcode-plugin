@@ -67,8 +67,7 @@ def build_cockpit_payload(*, workspace: Optional[str] = None) -> dict[str, Any]:
         last_error=last_error or None,
     )
 
-    return clarity_envelope(
-        {
+    payload: dict[str, Any] = {
             "cockpit": True,
             "success": True,
             "ok": True,
@@ -113,9 +112,27 @@ def build_cockpit_payload(*, workspace: Optional[str] = None) -> dict[str, Any]:
             "progress_phase": current_progress.get("phase"),
             "last_error": last_error or None,
             "evidence_tier": evidence.get("evidence_tier"),
-        },
-        phase_info=phase_info,
-    )
+            "project_fingerprint": evidence.get("project_fingerprint"),
+    }
+    if bootstrap_inc:
+        from plugins.dietcode.lib.agent.roadmap.roadmap_checkpoint import _enrich_with_bootstrap_fill
+
+        roadmap_text = evidence.get("_roadmap_text") or ""
+        if not roadmap_text and roadmap_path.is_file():
+            try:
+                roadmap_text = roadmap_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                roadmap_text = ""
+        enriched: dict[str, Any] = {}
+        _enrich_with_bootstrap_fill(
+            enriched,
+            roadmap_text=roadmap_text,
+            evidence=evidence,
+            bootstrap_inc=True,
+        )
+        payload.update(enriched)
+
+    return clarity_envelope(payload, phase_info=phase_info)
 
 
 def format_cockpit_report(*, workspace: Optional[str] = None) -> str:
@@ -182,8 +199,21 @@ def format_cockpit_report(*, workspace: Optional[str] = None) -> str:
 
     if data.get("bootstrap_complete") is False and data.get("bootstrap_placeholder_count"):
         lines.append(
-            f"⚠️  Bootstrap placeholders: {data['bootstrap_placeholder_count']} — replace template text before closing pass"
+            f"⚠️  Bootstrap placeholders: {data['bootstrap_placeholder_count']} — "
+            "roadmap(action='apply_bootstrap_fill', context='write') before closing pass"
         )
+        fill_plan = data.get("bootstrap_fill_plan") or {}
+        if fill_plan.get("remaining_count"):
+            lines.append(
+                f"Fill plan: {fill_plan['remaining_count']} task(s) — roadmap(action='apply_bootstrap_fill') or checkpoint plan"
+            )
+        digest = data.get("project_steering_digest") or {}
+        agent_rules = digest.get("agent_rules_files") or data.get("project_fingerprint", {}).get("agent_rules_files") or []
+        if agent_rules:
+            lines.append(f"Agent rules: {', '.join(agent_rules[:3])}")
+        make_targets = digest.get("makefile_targets") or data.get("project_fingerprint", {}).get("makefile_targets") or []
+        if make_targets:
+            lines.append(f"Makefile targets: {', '.join(make_targets[:4])}")
     lines.append("")
     lines.append(data.get("operator_summary") or "")
     if data.get("progress_phase"):

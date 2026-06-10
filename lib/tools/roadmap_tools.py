@@ -15,6 +15,7 @@ _ACTIONS = frozenset({
     "cockpit",
     "validate",
     "template",
+    "apply_bootstrap_fill",
     "progress",
     "watch",
     "last_error",
@@ -81,6 +82,7 @@ def _dispatch(
         read_tail,
     )
     from plugins.dietcode.lib.agent.roadmap.roadmap_checkpoint import (
+        apply_bootstrap_fill_brief,
         checkpoint_brief,
         operational_status,
         status_snapshot,
@@ -98,16 +100,19 @@ def _dispatch(
 
     if act == "evidence":
         root = resolve_workspace_root(workspace)
+        bundle = evidence_mod.gather_evidence(
+            root,
+            context_hint=context,
+            user_request=user_request,
+        )
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import enrich_payload_with_bootstrap_context
+
         return _finish_payload(
             act,
-            {
-                **evidence_mod.gather_evidence(
-                    root,
-                    context_hint=context,
-                    user_request=user_request,
-                ),
-                "action": "evidence",
-            },
+            enrich_payload_with_bootstrap_context(
+                {**bundle, "action": "evidence"},
+                evidence=bundle,
+            ),
         )
 
     if act == "checkpoint":
@@ -133,6 +138,9 @@ def _dispatch(
 
     if act == "template":
         return template_brief(workspace=workspace)
+
+    if act == "apply_bootstrap_fill":
+        return apply_bootstrap_fill_brief(workspace=workspace, context=context)
 
     if act == "progress":
         root = resolve_workspace_root(workspace)
@@ -279,7 +287,7 @@ _SCHEMA = {
             "enum": sorted(_ACTIONS),
             "description": (
                 "guide=phase; checkpoint=evidence+algorithm; validate=schema; cockpit=summary; "
-                "progress/watch/last_error/explain_stale/explain_gate=operator observability"
+                "apply_bootstrap_fill=evidence autofill; progress/watch/last_error/explain_stale/explain_gate=operator observability"
             ),
         },
         "context": {

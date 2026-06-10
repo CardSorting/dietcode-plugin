@@ -71,6 +71,34 @@ _PACKAGE_MANAGER_MARKERS: tuple[tuple[str, str], ...] = (
     ("requirements.txt", "pip"),
 )
 
+_FP_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def invalidate_fingerprint_cache(workspace: str | Path) -> None:
+    _FP_CACHE.pop(str(Path(workspace).expanduser().resolve()), None)
+
+
+def _fingerprint_cache_token(root: Path) -> float:
+    token = 0.0
+    for rel in (
+        "README.md",
+        "package.json",
+        "pyproject.toml",
+        "plugin.yaml",
+        "Cargo.toml",
+        "go.mod",
+        "Makefile",
+        "AGENTS.md",
+        "catalog-info.yaml",
+    ):
+        path = root / rel
+        if path.is_file():
+            try:
+                token = max(token, path.stat().st_mtime)
+            except OSError:
+                continue
+    return token
+
 
 def _read_text(path: Path, *, limit: int = 8000) -> str:
     try:
@@ -178,6 +206,80 @@ def _readme_tagline(root: Path) -> Optional[str]:
     return None
 
 
+def _package_scripts(root: Path) -> list[str]:
+    scripts: list[str] = []
+    data = _package_json(root)
+    pkg_scripts = data.get("scripts")
+    if isinstance(pkg_scripts, dict):
+        for name in ("dev", "start", "build", "test", "lint"):
+            if name in pkg_scripts and name not in scripts:
+                scripts.append(name)
+        for name in sorted(pkg_scripts):
+            if name not in scripts and len(scripts) < 6:
+                scripts.append(name)
+
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file():
+        text = _read_text(pyproject)
+        for match in re.finditer(r'^\s*["\']([^"\']+)["\']\s*=', text, re.MULTILINE):
+            name = match.group(1)
+            if name not in scripts and len(scripts) < 8:
+                scripts.append(name)
+    return scripts[:8]
+
+
+def _license_label(root: Path) -> Optional[str]:
+    data = _package_json(root)
+    lic = str(data.get("license") or "").strip()
+    if lic:
+        return lic[:80]
+    for name in ("LICENSE", "LICENSE.md", "LICENSE.txt"):
+        if (root / name).is_file():
+            return name
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file():
+        match = re.search(r'^\s*license\s*=\s*["\'{]([^"\'}]+)', _read_text(pyproject), re.MULTILINE)
+        if match:
+            return match.group(1).strip()[:80]
+    return None
+
+
+def _git_remote_summary(root: Path) -> Optional[str]:
+    if not (root / ".git").is_dir():
+        return None
+    try:
+        import subprocess
+
+        proc = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=3.0,
+        )
+        if proc.returncode == 0 and (proc.stdout or "").strip():
+            url = proc.stdout.strip()
+            if url.startswith("git@"):
+                host = url.split("@", 1)[-1].split(":", 1)[0]
+                repo = url.split(":")[-1].replace(".git", "")
+                return f"{host}/{repo}"[:120]
+            return url.replace("https://", "").replace("http://", "").rstrip(".git")[:120]
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def _docs_roots(root: Path) -> list[str]:
+    found: list[str] = []
+    for rel in ("docs", "doc", "documentation", "wiki"):
+        if (root / rel).is_dir() and rel not in found:
+            found.append(rel)
+    for name in ("CONTRIBUTING.md", "docs/architecture.md", "ARCHITECTURE.md"):
+        if (root / name).is_file() and name not in found:
+            found.append(name)
+    return found[:6]
+
+
 def _detect_markers(root: Path, markers: tuple[tuple[str, str], ...], *, dir_ok: bool = False) -> list[str]:
     found: list[str] = []
     for rel, label in markers:
@@ -271,9 +373,94 @@ def _steering_brief(
     return " — ".join(bits) if len(bits) > 1 else bits[0]
 
 
+def _agent_rules_excerpt(root: Path) -> Optional[str]:
+    for rel in ("AGENTS.md", "CLAUDE.md", "docs/AGENTS.md"):
+        path = root / rel
+        if not path.is_file():
+            continue
+        lines = [
+            ln.strip()
+            for ln in _read_text(path, limit=2500).splitlines()
+            if ln.strip() and not ln.strip().startswith("#")
+        ]
+        for line in lines:
+            if len(line) >= 20:
+                return line[:200]
+        if lines:
+            return lines[0][:200]
+    return None
+
+
+def _agent_rules_files(root: Path) -> list[str]:
+    found: list[str] = []
+    for rel in (
+        "AGENTS.md",
+        "CLAUDE.md",
+        "docs/AGENTS.md",
+        "catalog-info.yaml",
+    ):
+        path = root / rel
+        if path.is_file() and rel not in found:
+            found.append(rel)
+    rules_dir = root / ".cursor" / "rules"
+    if rules_dir.is_dir():
+        for path in sorted(rules_dir.glob("*.md"))[:5]:
+            rel = f".cursor/rules/{path.name}"
+            if rel not in found:
+                found.append(rel)
+        if rules_dir.is_dir() and ".cursor/rules" not in found and not any(p.suffix == ".md" for p in rules_dir.glob("*.md")):
+            found.append(".cursor/rules")
+    return found[:8]
+
+
+def _catalog_metadata(root: Path) -> dict[str, Optional[str]]:
+    catalog = root / "catalog-info.yaml"
+    if not catalog.is_file():
+        return {}
+    text = _read_text(catalog, limit=4000)
+    meta: dict[str, Optional[str]] = {}
+    name = re.search(r"^\s*name:\s*(.+)$", text, re.MULTILINE)
+    if name:
+        meta["catalog_name"] = name.group(1).strip().strip("'\"")[:120]
+    desc = re.search(r"^\s*description:\s*(.+)$", text, re.MULTILINE)
+    if desc:
+        meta["catalog_description"] = desc.group(1).strip().strip("'\"")[:200]
+    return meta
+
+
+def _makefile_targets(root: Path) -> list[str]:
+    makefile = root / "Makefile"
+    if not makefile.is_file():
+        return []
+    targets: list[str] = []
+    for line in _read_text(makefile, limit=4000).splitlines():
+        stripped = line.strip()
+        if stripped.startswith(".PHONY:"):
+            for token in stripped.split(":", 1)[-1].split():
+                name = token.strip()
+                if name and name not in targets:
+                    targets.append(name)
+    for name in ("help", "test", "lint", "build", "deploy", "verify"):
+        if name not in targets and re.search(rf"^{re.escape(name)}\s*:", _read_text(makefile, limit=4000), re.MULTILINE):
+            targets.append(name)
+    return targets[:8]
+
+
 def build_project_fingerprint(workspace: str | Path) -> dict[str, Any]:
     """Return compact project identity signals for steering surfaces."""
     root = Path(workspace).expanduser().resolve()
+    key = str(root)
+    token = _fingerprint_cache_token(root)
+    cached = _FP_CACHE.get(key)
+    if cached is not None and cached[0] == token:
+        return dict(cached[1])
+
+    result = _build_project_fingerprint(root)
+    _FP_CACHE[key] = (token, result)
+    return dict(result)
+
+
+def _build_project_fingerprint(root: Path) -> dict[str, Any]:
     package = _package_name(root)
     readme_title = _readme_title(root)
     tagline = _readme_tagline(root)
@@ -287,6 +474,14 @@ def build_project_fingerprint(workspace: str | Path) -> dict[str, Any]:
     has_docker = (root / "Dockerfile").is_file() or (root / "docker-compose.yml").is_file()
     has_tests = bool(test_frameworks) or (root / "tests").is_dir() or (root / "test").is_dir()
     archetype = _detect_archetype(root, frameworks=frameworks, monorepo_tools=monorepo_tools)
+    entry_points = _package_scripts(root)
+    license_label = _license_label(root)
+    git_remote = _git_remote_summary(root)
+    docs_roots = _docs_roots(root)
+    agent_rules = _agent_rules_files(root)
+    makefile_targets = _makefile_targets(root)
+    has_backstage = (root / "catalog-info.yaml").is_file()
+    catalog_meta = _catalog_metadata(root) if has_backstage else {}
 
     display_name = readme_title or package or root.name
     stack_parts: list[str] = []
@@ -300,7 +495,7 @@ def build_project_fingerprint(workspace: str | Path) -> dict[str, Any]:
     if stack_parts:
         summary = f"{display_name} ({', '.join(stack_parts[:4])})"
 
-    purpose_hint = tagline or description or ""
+    purpose_hint = tagline or description or catalog_meta.get("catalog_description") or ""
     runtime_hint = ""
     if archetype == "hermes-plugin":
         runtime_hint = f"Hermes plugin workspace — ROADMAP.md at {root.name} root beside plugin.yaml"
@@ -311,7 +506,7 @@ def build_project_fingerprint(workspace: str | Path) -> dict[str, Any]:
     elif frameworks:
         runtime_hint = f"Primary stack: {', '.join(frameworks[:3])} — operational truth in repo config and entrypoints"
 
-    operators_hint = description or ""
+    operators_hint = description or _agent_rules_excerpt(root) or ""
     if not operators_hint and archetype == "hermes-plugin":
         operators_hint = "Hermes operators and agent-assisted developers extending the plugin surface"
 
@@ -344,4 +539,13 @@ def build_project_fingerprint(workspace: str | Path) -> dict[str, Any]:
         "purpose_hint": purpose_hint or None,
         "runtime_center_hint": runtime_hint or None,
         "operators_hint": operators_hint or None,
+        "entry_points": entry_points,
+        "license": license_label,
+        "git_remote": git_remote,
+        "docs_roots": docs_roots,
+        "agent_rules_files": agent_rules,
+        "makefile_targets": makefile_targets,
+        "has_backstage_catalog": has_backstage,
+        "catalog_name": catalog_meta.get("catalog_name"),
+        "catalog_description": catalog_meta.get("catalog_description"),
     }

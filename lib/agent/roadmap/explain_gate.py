@@ -13,6 +13,9 @@ from plugins.dietcode.lib.agent.roadmap.snapshot import get_workspace_snapshot
 def build_explain_gate_payload(*, workspace: Optional[str] = None) -> dict[str, Any]:
     root = resolve_workspace_root(workspace)
     snap = get_workspace_snapshot(root, tier="light")
+    from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
+
+    steering = build_steering_context(workspace=root)
     inputs = snap.gate_inputs
     gate = snap.gate_state
     closed, open_ids = evaluate_gate_checks(inputs)
@@ -28,6 +31,8 @@ def build_explain_gate_payload(*, workspace: Optional[str] = None) -> dict[str, 
         "success": bool(kanban_allowed),
         "ok": bool(kanban_allowed),
         "workspace": root,
+        "steering_brief": steering.get("steering_brief"),
+        "project_archetype": steering.get("project_archetype"),
         "gate": gate,
         "validation": validation,
         "checkpoint_freshness": freshness,
@@ -58,4 +63,8 @@ def build_explain_gate_payload(*, workspace: Optional[str] = None) -> dict[str, 
             else f"{len(closed)} gate(s) closed — see closed_gates and report"
         ),
     }
+    if inputs.get("bootstrap_complete") is False:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
+
+        payload.update(attach_bootstrap_steering_fields(steering, tier="light"))
     return clarity_envelope(payload)

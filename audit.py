@@ -81,6 +81,7 @@ _REQUIRED_RUNTIME_FILES: tuple[str, ...] = (
     "lib/agent/roadmap/session.py",
     "lib/agent/roadmap/steering_context.py",
     "lib/agent/roadmap/agent_steering.py",
+    "lib/agent/roadmap/bootstrap_fill.py",
     "lib/agent/roadmap/project_fingerprint.py",
     "lib/agent/roadmap/snapshot.py",
     "lib/agent/roadmap/roadmap_core.py",

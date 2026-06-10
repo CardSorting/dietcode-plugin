@@ -76,6 +76,9 @@ def run_checks(*, workspace: Optional[str] = None) -> dict[str, Any]:
         str(ws_skill) if ws_skill.is_file() else "not installed — session start or roadmap(action='doctor')",
     )
 
+    from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
+
+    steering = build_steering_context(workspace=root)
     snap = get_workspace_snapshot(root, tier="light")
     roadmap_path = Path(snap.roadmap_path)
     validation = snap.validation
@@ -170,6 +173,20 @@ def run_checks(*, workspace: Optional[str] = None) -> dict[str, Any]:
         last_error=last_error or None,
     )
 
+    fill_plan = None
+    if bootstrap_inc and roadmap_path.is_file():
+        try:
+            from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import (
+                build_bootstrap_fill_plan,
+                build_project_steering_digest,
+            )
+
+            text = roadmap_path.read_text(encoding="utf-8", errors="replace")
+            evidence = {"project_fingerprint": dict(steering), "git": (snap.evidence or {}).get("git") or {}}
+            fill_plan = build_bootstrap_fill_plan(roadmap_text=text, evidence=evidence)
+        except OSError:
+            fill_plan = None
+
     ok = all(c["ok"] for c in checks if c["name"] not in {"roadmap_present"})
     if not roadmap_path.is_file():
         ok = ok and cfg.enabled and skill_src.is_file()
@@ -179,6 +196,15 @@ def run_checks(*, workspace: Optional[str] = None) -> dict[str, Any]:
         "ok": ok,
         "workspace": root,
         "workspace_source": workspace_source,
+        "steering_brief": steering.get("steering_brief"),
+        "project_archetype": steering.get("project_archetype"),
+        "stack_summary": steering.get("stack_summary"),
+        "bootstrap_fill_plan": fill_plan,
+        "project_steering_digest": (
+            build_project_steering_digest(dict(steering), fill_plan=fill_plan)
+            if fill_plan
+            else None
+        ),
         "enabled": cfg.enabled,
         "checks": checks,
         "validation": validation.to_dict() if validation else None,

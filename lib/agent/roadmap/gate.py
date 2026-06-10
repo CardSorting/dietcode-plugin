@@ -227,7 +227,7 @@ _GATE_CHECKS: tuple[GateCheck, ...] = (
         "label": "Bootstrap placeholders filled",
         "is_open": _check_bootstrap_complete,
         "why_closed": "ROADMAP.md still contains unfilled bootstrap/template guidance phrases",
-        "fix": "roadmap(action='checkpoint', context='fill bootstrap placeholders') then validate",
+        "fix": "roadmap(action='apply_bootstrap_fill', context='write') then roadmap(action='validate')",
         "safe": True,
         "blocks_kanban_complete": False,
     },
@@ -292,7 +292,7 @@ def gate_state_from_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
     if ws_state.get("validation_pending"):
         preferred = "roadmap(action='validate')"
     elif inputs.get("bootstrap_complete") is False:
-        preferred = "roadmap(action='checkpoint', context='fill bootstrap placeholders')"
+        preferred = "roadmap(action='apply_bootstrap_fill', context='write')"
     elif freshness.get("stale"):
         preferred = "roadmap(action='checkpoint')"
     elif validation.get("valid") is False:

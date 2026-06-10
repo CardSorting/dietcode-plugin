@@ -56,6 +56,16 @@ def _merge_steering_next_actions(
             if stack_hint not in base and stack_hint not in hints:
                 hints.append(stack_hint)
 
+        digest = roadmap_brief.get("project_steering_digest") or {}
+        remaining = digest.get("bootstrap_remaining")
+        if remaining and int(remaining) > 0:
+            fill_hint = (
+                f"Bootstrap fill: {remaining} template phrase(s) — "
+                "roadmap(action='apply_bootstrap_fill') or checkpoint bootstrap_fill_plan"
+            )
+            if fill_hint not in base and fill_hint not in hints:
+                hints.append(fill_hint)
+
         steering_line = roadmap_brief.get("steering_line")
         if steering_line and steering_line not in base and steering_line not in hints:
             hints.append(steering_line)
@@ -65,8 +75,8 @@ def _merge_steering_next_actions(
                 hints.append(first_call)
             if phase == "bootstrap_fill":
                 fill_hint = (
-                    "roadmap(action='checkpoint', context='fill bootstrap placeholders') — "
-                    "replace template text with project evidence"
+                    "roadmap(action='apply_bootstrap_fill', context='write') — "
+                    "apply evidence-backed replacements to bootstrap template text"
                 )
                 if fill_hint not in base and fill_hint not in hints:
                     hints.append(fill_hint)
@@ -201,6 +211,8 @@ def build_operational_context(*, scope_id: str | None = None) -> dict[str, Any]:
         "kanban_complete_block_reason": gate_message or roadmap_gate_message,
         "roadmap_complete_block_reason": roadmap_gate_message,
         "roadmap_gate": roadmap_gate_state,
+        "roadmap_steering_line": (roadmap_brief or {}).get("steering_line"),
+        "project_steering_digest": (roadmap_brief or {}).get("project_steering_digest"),
         "scope_bindings": bindings,
         "active_mutation": active_mutation,
         "config": {

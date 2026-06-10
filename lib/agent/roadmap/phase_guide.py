@@ -27,6 +27,7 @@ The roadmap is the project's steering surface — not a backlog or wishlist.
 | Check schema health | /roadmap doctor or roadmap(action='doctor') |
 | Before major direction changes | roadmap(action='checkpoint') |
 | After agent edits ROADMAP.md | roadmap(action='validate') |
+| Bootstrap placeholders remain | roadmap(action='apply_bootstrap_fill', context='write') |
 | Closed gates / kanban blocked | /roadmap explain-gate |
 | Activity timeline | /roadmap progress --timeline |
 
@@ -37,14 +38,16 @@ Skill file: optional-skills/dietcode/auto-rolling-roadmap/SKILL.md
 AGENT_PLAYBOOK = """
 Roadmap autonomous loop (agents)
 
-1. roadmap(action='guide')       — phase, health, steering_line, _roadmap_operator_hints
-2. roadmap(action='checkpoint')  — evidence bundle + 16-step algorithm
-3. Edit ROADMAP.md at workspace root only — never ~/.hermes/plugins/dietcode
-4. roadmap(action='validate')    — confirm schema + bootstrap completeness before finishing
-5. roadmap(action='explain_gate') — when gates block kanban_complete or schema is unclear
-6. Return Required Final Assistant Response summary (not the full file)
+1. roadmap(action='guide')       — phase, health, steering_line, project_steering_digest, _roadmap_operator_hints
+2. roadmap(action='checkpoint')  — evidence bundle + bootstrap_fill_plan when placeholders remain
+3. roadmap(action='apply_bootstrap_fill') — preview/write per-project evidence autofill
+4. Edit ROADMAP.md at workspace root only — never ~/.hermes/plugins/dietcode
+5. roadmap(action='validate')    — confirm schema + bootstrap completeness before finishing
+6. roadmap(action='explain_gate') — when gates block kanban_complete or schema is unclear
+7. Return Required Final Assistant Response summary (not the full file)
 
 Every roadmap tool response includes steering_line and write_guard hints.
+Per-project identity lives in project_steering_digest and project_fingerprint.
 Prime directive: did the latest work strengthen or weaken center of gravity?
 Section 9 code soup audit is mandatory every pass. Keep Now ≤ 5 items.
 """.strip()
@@ -81,7 +84,7 @@ def determine_phase(
             "operator_summary": (
                 "ROADMAP.md exists but bootstrap template phrases remain — replace with project-specific evidence."
             ),
-            "agent_next_call": "roadmap(action='checkpoint', context='fill bootstrap placeholders')",
+            "agent_next_call": "roadmap(action='apply_bootstrap_fill', context='write')",
             "agent_blocked": False,
         }
 
