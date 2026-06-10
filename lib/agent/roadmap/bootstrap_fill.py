@@ -608,7 +608,9 @@ def write_bootstrap_autofill(
         from plugins.dietcode.lib.agent.roadmap.roadmap_core import invalidate_roadmap_core
         from plugins.dietcode.lib.agent.roadmap.snapshot import invalidate_snapshot
         from plugins.dietcode.lib.agent.roadmap.project_fingerprint import invalidate_fingerprint_cache
+        from plugins.dietcode.lib.agent.roadmap.workspace_state import record_file_mutation
 
+        record_file_mutation(root, tool="roadmap", path="ROADMAP.md")
         invalidate_roadmap_core(root)
         invalidate_snapshot(root)
         invalidate_fingerprint_cache(root)
@@ -617,6 +619,7 @@ def write_bootstrap_autofill(
 
     result["written"] = True
     result["applied_count"] = draft.get("applied_count")
+    result["validation_pending"] = True
     return result
 
 

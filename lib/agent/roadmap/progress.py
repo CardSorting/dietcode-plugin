@@ -266,8 +266,22 @@ def format_progress_report(
         return json.dumps(events, indent=2, ensure_ascii=False)
 
     current = read_current()
+    snap = build_progress_snapshot(workspace=workspace)
     if not current:
-        return "🗺️ Roadmap progress: idle (no roadmap tool activity this session)"
+        next_rec = snap.get("recommended_next_action") or {}
+        brief = snap.get("steering_brief") or snap.get("steering_identity")
+        lines = ["🗺️ Roadmap progress: idle (no roadmap tool activity this session)"]
+        if brief:
+            lines.append(f"Project: {brief}")
+        if next_rec.get("command"):
+            lines.append(f"Next: {next_rec['command']}")
+        digest = snap.get("project_steering_digest") or {}
+        remaining = digest.get("bootstrap_remaining")
+        if remaining and int(remaining) > 0:
+            lines.append(
+                f"Bootstrap fill: {remaining} phrase(s) — roadmap(action='apply_bootstrap_fill', context='write')"
+            )
+        return "\n".join(lines)
 
     phase = current.get("phase") or "idle"
     action = current.get("action") or "—"
@@ -287,7 +301,6 @@ def format_progress_report(
     if payload.get("valid") is False:
         lines.append("Schema: invalid — /roadmap explain-gate")
 
-    snap = build_progress_snapshot(workspace=workspace)
     next_rec = snap.get("recommended_next_action") or {}
     if next_rec.get("command"):
         lines.append(f"Next: {next_rec.get('command')}")
@@ -340,10 +353,13 @@ def format_watch_report(*, workspace: Optional[str] = None) -> str:
     if not current:
         next_rec = snap.get("recommended_next_action") or {}
         hint = next_rec.get("command") or "/roadmap cockpit"
+        digest = snap.get("project_steering_digest") or {}
+        remaining = digest.get("bootstrap_remaining")
+        fill_bit = f" fill={remaining}" if remaining and int(remaining) > 0 else ""
         if brief:
             brief_short = brief if len(brief) <= 48 else brief[:47] + "…"
-            return f"🗺️ ROADMAP{prefix} [{brief_short}] idle — next: {hint}"
-        return f"🗺️ ROADMAP{prefix} … idle — next: {hint}"
+            return f"🗺️ ROADMAP{prefix} [{brief_short}] idle{fill_bit} — next: {hint}"
+        return f"🗺️ ROADMAP{prefix} … idle{fill_bit} — next: {hint}"
 
     phase = current.get("phase") or "idle"
     action = current.get("action") or "guide"

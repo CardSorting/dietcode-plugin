@@ -391,6 +391,17 @@ def _agent_rules_excerpt(root: Path) -> Optional[str]:
     return None
 
 
+def _contributing_excerpt(root: Path) -> Optional[str]:
+    path = root / "CONTRIBUTING.md"
+    if not path.is_file():
+        return None
+    for line in _read_text(path, limit=2000).splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and len(stripped) >= 20:
+            return stripped[:200]
+    return None
+
+
 def _agent_rules_files(root: Path) -> list[str]:
     found: list[str] = []
     for rel in (
@@ -506,7 +517,7 @@ def _build_project_fingerprint(root: Path) -> dict[str, Any]:
     elif frameworks:
         runtime_hint = f"Primary stack: {', '.join(frameworks[:3])} — operational truth in repo config and entrypoints"
 
-    operators_hint = description or _agent_rules_excerpt(root) or ""
+    operators_hint = description or _agent_rules_excerpt(root) or _contributing_excerpt(root) or ""
     if not operators_hint and archetype == "hermes-plugin":
         operators_hint = "Hermes operators and agent-assisted developers extending the plugin surface"
 

@@ -208,6 +208,9 @@ def _dispatch(
             git_commits=((snap.evidence.get("git") or {}).get("recent_commits") or []),
             schema_valid=snap.validation.valid if snap.validation else None,
         )
+        from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
+
+        steering = build_steering_context(workspace=root)
         return _finish_payload(
             act,
             enrich_payload_with_steering(
@@ -215,7 +218,10 @@ def _dispatch(
                     "action": "explain_stale",
                     "freshness": fresh,
                     "checkpoint_freshness": fresh,
-                    "report": format_explain_stale_report(fresh),
+                    "report": format_explain_stale_report(
+                        fresh,
+                        steering_brief=steering.get("steering_brief"),
+                    ),
                     "success": not bool(fresh.get("stale")),
                     "ok": not bool(fresh.get("stale")),
                 },

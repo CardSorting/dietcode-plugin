@@ -1053,6 +1053,79 @@ class RoadmapBootstrapFillTests(unittest.TestCase):
             payload = build_explain_gate_payload(workspace=str(root))
             self.assertIn("apply_bootstrap_fill", payload.get("report") or "")
 
+    def test_autofill_write_marks_validation_pending(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import write_bootstrap_autofill
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+        from plugins.dietcode.lib.agent.roadmap.workspace_state import read_state
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Autofill Pending\n\nPurpose line.\n", encoding="utf-8")
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Autofill Pending"), encoding="utf-8")
+            result = write_bootstrap_autofill(workspace=str(root), dry_run=False)
+            if result.get("written"):
+                state = read_state(root)
+                self.assertTrue(state.get("validation_pending"))
+
+    def test_doctor_recommends_bootstrap_autofill(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.doctor import run_checks
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Doctor Fill"), encoding="utf-8")
+            with mock.patch(
+                "plugins.dietcode.lib.agent.roadmap.doctor.read_last_error",
+                return_value={},
+            ):
+                report = run_checks(workspace=str(root))
+            recs = report.get("recommendations") or []
+            self.assertTrue(any("apply_bootstrap_fill" in r for r in recs))
+
+    def test_contributing_excerpt_in_fingerprint(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "CONTRIBUTING.md").write_text(
+                "# Contributing\n\nRun make verify before opening a pull request.\n",
+                encoding="utf-8",
+            )
+            fp = build_project_fingerprint(root)
+            self.assertIn("make verify", fp.get("operators_hint") or "")
+
+    def test_steering_context_agent_next_call_bootstrap_fill(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+        from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Steering Next"), encoding="utf-8")
+            ctx = build_steering_context(workspace=str(root))
+            self.assertIn("apply_bootstrap_fill", ctx.get("agent_next_call") or "")
+
+    def test_apply_bootstrap_fill_write_includes_recommended_action(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.roadmap_checkpoint import apply_bootstrap_fill_brief
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Apply Rec\n\nPurpose.\n", encoding="utf-8")
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Apply Rec"), encoding="utf-8")
+            payload = apply_bootstrap_fill_brief(workspace=str(root), context="write")
+            if payload.get("written"):
+                self.assertIn("recommended_next_action", payload)
+                self.assertIn("validation", payload)
+
+    def test_explain_stale_report_includes_project(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.freshness import format_explain_stale_report
+
+        report = format_explain_stale_report(
+            {"stale": True, "reason": "test", "summary": "stale test", "recommended_action": "checkpoint"},
+            steering_brief="Stale Project — library",
+        )
+        self.assertIn("Stale Project", report)
+
 
 class RoadmapWorkspaceResolutionTests(unittest.TestCase):
     def setUp(self) -> None:

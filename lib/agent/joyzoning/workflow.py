@@ -92,7 +92,14 @@ def _merge_steering_next_actions(
                 hints.append(stale_hint)
 
         gates = (roadmap_brief.get("recommended_next_action") or {}).get("action")
-        if gates in {"repair_schema", "explain_stale"}:
+        if gates in {"apply_bootstrap_fill", "bootstrap_fill"}:
+            fill_hint = (
+                roadmap_brief.get("first_call")
+                or "roadmap(action='apply_bootstrap_fill', context='write') — apply evidence-backed bootstrap fill"
+            )
+            if fill_hint not in base and fill_hint not in hints:
+                hints.append(fill_hint)
+        elif gates in {"repair_schema", "explain_stale"}:
             gate_hint = roadmap_brief.get("first_call") or "roadmap(action='explain_gate')"
             if gate_hint not in base and gate_hint not in hints:
                 hints.append(gate_hint)

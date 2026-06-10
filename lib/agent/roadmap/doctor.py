@@ -187,6 +187,13 @@ def run_checks(*, workspace: Optional[str] = None) -> dict[str, Any]:
         except OSError:
             fill_plan = None
 
+    if bootstrap_inc:
+        count = gate_state.get("bootstrap_placeholder_count") or steering.get("bootstrap_placeholder_count")
+        recommendations.append(
+            f"Bootstrap fill: {count or '?'} template phrase(s) — "
+            "roadmap(action='apply_bootstrap_fill', context='write') then validate"
+        )
+
     ok = all(c["ok"] for c in checks if c["name"] not in {"roadmap_present"})
     if not roadmap_path.is_file():
         ok = ok and cfg.enabled and skill_src.is_file()

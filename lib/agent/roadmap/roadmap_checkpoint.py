@@ -271,7 +271,13 @@ def checkpoint_brief(
         "agent_next_call": (
             (status.get("recommended_next_action") or {}).get("command")
             or status.get("agent_next_call")
-            or "Edit ROADMAP.md per skill, then roadmap(action='validate'), then return checkpoint summary."
+            or (
+                "roadmap(action='apply_bootstrap_fill', context='write')"
+                if status.get("phase") == "bootstrap_fill"
+                else "roadmap(action='checkpoint')"
+                if not evidence.get("roadmap", {}).get("exists")
+                else "Edit ROADMAP.md per skill, then roadmap(action='validate'), then return checkpoint summary."
+            )
         ),
     }
     if not evidence.get("roadmap", {}).get("exists"):
@@ -474,12 +480,24 @@ def apply_bootstrap_fill_brief(
     }
     if result.get("written"):
         validated = validate_roadmap(workspace=root)
-        payload["validation"] = validated.get("validation")
-        payload["phase"] = validated.get("phase")
+        payload.update({
+            "validation": validated.get("validation"),
+            "phase": validated.get("phase"),
+            "recommended_next_action": validated.get("recommended_next_action"),
+            "bootstrap_fill_plan": validated.get("bootstrap_fill_plan"),
+            "project_steering_digest": validated.get("project_steering_digest") or payload.get("project_steering_digest"),
+            "bootstrap_completeness": validated.get("bootstrap_completeness"),
+        })
+        valid = (validated.get("validation") or {}).get("valid")
+        remaining = (validated.get("bootstrap_completeness") or {}).get("bootstrap_placeholder_count")
         payload["operator_summary"] = (
-            f"Applied {result.get('applied_count', 0)} evidence replacement(s) — review and validate."
+            f"Applied {result.get('applied_count', 0)} evidence replacement(s); schema {'valid' if valid else 'invalid'}."
+            + (f" {remaining} bootstrap phrase(s) remain." if remaining else " Bootstrap fill complete.")
         )
-        payload["agent_next_call"] = "roadmap(action='validate')"
+        payload["agent_next_call"] = (
+            (validated.get("recommended_next_action") or {}).get("command")
+            or "roadmap(action='validate')"
+        )
     elif dry_run:
         payload["operator_summary"] = result.get("operator_summary") or "Autofill preview — pass context='write' to apply."
         payload["agent_next_call"] = "roadmap(action='apply_bootstrap_fill', context='write') to write preview_text"

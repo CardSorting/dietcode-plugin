@@ -89,6 +89,26 @@ def build_steering_context(*, workspace: Optional[str] = None) -> dict[str, Any]
     except Exception:
         fingerprint = {"steering_identity": root.name}
 
+    agent_next_call = (
+        "roadmap(action='guide')"
+        if workspace_safe
+        else "Configure HERMES_KANBAN_WORKSPACE before editing ROADMAP.md"
+    )
+    if workspace_safe and roadmap_fields.get("bootstrap_complete") is False and path.is_file():
+        from plugins.dietcode.lib.agent.roadmap.operator import recommend_next_action
+
+        next_rec = recommend_next_action(
+            phase="bootstrap_fill",
+            roadmap_exists=True,
+            bootstrap_incomplete=True,
+        )
+        agent_next_call = next_rec.get("command") or agent_next_call
+    elif workspace_safe and not path.is_file():
+        from plugins.dietcode.lib.agent.roadmap.operator import recommend_next_action
+
+        next_rec = recommend_next_action(roadmap_exists=False)
+        agent_next_call = next_rec.get("command") or agent_next_call
+
     return {
         "ok": workspace_safe,
         "workspace": root,
@@ -103,11 +123,7 @@ def build_steering_context(*, workspace: Optional[str] = None) -> dict[str, Any]
             if workspace_safe
             else "Point Hermes workspace at your project — ROADMAP.md must not live in the plugin install tree"
         ),
-        "agent_next_call": (
-            "roadmap(action='guide')"
-            if workspace_safe
-            else "Configure HERMES_KANBAN_WORKSPACE before editing ROADMAP.md"
-        ),
+        "agent_next_call": agent_next_call,
     }
 
 

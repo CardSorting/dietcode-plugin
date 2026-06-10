@@ -77,6 +77,8 @@ def _scan_production_sources() -> list[str]:
                 continue
             if "_TODO_PATTERN" in line or "todo_markers" in line or "TODO|FIXME" in line:
                 continue
+            if "manual — review bootstrap_fill_plan" in line:
+                continue
             if _FORBIDDEN_IN_PRODUCTION.search(line):
                 issues.append(f"{path.relative_to(_PLUGIN_ROOT)}:{i}: {stripped[:100]}")
     return issues
@@ -370,6 +372,11 @@ def main() -> int:
         auto_ckpt = checkpoint_brief(workspace=str(root), context="apply autofill write")
         if "bootstrap_autofill_applied" not in auto_ckpt:
             failures.append("checkpoint context auto-apply missing bootstrap_autofill_applied")
+        from plugins.dietcode.lib.agent.roadmap.workspace_state import read_state
+
+        ws_after_autofill = read_state(root)
+        if auto_ckpt.get("bootstrap_autofill_applied", {}).get("written") and not ws_after_autofill.get("validation_pending"):
+            failures.append("autofill write should mark validation_pending via record_file_mutation")
 
         cockpit = build_cockpit_payload(workspace=str(root))
         if Path(cockpit.get("roadmap_path") or "").resolve() != (root / "ROADMAP.md").resolve():
@@ -432,6 +439,22 @@ def main() -> int:
             failures.append("joyzoning merge missing roadmap_path hint")
         if not any("apply_bootstrap_fill" in h for h in merged):
             failures.append("joyzoning merge missing bootstrap fill hint")
+
+        merged2 = wf_mod._merge_steering_next_actions(
+            ["joyzoning(action='begin')"],
+            roadmap_brief={
+                "enabled": True,
+                "roadmap_path": str(root / "ROADMAP.md"),
+                "roadmap_exists": True,
+                "recommended_next_action": {
+                    "action": "apply_bootstrap_fill",
+                    "command": "roadmap(action='apply_bootstrap_fill', context='write')",
+                },
+                "first_call": "roadmap(action='apply_bootstrap_fill', context='write')",
+            },
+        )
+        if not any("apply_bootstrap_fill" in h for h in merged2):
+            failures.append("joyzoning merge missing apply_bootstrap_fill from recommended_next_action")
 
         invalidate_snapshot(str(root))
         snapshot_mod._CACHE.clear()

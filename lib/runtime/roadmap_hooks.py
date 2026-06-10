@@ -239,9 +239,14 @@ def _post_tool_call(
         mutate_payload = {
             "tool": tool_name,
             "path": mutate_path,
-            "followup": "roadmap(action='validate')",
+            "followup": (
+                "roadmap(action='apply_bootstrap_fill', context='write') then roadmap(action='validate')"
+                if check.get("bootstrap_incomplete")
+                else "roadmap(action='validate')"
+            ),
             "write_allowed": check.get("allowed", True),
             "expected_path": check.get("expected_path"),
+            "bootstrap_incomplete": check.get("bootstrap_incomplete"),
         }
         if not check.get("allowed"):
             mutate_payload["write_rejected"] = True

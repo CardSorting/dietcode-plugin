@@ -79,13 +79,21 @@ def assess_checkpoint_freshness(
     }
 
 
-def format_explain_stale_report(freshness: dict[str, Any]) -> str:
+def format_explain_stale_report(
+    freshness: dict[str, Any],
+    *,
+    steering_brief: Optional[str] = None,
+) -> str:
     lines = [
         "🗺️ Roadmap checkpoint freshness",
+    ]
+    if steering_brief:
+        lines.append(f"Project: {steering_brief}")
+    lines.extend([
         f"Stale: {freshness.get('stale')}",
         f"Reason: {freshness.get('reason')}",
         freshness.get("summary") or "",
-    ]
+    ])
     if freshness.get("days_since_checkpoint") is not None:
         lines.append(f"Days since checkpoint: {freshness['days_since_checkpoint']}")
     lines.append(f"Git commits since checkpoint: {freshness.get('git_commits_since_checkpoint')}")
