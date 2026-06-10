@@ -286,7 +286,9 @@ def main() -> int:
         if not (brief or {}).get("steering_line"):
             failures.append("session_brief missing steering_line")
         if not (brief or {}).get("project_steering_digest"):
-            failures.append("session_brief missing project_steering_digest when bootstrap incomplete")
+            failures.append("session_brief missing project_steering_digest")
+        if not ((brief or {}).get("project_steering_digest") or {}).get("identity_line"):
+            failures.append("session_brief digest missing identity_line")
 
         from plugins.dietcode.lib.agent.roadmap.schema import BOOTSTRAP_PLACEHOLDER_PHRASES
 
@@ -317,6 +319,8 @@ def main() -> int:
         hints = build_agent_operator_hints(workspace=str(root))
         if not hints.get("project_steering_brief"):
             failures.append("operator hints missing project_steering_brief")
+        if not hints.get("project_identity_line"):
+            failures.append("operator hints missing project_identity_line")
         if "make verify" not in (hints.get("verification_commands") or []):
             failures.append("operator hints missing verification_commands")
 
@@ -443,6 +447,8 @@ def main() -> int:
         op_status = operational_status(workspace=str(root))
         if not op_status.get("project_steering_digest"):
             failures.append("guide/operational_status missing project_steering_digest")
+        if not (op_status.get("project_steering_digest") or {}).get("identity_line"):
+            failures.append("guide missing identity_line in digest")
 
         preview_fill = apply_bootstrap_fill_brief(workspace=str(root), context="preview")
         if preview_fill.get("action") != "apply_bootstrap_fill":
@@ -479,6 +485,8 @@ def main() -> int:
         cockpit = build_cockpit_payload(workspace=str(root))
         if Path(cockpit.get("roadmap_path") or "").resolve() != (root / "ROADMAP.md").resolve():
             failures.append("cockpit roadmap_path not under workspace")
+        if not (cockpit.get("project_steering_digest") or {}).get("identity_line"):
+            failures.append("cockpit missing identity_line in digest")
         if not cockpit.get("steering_line"):
             failures.append("cockpit payload missing steering_line")
         report = format_cockpit_report(workspace=str(root))

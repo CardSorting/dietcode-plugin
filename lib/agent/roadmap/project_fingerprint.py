@@ -91,6 +91,8 @@ def _fingerprint_cache_token(root: Path) -> float:
         "AGENTS.md",
         "CONTRIBUTING.md",
         "catalog-info.yaml",
+        ".cursorrules",
+        "DIRECTIONS.md",
         ".nvmrc",
         ".node-version",
         ".python-version",
@@ -434,6 +436,8 @@ def _agent_rules_files(root: Path) -> list[str]:
     for rel in (
         "AGENTS.md",
         "CLAUDE.md",
+        "DIRECTIONS.md",
+        ".cursorrules",
         "docs/AGENTS.md",
         "catalog-info.yaml",
     ):

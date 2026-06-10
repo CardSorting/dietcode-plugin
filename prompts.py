@@ -54,7 +54,8 @@ ROADMAP_GUIDANCE = (
     "Skill: `auto-rolling-roadmap` at `optional-skills/dietcode/auto-rolling-roadmap/SKILL.md`.\n"
     "Section 9 (Centralization & Code Soup Audit) is mandatory — use `code_soup_pre_audit` from checkpoint.\n"
     "Keep Now to 1–5 actionable items; finish with validate, then return checkpoint summary (not full file).\n"
-    "Per-project steering: every response may include `project_steering_digest`, `bootstrap_fill_plan`, and `bootstrap_autofill_preview`.\n"
+    "Per-project steering: every response includes `project_steering_digest` with `identity_line` (brief, stack, verify command).\n"
+    "When bootstrap placeholders remain: `bootstrap_fill_plan`, `bootstrap_autofill_preview`, and `roadmap(action='apply_bootstrap_fill')`.\n"
     "Bootstrap fill: use `tasks[].suggested_replacement` from checkpoint, or `roadmap(action='apply_bootstrap_fill', context='write')` to apply evidence replacements.\n"
 )
 

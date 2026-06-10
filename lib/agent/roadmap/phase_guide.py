@@ -47,7 +47,7 @@ Roadmap autonomous loop (agents)
 7. Return Required Final Assistant Response summary (not the full file)
 
 Every roadmap tool response includes steering_line and write_guard hints.
-Per-project identity lives in project_steering_digest and project_fingerprint.
+Per-project identity lives in project_steering_digest.identity_line, project_fingerprint, and bootstrap_fill_plan when placeholders remain.
 Prime directive: did the latest work strengthen or weaken center of gravity?
 Section 9 code soup audit is mandatory every pass. Keep Now ≤ 5 items.
 """.strip()

@@ -290,7 +290,7 @@ def build_agent_operator_hints(
         if blocking:
             hints["missing_gate"] = blocking[0].get("id")
             hints["recovery_suggestion"] = blocking[0].get("fix")
-    if bootstrap_inc and workspace and str(workspace).strip():
+    if workspace and str(workspace).strip():
         try:
             from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import (
                 attach_bootstrap_steering_fields,
@@ -308,24 +308,15 @@ def build_agent_operator_hints(
             digest = attached.get("project_steering_digest") or {}
             if digest:
                 hints["project_steering_digest"] = digest
-            plan = attached.get("bootstrap_fill_plan") or {}
-            hint = format_bootstrap_fill_hint(plan)
-            if hint:
-                hints["bootstrap_fill_hint"] = hint
-                if not hints.get("recovery_suggestion"):
-                    hints["recovery_suggestion"] = hint
-        except Exception:
-            pass
-    elif workspace and str(workspace).strip():
-        try:
-            from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
-
-            steering = build_steering_context(workspace=workspace)
-            if steering.get("steering_brief"):
-                hints["project_steering_brief"] = steering["steering_brief"]
-            verify_cmds = steering.get("verification_commands") or []
-            if verify_cmds:
-                hints["verification_commands"] = verify_cmds
+                if digest.get("identity_line"):
+                    hints["project_identity_line"] = digest["identity_line"]
+            if bootstrap_inc:
+                plan = attached.get("bootstrap_fill_plan") or {}
+                fill_hint = format_bootstrap_fill_hint(plan)
+                if fill_hint:
+                    hints["bootstrap_fill_hint"] = fill_hint
+                    if not hints.get("recovery_suggestion"):
+                        hints["recovery_suggestion"] = fill_hint
         except Exception:
             pass
     return hints

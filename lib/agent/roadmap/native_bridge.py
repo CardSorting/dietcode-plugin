@@ -153,7 +153,7 @@ def roadmap_write_hint(*, tool_name: str = "", args: Any = None, workspace: Opti
         followup += " If bootstrap template phrases remain, preview roadmap(action='apply_bootstrap_fill') or apply with context='write'."
 
     digest: dict[str, Any] = {}
-    if bootstrap_inc and check.get("allowed") and check.get("workspace"):
+    if check.get("allowed") and check.get("workspace"):
         try:
             from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
             from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
@@ -210,8 +210,10 @@ def merge_roadmap_hint_into_result(result: Any, hint: dict[str, Any]) -> str:
 
     parsed["_roadmap_write_hint"] = hint
     digest = hint.get("project_steering_digest")
-    if digest:
+    if isinstance(digest, dict):
         parsed["project_steering_digest"] = digest
+        if digest.get("identity_line"):
+            parsed["project_identity_line"] = digest["identity_line"]
     if hint.get("bootstrap_incomplete") and isinstance(digest, dict) and digest.get("agent_next_call"):
         parsed["agent_next_call"] = digest["agent_next_call"]
     try:

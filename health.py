@@ -528,6 +528,8 @@ def format_status_report(
         if roadmap.get("steering_brief"):
             lines.append(f"   Project: {roadmap['steering_brief']}")
         digest = roadmap.get("project_steering_digest") or {}
+        if digest.get("identity_line"):
+            lines.append(f"   Identity: {digest['identity_line']}")
         verify_cmds = digest.get("verification_commands") or []
         if verify_cmds:
             lines.append(f"   Verify: {verify_cmds[0]}")

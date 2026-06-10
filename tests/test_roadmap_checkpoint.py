@@ -1294,7 +1294,38 @@ class RoadmapBootstrapFillTests(unittest.TestCase):
             (root / "Makefile").write_text(".PHONY: verify\nverify:\n\ttrue\n", encoding="utf-8")
             hints = build_agent_operator_hints(workspace=str(root))
             self.assertTrue(hints.get("project_steering_brief"))
+            self.assertTrue(hints.get("project_identity_line"))
+            self.assertIn("project_steering_digest", hints)
             self.assertIn("make verify", hints.get("verification_commands") or [])
+
+    def test_native_bridge_write_hint_digest_when_bootstrap_complete(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.native_bridge import roadmap_write_hint
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton_from_evidence_autofilled
+        from plugins.dietcode.lib.agent.roadmap.evidence import gather_evidence
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Bridge Complete\n\nDone.\n", encoding="utf-8")
+            evidence = gather_evidence(root, tier="standard")
+            skeleton = bootstrap_skeleton_from_evidence_autofilled(evidence, workspace=str(root))
+            (root / "ROADMAP.md").write_text(skeleton, encoding="utf-8")
+            hint = roadmap_write_hint(
+                tool_name="write_file",
+                args={"path": "ROADMAP.md"},
+                workspace=str(root),
+            )
+            digest = hint.get("project_steering_digest") or {}
+            self.assertTrue(digest.get("identity_line"))
+            self.assertFalse(hint.get("bootstrap_incomplete"))
+
+    def test_fingerprint_detects_cursorrules(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".cursorrules").write_text("Follow AGENTS.md conventions.\n", encoding="utf-8")
+            fp = build_project_fingerprint(root)
+            self.assertIn(".cursorrules", fp.get("agent_rules_files") or [])
 
     def test_steering_digest_always_attached_when_bootstrap_complete(self) -> None:
         from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
@@ -1314,6 +1345,7 @@ class RoadmapBootstrapFillTests(unittest.TestCase):
             attached = attach_bootstrap_steering_fields(steering, tier="light")
             digest = attached.get("project_steering_digest") or {}
             self.assertTrue(digest.get("steering_brief"))
+            self.assertTrue(digest.get("identity_line"))
             self.assertNotIn("bootstrap_fill_plan", attached)
 
     def test_fingerprint_ci_workflow_names(self) -> None:
