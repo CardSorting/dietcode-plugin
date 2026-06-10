@@ -36,8 +36,8 @@ ROADMAP_GUIDANCE = (
     "| `roadmap(action='validate')` | After editing — confirm 12-section schema before finishing |\n"
     "| `roadmap(action='template')` | Bootstrap skeleton when ROADMAP.md is missing |\n"
     "| `roadmap(action='doctor')` | Install skill + run production health checks |\n"
-    "| `roadmap(action='progress')` | Operator activity summary (JSONL telemetry) |
-| `roadmap(action='progress', context='--current')` | Full progress + gate snapshot JSON |\n"
+    "| `roadmap(action='progress')` | Operator activity summary (JSONL telemetry) |\n"
+    "| `roadmap(action='progress', context='--current')` | Full progress + gate snapshot JSON |\n"
     "| `roadmap(action='watch')` | Compact last-action line |\n"
     "| `roadmap(action='explain_stale')` | Why checkpoint may be outdated vs git |\n"
     "| `roadmap(action='explain_gate')` | Closed schema/freshness gates — fixes and next call |\n"
