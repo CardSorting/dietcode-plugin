@@ -12,6 +12,7 @@ The plugin provides:
 - **BroccoliQ** — sharded SQLite queue status, shard health, integrity tools.
 - **JoyZoning** — governed mutation lifecycle hooks, convergence gates, slash commands.
 - **JSDP** — autonomous planning helpers for bounded, reviewable delivery loops.
+- **Roadmap** — native auto-rolling checkpoint system for long-horizon project steering (`ROADMAP.md`).
 - **Kernel bridge (macOS, opt-in)** — coherent patching and verification via
   `dietcode_kernel`, with JoyZoning journaling and gated raw-write interception.
 - **Hermes hooks** — session start/end, tool call gating, and tool result transformation.
@@ -103,6 +104,8 @@ Other checks:
 /broccolidb status
 /broccoliq queue
 /joyzoning status
+/roadmap cockpit
+/rm doctor
 ```
 
 From the shell (macOS kernel integration):

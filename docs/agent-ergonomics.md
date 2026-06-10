@@ -237,6 +237,47 @@ ASCII mode: `DIETCODE_ASCII_ONLY=1`
 | Journal unavailable | JoyZoning disabled/DB down | Patch still succeeds; check `_journal_warning` on result |
 | Stalled operation | No progress for 15s+ | `/dietcode kernel progress` — look for `bridge.progress_stalled` |
 
+## Roadmap checkpoint operator loop
+
+Long-horizon steering surface for product and architecture coherence:
+
+```text
+1. /roadmap cockpit              → health, schema, freshness, code soup, next action
+2. /roadmap explain-stale        → why checkpoint may be outdated vs git activity
+3. roadmap(action='guide')       → phase + checkpoint_freshness + operator hints
+4. roadmap(action='checkpoint')  → evidence + code_soup_pre_audit + algorithm
+5. Edit ROADMAP.md per skill     → auto _roadmap_write_hint on native writes
+6. roadmap(action='validate')     → schema gate before closing the pass
+7. /roadmap progress --current   → full progress + gate snapshot JSON
+8. Return checkpoint summary     → not the full ROADMAP.md unless asked
+```
+
+Progress storage:
+
+| Path | Purpose |
+| --- | --- |
+| `~/.dietcode/session/roadmap-progress.jsonl` | Append-only roadmap tool activity |
+| `~/.dietcode/session/roadmap-progress-current.json` | Latest roadmap action snapshot |
+| `.dietcode/roadmap-state.json` | Workspace-local validate/checkpoint memory (includes `validation_pending` after ROADMAP.md writes) |
+
+Slash commands: `/roadmap cockpit`, `/roadmap explain-gate`, `/roadmap doctor`, `/rm validate`, `/dietcode roadmap`.
+
+Native wiring:
+
+- Dedicated Hermes toolset: `roadmap` (tools: `roadmap`, `roadmap_checkpoint`)
+- `joyzoning(action='context')` → `roadmap_checkpoint` brief + merged `next_actions`
+- `joyzoning(action='roadmap')` → full cockpit payload with `recommended_next_action`
+- Stale checkpoint blocks `kanban_complete` at `pre_tool_call` when `warn_on_stale_before_complete` is enabled
+- Unvalidated ROADMAP.md edits block `kanban_complete` when `block_kanban_on_validation_pending` is enabled (default)
+- `roadmap(action='explain_gate')` returns kernel-style `closed_gates` / `open_gates` diagnostics
+- `session.start` journal payload includes roadmap phase and `first_call`
+- `write_file` / `patch` on `ROADMAP.md` → `_roadmap_write_hint` (validate follow-up)
+- Roadmap tool calls emit `roadmap.*` runtime events when execution journal is on
+
+Checkpoint evidence includes: README/architecture excerpts, git history, TODO markers, test file count, and programmatic `code_soup_audit` signals (duplicate basenames, hook registrars, config sources).
+
+Smoke: `python scripts/roadmap_smoke.py` · operator: `python scripts/roadmap_operator_smoke.py` · audit: `python scripts/roadmap_audit.py`
+
 ## Constraints (unchanged)
 
 - No new mutation authority

@@ -18,10 +18,16 @@ from plugins.dietcode.lib.runtime.kanban_hooks import (
     _on_session_start as _kanban_on_session_start,
 )
 from plugins.dietcode.lib.runtime.jsdp_hooks import _on_session_start as _jsdp_on_session_start
+from plugins.dietcode.lib.agent.roadmap.gate import (
+    build_roadmap_gate_state,
+    require_fresh_checkpoint_before_complete,
+)
+from plugins.dietcode.lib.agent.roadmap.operator import build_agent_operator_hints
 from plugins.dietcode.slash_commands import (
     _handle_broccolidb,
     _handle_broccoliq,
     _handle_joyzoning,
+    _handle_roadmap,
     run_joyzoning_gate,
 )
 
@@ -32,9 +38,13 @@ __all__ = [
     "on_transform_tool_result",
     "_on_transform_tool_result",
     "run_joyzoning_gate",
+    "build_roadmap_gate_state",
+    "build_agent_operator_hints",
+    "require_fresh_checkpoint_before_complete",
     "_handle_joyzoning",
     "_handle_broccolidb",
     "_handle_broccoliq",
+    "_handle_roadmap",
     "_on_session_start",
     "_on_session_end",
     "_pre_tool_call",

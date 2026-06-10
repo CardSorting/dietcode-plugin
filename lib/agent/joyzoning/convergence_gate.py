@@ -27,7 +27,18 @@ def pre_tool_call_block(
         parsed = args if isinstance(args, dict) else {}
         scope = resolve_scope_id(parsed.get("task_id"))
         msg = require_review_before_complete(scope)
-        return block_dict(msg) if msg else None
+        if msg:
+            return block_dict(msg)
+
+        try:
+            from plugins.dietcode.lib.agent.roadmap.gate import require_fresh_checkpoint_before_complete
+
+            roadmap_msg = require_fresh_checkpoint_before_complete()
+            if roadmap_msg:
+                return block_dict(roadmap_msg)
+        except ImportError:
+            pass
+        return None
     except Exception as exc:
         if fail_closed:
             try:
@@ -49,6 +60,15 @@ def assert_kanban_completion_allowed(task_id: str) -> None:
     msg = require_review_before_complete(task_id)
     if msg:
         raise JoyZoningCompletionBlocked(msg)
+
+    try:
+        from plugins.dietcode.lib.agent.roadmap.gate import require_fresh_checkpoint_before_complete
+
+        roadmap_msg = require_fresh_checkpoint_before_complete()
+        if roadmap_msg:
+            raise JoyZoningCompletionBlocked(roadmap_msg)
+    except ImportError:
+        pass
 
 
 class JoyZoningCompletionBlocked(Exception):

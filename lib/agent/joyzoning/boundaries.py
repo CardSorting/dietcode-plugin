@@ -37,6 +37,23 @@ _EVENT_LAYER: dict[str, RuntimeLayer] = {
     "jsdp.role_complete": RuntimeLayer.MUTATION,
     "jsdp.handoff_validated": RuntimeLayer.MUTATION,
     "kanban.sync": RuntimeLayer.ORCHESTRATION,
+    "roadmap.session_started": RuntimeLayer.REPRESENTATION,
+    "roadmap.guide": RuntimeLayer.REPRESENTATION,
+    "roadmap.checkpoint_brief": RuntimeLayer.REPRESENTATION,
+    "roadmap.validated": RuntimeLayer.REPRESENTATION,
+    "roadmap.doctor": RuntimeLayer.REPRESENTATION,
+    "roadmap.cockpit": RuntimeLayer.REPRESENTATION,
+    "roadmap.template": RuntimeLayer.REPRESENTATION,
+    "roadmap.evidence": RuntimeLayer.REPRESENTATION,
+    "roadmap.status": RuntimeLayer.REPRESENTATION,
+    "roadmap.tool_call": RuntimeLayer.REPRESENTATION,
+    "roadmap.roadmap_file_mutated": RuntimeLayer.REPRESENTATION,
+    "roadmap.session_ended": RuntimeLayer.REPRESENTATION,
+    "roadmap.explain_gate": RuntimeLayer.REPRESENTATION,
+    "roadmap.explain_stale": RuntimeLayer.REPRESENTATION,
+    "roadmap.progress": RuntimeLayer.REPRESENTATION,
+    "roadmap.watch": RuntimeLayer.REPRESENTATION,
+    "roadmap.last_error": RuntimeLayer.REPRESENTATION,
 }
 
 

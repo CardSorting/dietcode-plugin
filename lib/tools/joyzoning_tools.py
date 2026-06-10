@@ -22,6 +22,7 @@ _ACTIONS = frozenset({
     "events",
     "role_context",
     "validate_handoff",
+    "roadmap",
 })
 
 
@@ -101,6 +102,10 @@ def joyzoning(
         from plugins.dietcode.lib.tools.convergence_tools import jsdp_validate_handoff
         return jsdp_validate_handoff(text=text)
 
+    if act == "roadmap":
+        from plugins.dietcode.lib.agent.roadmap.cockpit import build_cockpit_payload
+        return json.dumps(build_cockpit_payload())
+
     return tool_error("unreachable")
 
 
@@ -131,6 +136,7 @@ registry.register(
                         "context=where am I; doctor=health; status=convergence; "
                         "begin|patch|verify|request_review=lifecycle; events=journal tail; "
                         "role_context|validate_handoff=JSDP; "
+                        "roadmap=roadmap cockpit brief; "
                         "rolling horizon=use jsdp tool (prepare/commit/step), not joyzoning"
                     ),
                 },

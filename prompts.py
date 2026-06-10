@@ -23,6 +23,38 @@ KANBAN_BROCCOLIQ_GUIDANCE = (
     "detect kanban/hive mismatches before they compound.\n"
 )
 
+ROADMAP_GUIDANCE = (
+    "## Auto-rolling roadmap checkpoint (tool: `roadmap`)\n"
+    "\n"
+    "Maintain `ROADMAP.md` as the project's living steering surface — not a backlog or wishlist.\n"
+    "\n"
+    "| Call | When |\n"
+    "|------|------|\n"
+    "| `roadmap(action='guide')` | Phase, health, `_roadmap_operator_hints`, `agent_next_call` |\n"
+    "| `roadmap(action='cockpit')` | One-screen operator summary (health, schema, code soup) |\n"
+    "| `roadmap(action='checkpoint', context=…)` | Before editing ROADMAP.md — evidence + algorithm + pre-audit |\n"
+    "| `roadmap(action='validate')` | After editing — confirm 12-section schema before finishing |\n"
+    "| `roadmap(action='template')` | Bootstrap skeleton when ROADMAP.md is missing |\n"
+    "| `roadmap(action='doctor')` | Install skill + run production health checks |\n"
+    "| `roadmap(action='progress')` | Operator activity summary (JSONL telemetry) |
+| `roadmap(action='progress', context='--current')` | Full progress + gate snapshot JSON |\n"
+    "| `roadmap(action='watch')` | Compact last-action line |\n"
+    "| `roadmap(action='explain_stale')` | Why checkpoint may be outdated vs git |\n"
+    "| `roadmap(action='explain_gate')` | Closed schema/freshness gates — fixes and next call |\n"
+    "| `roadmap(action='last_error')` | Last failure or validation issue |\n"
+    "| `roadmap(action='evidence')` | Read-only project signals |\n"
+    "| `roadmap(action='status')` | Parse current ROADMAP.md without mutating |\n"
+    "\n"
+    "Native integration: `joyzoning(action='context')` includes `roadmap_checkpoint` brief and next_actions.\n"
+    "Quick steering: `joyzoning(action='roadmap')` returns the roadmap cockpit payload.\n"
+    "ROADMAP.md writes via write_file/patch receive `_roadmap_write_hint` → validate before closing.\n"
+    "Operator: `/roadmap cockpit` · `/roadmap explain-gate` · `/dietcode roadmap cockpit` · alias `roadmap_checkpoint`\n"
+    "Prime directive: did the latest work strengthen or weaken the project's center of gravity?\n"
+    "Skill: `auto-rolling-roadmap` at `optional-skills/dietcode/auto-rolling-roadmap/SKILL.md`.\n"
+    "Section 9 (Centralization & Code Soup Audit) is mandatory — use `code_soup_pre_audit` from checkpoint.\n"
+    "Keep Now to 1–5 actionable items; finish with validate, then return checkpoint summary (not full file).\n"
+)
+
 JOYZONING_GUIDANCE = (
     "# JoyZoning governed work (use `joyzoning` as your primary primitive)\n"
     "\n"
@@ -74,6 +106,12 @@ JOYZONING_GUIDANCE = (
     "\n"
     "Read `phase` and `agent_next_call` in every response. Skill: `jsdp-rolling-horizon`.\n"
     "\n"
+    "## Roadmap steering (tool: `roadmap`)\n"
+    "\n"
+    "Long-horizon coherence: `roadmap_checkpoint` in `joyzoning(action='context')` shows phase and first_call.\n"
+    "Quick steering: `joyzoning(action='roadmap')` returns cockpit + `recommended_next_action`.\n"
+    "After direction changes: `roadmap(action='checkpoint')` → edit ROADMAP.md → `roadmap(action='validate')`.\n"
+    "\n"
     "## Do NOT\n"
     "\n"
     "- Do not skip `request_review` before `kanban_complete` on governed tasks.\n"
@@ -97,9 +135,12 @@ def build_dietcode_guidance(valid_tool_names: AbstractSet[str]) -> str:
 
     parts: list[str] = []
     has_joyzoning = "joyzoning" in valid_tool_names
+    has_roadmap = "roadmap" in valid_tool_names or "roadmap_checkpoint" in valid_tool_names
     has_broccoliq_bridge = any(n.startswith("kanban_broccolidb_") for n in valid_tool_names)
     has_kanban_worker = "kanban_show" in valid_tool_names
 
+    if has_roadmap:
+        parts.append(ROADMAP_GUIDANCE)
     if has_joyzoning:
         parts.append(JOYZONING_GUIDANCE)
     elif has_kanban_worker and has_broccoliq_bridge:

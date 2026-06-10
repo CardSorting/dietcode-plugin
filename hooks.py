@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 #   1. Kanban ↔ BroccoliQ hive sync (worker scope + debounced queue)
 #   2. JoyZoning runtime (scope registry + session.start journal event)
 #   3. JSDP role_started (when jsdp_role env is set)
+#   4. Roadmap optional-skills install (when auto_install_skills enabled)
 _ON_SESSION_START: tuple[Callable[..., Any], ...] = ()
 _ON_SESSION_END: tuple[Callable[..., Any], ...] = ()
 _POST_TOOL_CALL: tuple[Callable[..., Any], ...] = ()
@@ -44,6 +45,12 @@ def _ensure_handlers() -> None:
     if _ON_SESSION_START:
         return
     from plugins.dietcode.lib.runtime.jsdp_hooks import _on_session_start as jsdp_start
+    from plugins.dietcode.lib.runtime.roadmap_hooks import (
+        _on_session_end as roadmap_end,
+        _on_session_start as roadmap_start,
+        _post_tool_call as roadmap_post,
+        on_roadmap_write_transform,
+    )
     from plugins.dietcode.lib.runtime.governance_hooks import on_transform_tool_result
     from plugins.dietcode.lib.runtime.kernel_hooks import (
         _post_tool_call as kernel_post,
@@ -62,13 +69,14 @@ def _ensure_handlers() -> None:
         _on_session_start as kanban_start,
     )
 
-    _ON_SESSION_START = (kanban_start, jz_start, jsdp_start)
-    _ON_SESSION_END = (jz_end,)
-    _POST_TOOL_CALL = (jz_post, kernel_post, kanban_post)
+    _ON_SESSION_START = (kanban_start, jz_start, jsdp_start, roadmap_start)
+    _ON_SESSION_END = (jz_end, roadmap_end)
+    _POST_TOOL_CALL = (jz_post, kernel_post, kanban_post, roadmap_post)
     _PRE_TOOL_CALL = (kernel_pre, jz_pre,)
     _TRANSFORM_TOOL_RESULT = (
         on_kernel_journal_transform,
         on_kernel_raw_write_transform,
+        on_roadmap_write_transform,
         on_transform_tool_result,
     )
 

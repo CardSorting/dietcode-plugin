@@ -23,16 +23,44 @@ def _scope_bindings() -> dict[str, str]:
     return out
 
 
-def _merge_harness_next_actions(
+def _merge_steering_next_actions(
     base: list[str],
-    harness: dict[str, Any] | None,
+    *,
+    jsdp_harness: dict[str, Any] | None = None,
+    roadmap_brief: dict[str, Any] | None = None,
 ) -> list[str]:
-    if not harness or not harness.get("harness_present"):
+    hints: list[str] = []
+    if jsdp_harness and jsdp_harness.get("harness_present"):
+        jsdp_hint = "jsdp(action='start') — autonomous rolling horizon (see jsdp_harness in context)"
+        if jsdp_hint not in base:
+            hints.append(jsdp_hint)
+
+    if roadmap_brief and roadmap_brief.get("enabled"):
+        phase = roadmap_brief.get("phase")
+        first_call = roadmap_brief.get("first_call") or "roadmap(action='guide')"
+        if phase in {"bootstrap", "structure_repair", "coherence_recovery", "validate_pending"}:
+            if first_call not in base and first_call not in hints:
+                hints.append(first_call)
+        elif not roadmap_brief.get("roadmap_exists"):
+            roadmap_hint = "roadmap(action='checkpoint') — create project steering surface"
+            if roadmap_hint not in base and roadmap_hint not in hints:
+                hints.append(roadmap_hint)
+
+        freshness = roadmap_brief.get("checkpoint_freshness") or {}
+        if freshness.get("stale"):
+            stale_hint = "roadmap(action='explain_stale') — checkpoint outdated vs project activity"
+            if stale_hint not in base and stale_hint not in hints:
+                hints.append(stale_hint)
+
+        gates = (roadmap_brief.get("recommended_next_action") or {}).get("action")
+        if gates in {"repair_schema", "explain_stale"}:
+            gate_hint = roadmap_brief.get("first_call") or "roadmap(action='explain_gate')"
+            if gate_hint not in base and gate_hint not in hints:
+                hints.append(gate_hint)
+
+    if not hints:
         return base
-    hint = "jsdp(action='start') — autonomous rolling horizon (see jsdp_autonomous in context)"
-    if hint in base:
-        return base
-    return [hint, *base]
+    return [*hints, *base]
 
 
 def recommended_next_actions(state: ConvergenceState) -> list[str]:
@@ -103,6 +131,7 @@ def build_operational_context(*, scope_id: str | None = None) -> dict[str, Any]:
         journal_integrity = {"success": False, "error": str(exc)}
 
     gate_message = None
+    roadmap_gate_message = None
     try:
         from plugins.dietcode.lib.agent.joyzoning.convergence import require_review_before_complete
         gate_message = require_review_before_complete(anchor_scope)
@@ -116,14 +145,33 @@ def build_operational_context(*, scope_id: str | None = None) -> dict[str, Any]:
     except Exception:
         pass
 
+    roadmap_brief: dict[str, Any] | None = None
+    roadmap_gate_state: dict[str, Any] | None = None
+    try:
+        from plugins.dietcode.lib.agent.roadmap.gate import build_roadmap_gate_state
+        from plugins.dietcode.lib.agent.roadmap.session import session_brief as roadmap_session_brief
+
+        roadmap_brief = roadmap_session_brief()
+        roadmap_gate_state = build_roadmap_gate_state()
+        if roadmap_gate_state.get("enabled") and not roadmap_gate_state.get("kanban_complete_allowed"):
+            roadmap_gate_message = (
+                f"ROADMAP steering gate closed — {roadmap_gate_state.get('stale_summary') or roadmap_gate_state.get('stale_reason')}. "
+                "Run roadmap(action='checkpoint') before kanban_complete. "
+                "Diagnostic: /roadmap explain-gate"
+            )
+    except Exception:
+        pass
+
     return {
         "success": True,
         "scope_id": sid,
         "anchor_scope_id": anchor_scope,
         "scope_cluster": scope_cluster,
         "convergence_state": state.value,
-        "kanban_complete_allowed": gate_message is None,
-        "kanban_complete_block_reason": gate_message,
+        "kanban_complete_allowed": gate_message is None and roadmap_gate_message is None,
+        "kanban_complete_block_reason": gate_message or roadmap_gate_message,
+        "roadmap_complete_block_reason": roadmap_gate_message,
+        "roadmap_gate": roadmap_gate_state,
         "scope_bindings": bindings,
         "active_mutation": active_mutation,
         "config": {
@@ -135,9 +183,14 @@ def build_operational_context(*, scope_id: str | None = None) -> dict[str, Any]:
             "jsdp_harness_enabled": cfg.jsdp_harness_enabled,
         },
         "jsdp_harness": jsdp_harness,
+        "roadmap_checkpoint": roadmap_brief,
         "convergence_record": journal_row,
         "journal_integrity": journal_integrity,
-        "next_actions": _merge_harness_next_actions(recommended_next_actions(state), jsdp_harness),
+        "next_actions": _merge_steering_next_actions(
+            recommended_next_actions(state),
+            jsdp_harness=jsdp_harness,
+            roadmap_brief=roadmap_brief,
+        ),
         "authority": {
             "execution": "hermes",
             "convergence": "hermes_journal",

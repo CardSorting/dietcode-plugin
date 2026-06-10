@@ -71,12 +71,13 @@ intent → patch → receipt → journal → verify → verification journal →
 duplicate registration.
 
 ```text
-_ON_SESSION_START  = (kanban_start, jz_start, jsdp_start)
-_ON_SESSION_END    = (jz_end,)
-_PRE_TOOL_CALL     = (kernel_pre, jz_pre)
-_POST_TOOL_CALL    = (jz_post, kernel_post, kanban_post)
+_ON_SESSION_START  = (kanban_start, jz_start, jsdp_start, roadmap_start)
+_ON_SESSION_END    = (jz_end, roadmap_end)
+_PRE_TOOL_CALL     = (kernel_pre, jz_pre)   # jz_pre also enforces roadmap stale gate on kanban_complete
+_POST_TOOL_CALL    = (jz_post, kernel_post, kanban_post, roadmap_post)
 _TRANSFORM_TOOL_RESULT = (on_kernel_journal_transform,
                           on_kernel_raw_write_transform,
+                          on_roadmap_write_transform,
                           on_transform_tool_result)
 ```
 
@@ -137,8 +138,16 @@ Expected tool domains:
 - **joyzoning / convergence** — mutation lifecycle, convergence, JSDP, runtime events.
 - **dietcode_kernel** — kernel bridge status, search, patch, verify.
 - **kanban bridge** — task sync and completion gates backed by BroccoliDB.
+- **roadmap** — auto-rolling `ROADMAP.md` checkpoint, cockpit, explain-gate, progress telemetry.
 
 `tools_loader.py` reports missing modules via `/dietcode tools`.
+
+### Roadmap steering gate
+
+`lib/agent/roadmap/gate.py` evaluates schema and checkpoint freshness. When
+`dietcode.roadmap.warn_on_stale_before_complete` is enabled (default), a stale
+checkpoint closes the steering gate and `convergence_gate.pre_tool_call_block`
+blocks `kanban_complete` with a recovery message pointing to `/roadmap explain-gate`.
 
 ## BroccoliDB boundary
 

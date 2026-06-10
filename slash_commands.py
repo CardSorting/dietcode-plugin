@@ -550,3 +550,211 @@ def _handle_broccoliq(raw_args: str) -> Optional[str]:
             return f"❌ Integrity audit failed: {e}"
 
     return f"Unknown subcommand: {sub}\n\n{_BQ_HELP}"
+
+
+_ROADMAP_HELP = """\
+/roadmap — auto-rolling roadmap checkpoint console
+
+Subcommands:
+  cockpit                One-screen operator summary (health, schema, code soup, next action)
+  doctor                 Install skill + production health checks
+  status                 Parse ROADMAP.md health and schema completeness
+  evidence               Gather read-only project signals for a checkpoint pass
+  checkpoint [context]   Full checkpoint briefing (evidence + update algorithm)
+  validate               Schema validation for ROADMAP.md
+  template               Bootstrap skeleton for first-pass ROADMAP.md
+  guide                  Phase, health, and recommended next agent call
+  progress [--timeline]  Roadmap tool activity (current + optional timeline)
+  progress --current     Full progress + gate snapshot JSON
+  progress --tail        JSON tail of roadmap-progress.jsonl
+  watch                  Compact live summary of last roadmap action
+  last-error             Last roadmap failure or validation issue
+  explain-stale          Why checkpoint may be stale vs git activity
+  explain-gate           Closed schema/freshness gates (kernel explain-gate analogue)
+"""
+
+def _handle_roadmap(raw_args: str) -> Optional[str]:
+    """Handle /roadmap slash command."""
+    argv = shlex.split(raw_args.strip())
+    if not argv or argv[0] in ("help", "-h", "--help"):
+        return _ROADMAP_HELP
+
+    sub = argv[0].lower()
+    context = " ".join(argv[1:]).strip()
+
+    try:
+        from plugins.dietcode.lib.agent.roadmap.cockpit import format_cockpit_report
+        from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace_root
+        from plugins.dietcode.lib.agent.roadmap import evidence as evidence_mod
+        from plugins.dietcode.lib.agent.roadmap.doctor import run_checks
+        from plugins.dietcode.lib.agent.roadmap.freshness import assess_checkpoint_freshness, format_explain_stale_report
+        from plugins.dietcode.lib.agent.roadmap.progress import (
+            format_progress_report,
+            format_watch_report,
+            read_last_error,
+            read_tail,
+        )
+        from plugins.dietcode.lib.agent.roadmap.roadmap_checkpoint import (
+            checkpoint_brief,
+            operational_status,
+            status_snapshot,
+            template_brief,
+            validate_roadmap,
+        )
+        from plugins.dietcode.lib.agent.roadmap.explain_gate import build_explain_gate_payload
+        from plugins.dietcode.lib.agent.roadmap.skill_install import ensure_workspace_skills
+    except ImportError as exc:
+        return f"❌ Roadmap module unavailable: {exc}"
+
+    root = resolve_workspace_root()
+
+    if sub == "cockpit":
+        return format_cockpit_report(workspace=root)
+
+    if sub == "doctor":
+        install = ensure_workspace_skills(root)
+        report = run_checks(workspace=root)
+        lines = [
+            f"🗺️ Roadmap doctor — {root}",
+            f"OK: {report.get('ok')}",
+            f"Skill install: {len(install.get('installed') or [])} new, {len(install.get('skipped') or [])} skipped",
+        ]
+        for chk in report.get("checks") or []:
+            mark = "✅" if chk.get("ok") else "⚠️"
+            lines.append(f"{mark} {chk.get('name')}: {chk.get('detail')}")
+        for rec in report.get("recommendations") or []:
+            lines.append(f"→ {rec}")
+        return "\n".join(lines)
+
+    if sub == "status":
+        data = status_snapshot(workspace=root)
+        parsed = data.get("parsed") or {}
+        lines = [
+            f"🗺️ Roadmap status — {root}",
+            f"Exists: {parsed.get('exists', False)}",
+        ]
+        if parsed.get("health_status"):
+            lines.append(f"Health: {parsed['health_status']}")
+        if parsed.get("code_soup_risk"):
+            lines.append(f"Code soup risk: {parsed['code_soup_risk']}")
+        if parsed.get("recent_checkpoint_date"):
+            lines.append(f"Last checkpoint: {parsed['recent_checkpoint_date']}")
+        missing = parsed.get("sections_missing") or []
+        if missing:
+            lines.append(f"Missing sections: {len(missing)}")
+        return "\n".join(lines)
+
+    if sub == "evidence":
+        data = evidence_mod.gather_evidence(root, context_hint=context, tier="full")
+        roadmap = data.get("roadmap") or {}
+        git = data.get("git") or {}
+        lines = [
+            f"🗺️ Roadmap evidence — {root}",
+            f"ROADMAP.md: {'present' if roadmap.get('exists') else 'missing'}",
+            f"READMEs: {len(data.get('readmes') or [])}",
+            f"Git commits: {len(git.get('recent_commits') or [])}",
+            f"TODO/FIXME markers: {len(data.get('todo_markers') or [])}",
+        ]
+        uncertainty = data.get("uncertainty") or []
+        if uncertainty:
+            lines.append("Uncertainty:")
+            lines.extend(f"  - {note}" for note in uncertainty[:5])
+        return "\n".join(lines)
+
+    if sub == "checkpoint":
+        data = checkpoint_brief(workspace=root, context=context)
+        lines = [
+            f"🗺️ Roadmap checkpoint briefing — {root}",
+            f"Phase: {data.get('phase')}",
+            f"Skill: {data.get('skill_path')}",
+            data.get("operator_summary", ""),
+            f"Next: {data.get('agent_next_call', '')}",
+        ]
+        uncertainty = (data.get("evidence") or {}).get("uncertainty") or []
+        if uncertainty:
+            lines.append("Uncertainty:")
+            lines.extend(f"  - {note}" for note in uncertainty[:5])
+        lines.append("Use `roadmap(action='checkpoint')` tool for full JSON briefing.")
+        return "\n".join(lines)
+
+    if sub == "validate":
+        data = validate_roadmap(workspace=root)
+        validation = data.get("validation") or {}
+        lines = [
+            f"🗺️ Roadmap validate — {root}",
+            f"Valid: {validation.get('valid')}",
+            f"Schema complete: {validation.get('schema_complete')}",
+            f"Now items: {validation.get('now_item_count')}",
+        ]
+        for issue in validation.get("issues") or []:
+            lines.append(f"  • [{issue.get('severity')}] {issue.get('message')}")
+        lines.append(f"Next: {data.get('agent_next_call', '')}")
+        return "\n".join(lines)
+
+    if sub == "template":
+        data = template_brief(workspace=root)
+        skeleton = data.get("skeleton") or ""
+        preview = "\n".join(skeleton.splitlines()[:24])
+        return (
+            f"🗺️ Roadmap template — {root}\n"
+            f"{data.get('operator_summary', '')}\n"
+            f"Next: {data.get('agent_next_call', '')}\n\n"
+            f"--- skeleton preview ---\n{preview}\n…"
+        )
+
+    if sub == "progress":
+        if "--current" in argv:
+            from plugins.dietcode.lib.agent.roadmap.progress import build_progress_snapshot
+            return json.dumps(build_progress_snapshot(workspace=root), indent=2, ensure_ascii=False)
+        if "--tail" in argv:
+            return json.dumps(read_tail(lines=20), indent=2)
+        timeline = "--timeline" in argv
+        last = 5
+        for token in argv[1:]:
+            if token.isdigit():
+                last = int(token)
+        return format_progress_report(timeline=timeline, last=last, workspace=root)
+
+    if sub == "watch":
+        return format_watch_report()
+
+    if sub == "last-error":
+        err = read_last_error()
+        if not err:
+            return "🗺️ No roadmap errors recorded this session."
+        return json.dumps(err, indent=2, ensure_ascii=False)
+
+    if sub in ("explain-gate", "explain_gate"):
+        data = build_explain_gate_payload(workspace=root)
+        return data.get("report") or json.dumps(data, indent=2, ensure_ascii=False)
+
+    if sub == "explain-stale":
+        from plugins.dietcode.lib.agent.roadmap.snapshot import get_workspace_snapshot
+
+        snap = get_workspace_snapshot(root, tier="light")
+        fresh = snap.gate_inputs.get("freshness") or assess_checkpoint_freshness(
+            recent_checkpoint_date=(snap.evidence.get("roadmap") or {}).get("recent_checkpoint_date"),
+            git_commits=((snap.evidence.get("git") or {}).get("recent_commits") or []),
+            schema_valid=snap.validation.valid if snap.validation else None,
+        )
+        return format_explain_stale_report(fresh)
+
+    if sub == "guide":
+        data = operational_status(workspace=root, context_hint=context)
+        lines = [
+            f"🗺️ Roadmap guide — {root}",
+            f"Phase: {data.get('phase')}",
+            f"ROADMAP.md: {'present' if data.get('roadmap_exists') else 'missing'}",
+        ]
+        if data.get("health_status"):
+            lines.append(f"Health: {data['health_status']}")
+        if data.get("code_soup_risk"):
+            lines.append(f"Code soup risk: {data['code_soup_risk']}")
+        lines.append(data.get("operator_summary", ""))
+        lines.append(f"Next call: {data.get('agent_next_call', '')}")
+        hints = data.get("_roadmap_operator_hints") or {}
+        if hints.get("suggested_slash_command"):
+            lines.append(f"Slash: {hints['suggested_slash_command']}")
+        return "\n".join(lines)
+
+    return f"Unknown subcommand: {sub}\n\n{_ROADMAP_HELP}"

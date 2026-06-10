@@ -152,6 +152,39 @@ for physical mutation — JoyZoning hooks journal kernel receipts automatically.
 | `jsdp` | `guide`, `start`, `apply`, `advance` | Autonomous rolling-horizon delivery loop. |
 | `jsdp_horizon` | Alias actions | Compatibility alias for `jsdp`. |
 
+### Auto-rolling roadmap checkpoint (native toolset: `roadmap`)
+
+| Tool | Actions | Purpose |
+| --- | --- | --- |
+| `roadmap` | `guide`, `checkpoint`, `evidence`, `status`, `doctor`, `cockpit`, `validate`, `template`, `progress`, `watch`, `last_error`, `explain_stale`, `explain_gate` | First-class native steering primitive for `ROADMAP.md`. |
+| `roadmap_checkpoint` | Alias actions | Compatibility alias for `roadmap`. |
+
+Native integration:
+
+- `joyzoning(action='context')` returns `roadmap_checkpoint` session brief and merged `next_actions`.
+- `joyzoning(action='roadmap')` returns the roadmap cockpit payload (one-screen steering).
+- `session.start` journal events include `roadmap_checkpoint` payload.
+- Writes to `ROADMAP.md` via `write_file` / `patch` receive `_roadmap_write_hint` → `roadmap(action='validate')`.
+- Roadmap tool calls emit `roadmap.*` runtime journal events when JoyZoning execution journal is enabled.
+
+Slash commands:
+
+| Command | Purpose |
+| --- | --- |
+| `/roadmap cockpit` | One-screen operator summary |
+| `/roadmap doctor` | Install skill + health checks |
+| `/roadmap checkpoint [context]` | Checkpoint briefing |
+| `/roadmap progress --current` | Full progress + gate snapshot JSON |
+| `/dietcode roadmap` | Feature health JSON |
+| `/dietcode roadmap cockpit` | Cockpit via dietcode console |
+| `/dietcode roadmap explain-gate` | Closed gates and kanban_complete policy |
+
+Agent responses include `_roadmap_operator_hints` with `next_action`, `suggested_slash_command`, and `recovery_suggestion`.
+
+Skill: `optional-skills/dietcode/auto-rolling-roadmap/SKILL.md` (auto-installed when `dietcode.roadmap.auto_install_skills` is true).
+
+Smoke: `python scripts/roadmap_smoke.py`
+
 ## Kanban bridge tools
 
 Registered from `lib/tools/kanban_broccolidb_tools.py` and

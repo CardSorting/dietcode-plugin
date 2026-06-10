@@ -43,6 +43,7 @@ def _register_commands(ctx) -> None:
         _handle_broccolidb,
         _handle_broccoliq,
         _handle_joyzoning,
+        _handle_roadmap,
     )
 
     ctx.register_command(
@@ -64,6 +65,8 @@ def _register_commands(ctx) -> None:
         ("bdb", _handle_broccolidb, "BroccoliDB console (alias).", "[status|query|audit|heal]"),
         ("broccoliq", _handle_broccoliq, "BroccoliQ sharded queue and hive infrastructure.", "[queue|shards|integrity]"),
         ("bq", _handle_broccoliq, "BroccoliQ console (alias).", "[queue|shards|integrity]"),
+        ("roadmap", _handle_roadmap, "Native roadmap checkpoint console.", "[cockpit|doctor|checkpoint|validate|guide]"),
+        ("rm", _handle_roadmap, "Roadmap checkpoint console (alias).", "[cockpit|doctor|checkpoint|validate|guide]"),
     ):
         ctx.register_command(name, handler=handler, description=desc, args_hint=hint)
 

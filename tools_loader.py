@@ -22,6 +22,7 @@ _TOOL_MODULES = (
     f"{_LIB}.jsdp_harness_tools",
     f"{_LIB}.kanban_broccolidb_tools",
     f"{_LIB}.kernel_bridge_tools",
+    f"{_LIB}.roadmap_tools",
 )
 
 # Diet tool modules loaded only via plugins/dietcode/tools_loader.py (not tools/ auto-discovery).
@@ -32,6 +33,7 @@ DEFERRED_TOOL_MODULE_STEMS: frozenset[str] = frozenset({
     "jsdp_harness_tools",
     "kanban_broccolidb_tools",
     "kernel_bridge_tools",
+    "roadmap_tools",
 })
 
 # Minimum surface the dietcode toolset must resolve (behavioral contract).
@@ -48,6 +50,8 @@ EXPECTED_DIETCODE_TOOLS: FrozenSet[str] = frozenset({
     "kanban_broccolidb_board_intel",
     "kanban_broccolidb_sync",
     "dietcode_kernel",
+    "roadmap",
+    "roadmap_checkpoint",
 })
 
 _DIETCODE_TOOL_PREFIXES = (
@@ -57,8 +61,16 @@ _DIETCODE_TOOL_PREFIXES = (
     "convergence_",
     "runtime_",
     "jsdp_",
+    "roadmap_",
 )
-_DIETCODE_TOOL_NAMES = frozenset({"joyzoning", "jsdp", "jsdp_horizon", "dietcode_kernel"})
+_DIETCODE_TOOL_NAMES = frozenset({
+    "joyzoning",
+    "jsdp",
+    "jsdp_horizon",
+    "dietcode_kernel",
+    "roadmap",
+    "roadmap_checkpoint",
+})
 
 
 @dataclass
@@ -79,7 +91,7 @@ def invalidate_load_cache() -> None:
 
 
 def _is_dietcode_tool(name: str, toolset: str) -> bool:
-    if toolset in {"broccolidb", "joyzoning", "dietcode"}:
+    if toolset in {"broccolidb", "joyzoning", "dietcode", "roadmap"}:
         return True
     if name in _DIETCODE_TOOL_NAMES:
         return True
@@ -156,22 +168,38 @@ def validate_dietcode_toolset() -> list[str]:
     return sorted(EXPECTED_DIETCODE_TOOLS - resolved)
 
 
-def register_dietcode_toolset() -> None:
-    """Ensure the composite ``dietcode`` toolset exists (static TOOLSETS or runtime)."""
+def register_roadmap_toolset() -> None:
+    """Ensure the native ``roadmap`` toolset exists."""
     from toolsets import TOOLSETS, create_custom_toolset
+
+    if "roadmap" not in TOOLSETS:
+        create_custom_toolset(
+            "roadmap",
+            "Auto-rolling roadmap checkpoint — native project steering surface (ROADMAP.md)",
+            tools=["roadmap", "roadmap_checkpoint"],
+        )
+
+
+def register_dietcode_toolset() -> None:
+    """Ensure composite toolsets exist (static TOOLSETS or runtime)."""
+    from toolsets import TOOLSETS, create_custom_toolset
+
+    register_roadmap_toolset()
 
     if "dietcode" not in TOOLSETS:
         create_custom_toolset(
             "dietcode",
-            "BroccoliDB, BroccoliQ hive orchestration, JoyZoning, and JSDP rolling-horizon delivery",
+            "BroccoliDB, BroccoliQ, JoyZoning, JSDP, kernel bridge, and native roadmap checkpoints",
             tools=[
                 "kanban_broccolidb_context",
                 "kanban_broccolidb_sync",
                 "kanban_broccolidb_record",
                 "kanban_broccolidb_board_intel",
                 "kanban_broccolidb_drift",
+                "roadmap",
+                "roadmap_checkpoint",
             ],
-            includes=["broccolidb", "joyzoning"],
+            includes=["broccolidb", "joyzoning", "roadmap"],
         )
 
     missing = validate_dietcode_toolset()

@@ -88,6 +88,28 @@ def run_checks(*, scope_id: Optional[str] = None) -> dict[str, Any]:
         if not chk.get("ok"):
             recommendations.append(f"Fix: {chk.get('name')} — {chk.get('detail', '')}")
 
+    roadmap_health: dict[str, Any] | None = None
+    try:
+        from plugins.dietcode.lib.agent.roadmap.config import get_roadmap_config
+        from plugins.dietcode.lib.agent.roadmap.doctor import run_checks as roadmap_run_checks
+
+        rcfg = get_roadmap_config()
+        if rcfg.enabled:
+            roadmap_health = roadmap_run_checks()
+            _check(
+                "roadmap.steering_surface",
+                bool(roadmap_health.get("ok")),
+                f"kanban_complete_allowed={((roadmap_health.get('roadmap_gate') or {}).get('kanban_complete_allowed'))}",
+            )
+            for rec in (roadmap_health.get("recommendations") or [])[:2]:
+                recommendations.append(f"Roadmap: {rec}")
+    except ImportError:
+        pass
+    except Exception as exc:
+        _check("roadmap.steering_surface", False, str(exc))
+
+    ok = all(c["ok"] for c in checks)
+
     return {
         "success": ok,
         "ok": ok,
@@ -96,5 +118,6 @@ def run_checks(*, scope_id: Optional[str] = None) -> dict[str, Any]:
         "scope_cluster": cluster,
         "convergence_state": state.value,
         "checks": checks,
+        "roadmap": roadmap_health,
         "recommendations": recommendations,
     }

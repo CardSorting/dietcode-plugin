@@ -53,6 +53,13 @@ Subcommands:
   kernel watch                 Compact single-line live operation summary
   kernel watch --follow        Kinetic in-place refresh (~1s, spinner when TTY)
   kernel cockpit               One-screen operator summary (gates, state, next action)
+  roadmap                      Roadmap feature health JSON
+  roadmap cockpit              One-screen roadmap operator summary
+  roadmap progress             Roadmap tool activity summary
+  roadmap progress --timeline  Activity timeline
+  roadmap progress --current   Full progress + gate snapshot JSON
+  roadmap watch                Compact last-action line
+  roadmap explain-gate         Closed schema/freshness gates and kanban_complete policy
 """
 
 
@@ -160,6 +167,39 @@ def _kernel_health() -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+def _roadmap_health() -> dict[str, Any]:
+    try:
+        from plugins.dietcode.lib.agent.roadmap.config import get_roadmap_config, resolve_workspace_root
+        from plugins.dietcode.lib.agent.roadmap.doctor import run_checks
+
+        cfg = get_roadmap_config()
+        root = resolve_workspace_root()
+        doctor = run_checks(workspace=root)
+        return {
+            "ok": doctor.get("ok", False),
+            "enabled": cfg.enabled,
+            "auto_install_skills": cfg.auto_install_skills,
+            "workspace": root,
+            "roadmap_present": any(
+                c.get("ok") for c in doctor.get("checks", [])
+                if c.get("name") in {"roadmap_present", "roadmap_readable"}
+            ),
+            "checkpoint_stale": (doctor.get("checkpoint_freshness") or {}).get("stale"),
+            "workspace_skill_installed": any(
+                c.get("ok") for c in doctor.get("checks", [])
+                if c.get("name") == "workspace_skill_installed"
+            ),
+            "schema_valid": (doctor.get("validation") or {}).get("valid"),
+            "kanban_complete_allowed": (doctor.get("roadmap_gate") or {}).get("kanban_complete_allowed"),
+            "roadmap_gate": doctor.get("roadmap_gate"),
+            "recommended_next_action": doctor.get("recommended_next_action"),
+            "checks": doctor.get("checks"),
+            "recommendations": doctor.get("recommendations"),
+        }
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def _jsdp_health() -> dict[str, Any]:
     try:
         from plugins.dietcode.lib.agent.joyzoning.config import get_joyzoning_config
@@ -200,6 +240,7 @@ def build_status_report(*, strict: bool = False, refresh: bool = False) -> dict[
         "kernel": _kernel_health(),
         "joyzoning": _joyzoning_health(),
         "jsdp": _jsdp_health(),
+        "roadmap": _roadmap_health(),
     }
 
 
@@ -451,6 +492,25 @@ def format_status_report(
     elif jsdp.get("ok"):
         lines.append("✅ JSDP: disabled in config")
 
+    roadmap = data.get("roadmap", {})
+    if roadmap.get("ok"):
+        stale = roadmap.get("checkpoint_stale")
+        mark = "⚠️ " if stale else "✅"
+        lines.append(
+            f"{mark} Roadmap: enabled={roadmap.get('enabled')} "
+            f"present={roadmap.get('roadmap_present')} "
+            f"skill_installed={roadmap.get('workspace_skill_installed')} "
+            f"schema_valid={roadmap.get('schema_valid')} "
+            f"stale={stale}"
+        )
+    elif roadmap.get("enabled") is False:
+        lines.append("ℹ️  Roadmap: disabled in config")
+    elif roadmap.get("error"):
+        lines.append(f"⚠️  Roadmap: {roadmap.get('error')}")
+    else:
+        for rec in (roadmap.get("recommendations") or [])[:2]:
+            lines.append(f"⚠️  Roadmap: {rec}")
+
     if doctor and not data.get("contract_ok", True):
         lines.append("")
         lines.append("Doctor: integration contract FAILED — fix errors above before production use.")
@@ -545,5 +605,44 @@ def handle_dietcode_command(raw_args: str) -> Optional[str]:
                 from lib.agent.kernel_cockpit import format_cockpit_report
             return format_cockpit_report()
         return json.dumps(_kernel_health(), indent=2)
+
+    if sub == "roadmap":
+        rest = argv[1:] if len(argv) > 1 else []
+        if rest:
+            roadmap_sub = rest[0].lower()
+            if roadmap_sub == "cockpit":
+                try:
+                    from plugins.dietcode.lib.agent.roadmap.cockpit import format_cockpit_report
+                except ImportError:
+                    from lib.agent.roadmap.cockpit import format_cockpit_report
+                return format_cockpit_report()
+            if roadmap_sub == "progress":
+                try:
+                    from plugins.dietcode.lib.agent.roadmap.progress import format_progress_report, read_tail
+                except ImportError:
+                    from lib.agent.roadmap.progress import format_progress_report, read_tail
+                if "--current" in rest:
+                    try:
+                        from plugins.dietcode.lib.agent.roadmap.progress import build_progress_snapshot
+                    except ImportError:
+                        from lib.agent.roadmap.progress import build_progress_snapshot
+                    return json.dumps(build_progress_snapshot(), indent=2, ensure_ascii=False)
+                if "--tail" in rest:
+                    return json.dumps(read_tail(lines=20), indent=2)
+                return format_progress_report(timeline="--timeline" in rest)
+            if roadmap_sub == "watch":
+                try:
+                    from plugins.dietcode.lib.agent.roadmap.progress import format_watch_report
+                except ImportError:
+                    from lib.agent.roadmap.progress import format_watch_report
+                return format_watch_report()
+            if roadmap_sub in ("explain-gate", "explain_gate"):
+                try:
+                    from plugins.dietcode.lib.agent.roadmap.explain_gate import build_explain_gate_payload
+                except ImportError:
+                    from lib.agent.roadmap.explain_gate import build_explain_gate_payload
+                payload = build_explain_gate_payload()
+                return payload.get("report") or json.dumps(payload, indent=2, ensure_ascii=False)
+        return json.dumps(_roadmap_health(), indent=2)
 
     return f"Unknown subcommand: {sub}\n\n{_HELP}"

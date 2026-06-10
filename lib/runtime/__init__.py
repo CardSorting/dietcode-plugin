@@ -13,6 +13,11 @@ from plugins.dietcode.lib.runtime.kanban_hooks import (
     _on_session_start as _kanban_on_session_start,
 )
 from plugins.dietcode.lib.runtime.jsdp_hooks import _on_session_start as _jsdp_on_session_start
+from plugins.dietcode.lib.runtime.roadmap_hooks import (
+    _on_session_start as _roadmap_on_session_start,
+    _post_tool_call as _roadmap_post_tool_call,
+    on_roadmap_write_transform,
+)
 
 __all__ = [
     "on_transform_tool_result",
@@ -23,4 +28,7 @@ __all__ = [
     "_kanban_on_session_start",
     "_on_post_tool_call",
     "_jsdp_on_session_start",
+    "_roadmap_on_session_start",
+    "_roadmap_post_tool_call",
+    "on_roadmap_write_transform",
 ]

@@ -28,6 +28,13 @@ def _on_session_start(*, session_id: str = "", **_: Any) -> None:
             except Exception:
                 pass
 
+        roadmap_brief = None
+        try:
+            from plugins.dietcode.lib.agent.roadmap.session import session_brief as roadmap_session_brief
+            roadmap_brief = roadmap_session_brief()
+        except Exception:
+            pass
+
         emit_runtime_event(
             "session.start",
             scope_id=resolve_scope_id(),
@@ -36,6 +43,7 @@ def _on_session_start(*, session_id: str = "", **_: Any) -> None:
                 "jsdp_role": get_joyzoning_config().jsdp_role,
                 "kanban_task": kanban_task or None,
                 "jsdp_autonomous": jsdp_brief,
+                "roadmap_checkpoint": roadmap_brief,
             },
         )
     except Exception as exc:

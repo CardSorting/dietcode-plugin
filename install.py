@@ -117,8 +117,12 @@ def apply_seamless_defaults(*, save: bool = True) -> dict[str, Any]:
         toolsets = ["hermes-cli"]
     if not isinstance(toolsets, list):
         toolsets = ["hermes-cli"]
-    if _PLUGIN_NAME not in toolsets:
-        toolsets = list(toolsets) + [_PLUGIN_NAME]
+    toolsets_changed = False
+    for toolset_name in (_PLUGIN_NAME, "roadmap"):
+        if toolset_name not in toolsets:
+            toolsets = list(toolsets) + [toolset_name]
+            toolsets_changed = True
+    if toolsets_changed:
         config["toolsets"] = toolsets
         changed.append("toolsets")
 
@@ -160,6 +164,42 @@ def apply_seamless_defaults(*, save: bool = True) -> dict[str, Any]:
                 if key not in bridge_cfg:
                     bridge_cfg[key] = value
                     changed.append(f"dietcode.kernel.bridge.{key}")
+
+        roadmap_cfg = dietcode.setdefault("roadmap", {})
+        if isinstance(roadmap_cfg, dict):
+            if "enabled" not in roadmap_cfg:
+                roadmap_cfg["enabled"] = True
+                changed.append("dietcode.roadmap.enabled")
+            if "auto_install_skills" not in roadmap_cfg:
+                roadmap_cfg["auto_install_skills"] = True
+                changed.append("dietcode.roadmap.auto_install_skills")
+            if "nudge_on_roadmap_write" not in roadmap_cfg:
+                roadmap_cfg["nudge_on_roadmap_write"] = True
+                changed.append("dietcode.roadmap.nudge_on_roadmap_write")
+            if "progress_enabled" not in roadmap_cfg:
+                roadmap_cfg["progress_enabled"] = True
+                changed.append("dietcode.roadmap.progress_enabled")
+            if "stale_checkpoint_days" not in roadmap_cfg:
+                roadmap_cfg["stale_checkpoint_days"] = 7
+                changed.append("dietcode.roadmap.stale_checkpoint_days")
+            if "warn_on_stale_before_complete" not in roadmap_cfg:
+                roadmap_cfg["warn_on_stale_before_complete"] = True
+                changed.append("dietcode.roadmap.warn_on_stale_before_complete")
+            if "block_kanban_on_invalid_schema" not in roadmap_cfg:
+                roadmap_cfg["block_kanban_on_invalid_schema"] = False
+                changed.append("dietcode.roadmap.block_kanban_on_invalid_schema")
+            if "block_kanban_on_validation_pending" not in roadmap_cfg:
+                roadmap_cfg["block_kanban_on_validation_pending"] = True
+                changed.append("dietcode.roadmap.block_kanban_on_validation_pending")
+            if "evidence_cache_ttl_seconds" not in roadmap_cfg:
+                roadmap_cfg["evidence_cache_ttl_seconds"] = 15
+                changed.append("dietcode.roadmap.evidence_cache_ttl_seconds")
+            if "git_timeout_seconds" not in roadmap_cfg:
+                roadmap_cfg["git_timeout_seconds"] = 5
+                changed.append("dietcode.roadmap.git_timeout_seconds")
+            if "heavy_scan_cache_ttl_seconds" not in roadmap_cfg:
+                roadmap_cfg["heavy_scan_cache_ttl_seconds"] = 60
+                changed.append("dietcode.roadmap.heavy_scan_cache_ttl_seconds")
 
     if save and changed:
         save_config(config)
