@@ -216,6 +216,8 @@ def main() -> int:
             failures.append("fingerprint should detect AGENTS.md")
         if not fp.get("makefile_targets"):
             failures.append("fingerprint should detect Makefile targets")
+        if "make verify" not in (fp.get("verification_commands") or []):
+            failures.append("fingerprint missing make verify from Makefile targets")
         if fp.get("project_archetype") not in {"project", "library", "application", "web-app", "cli-tool", "hermes-plugin", "monorepo"}:
             failures.append(f"unexpected project_archetype: {fp.get('project_archetype')}")
         roadmap_text = (root / "ROADMAP.md").read_text(encoding="utf-8")
@@ -270,6 +272,48 @@ def main() -> int:
             failures.append("session_brief missing _roadmap_operator_hints")
         if not (brief or {}).get("steering_line"):
             failures.append("session_brief missing steering_line")
+        if not (brief or {}).get("project_steering_digest"):
+            failures.append("session_brief missing project_steering_digest when bootstrap incomplete")
+
+        from plugins.dietcode.lib.agent.roadmap.schema import BOOTSTRAP_PLACEHOLDER_PHRASES
+
+        minimal_evidence = {
+            "project_fingerprint": {
+                "steering_brief": "Audit Project — test stack",
+                "purpose_hint": "Purpose line.",
+                "project_archetype": "library",
+            },
+            "git": {"recent_commits": [], "changed_files_recent": []},
+            "code_soup_audit": {"overall_risk": "Low", "signals": []},
+        }
+        for phrase in BOOTSTRAP_PLACEHOLDER_PHRASES:
+            plan = build_bootstrap_fill_plan(
+                roadmap_text=f"# Test\n\n{phrase}\n",
+                evidence=minimal_evidence,
+            )
+            tasks = plan.get("tasks") or []
+            if not tasks:
+                failures.append(f"bootstrap fill plan missing task for phrase: {phrase[:60]}")
+                continue
+            task = tasks[0]
+            if (task.get("suggested_replacement") or "") == phrase:
+                failures.append(f"bootstrap phrase unmapped (same text): {phrase[:60]}")
+            if str(task.get("evidence_source") or "").startswith("manual"):
+                failures.append(f"bootstrap phrase manual-only: {phrase[:60]}")
+
+        import json as _json
+        from plugins.dietcode.lib.agent.roadmap.native_bridge import merge_roadmap_hint_into_result, roadmap_write_hint
+
+        write_hint = roadmap_write_hint(
+            tool_name="write_file",
+            args={"path": "ROADMAP.md"},
+            workspace=str(root),
+        )
+        merged = _json.loads(merge_roadmap_hint_into_result({"ok": True}, write_hint))
+        if not merged.get("project_steering_digest"):
+            failures.append("merge_roadmap_hint missing top-level project_steering_digest")
+        if write_hint.get("bootstrap_incomplete") and not merged.get("agent_next_call"):
+            failures.append("merge_roadmap_hint missing agent_next_call when bootstrap incomplete")
 
         from plugins.dietcode.lib.agent.roadmap.agent_steering import format_agent_steering_line
 
@@ -334,8 +378,12 @@ def main() -> int:
             failures.append("template brief missing bootstrap_autofill_preview")
         if not (tmpl.get("project_steering_digest") or {}).get("steering_brief"):
             failures.append("template brief missing steering digest")
-        if "apply_bootstrap_fill" not in str((tmpl.get("bootstrap_fill_plan") or {}).get("agent_next_call") or ""):
-            failures.append("template brief fill plan should recommend apply_bootstrap_fill")
+        fill_plan = tmpl.get("bootstrap_fill_plan") or {}
+        if fill_plan.get("tasks"):
+            if "apply_bootstrap_fill" not in str(fill_plan.get("agent_next_call") or ""):
+                failures.append("template brief fill plan should recommend apply_bootstrap_fill")
+        elif not fill_plan.get("bootstrap_complete"):
+            failures.append("template brief should report bootstrap_complete when skeleton has no remaining phrases")
 
         record_validation(str(root), valid=True, phase="checkpoint")
         record_file_mutation(str(root), tool="write_file", path="ROADMAP.md")

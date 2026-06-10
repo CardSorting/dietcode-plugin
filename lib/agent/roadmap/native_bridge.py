@@ -209,6 +209,11 @@ def merge_roadmap_hint_into_result(result: Any, hint: dict[str, Any]) -> str:
         parsed = {"result": result}
 
     parsed["_roadmap_write_hint"] = hint
+    digest = hint.get("project_steering_digest")
+    if digest:
+        parsed["project_steering_digest"] = digest
+    if hint.get("bootstrap_incomplete") and isinstance(digest, dict) and digest.get("agent_next_call"):
+        parsed["agent_next_call"] = digest["agent_next_call"]
     try:
         from plugins.dietcode.lib.agent.roadmap.operator import build_agent_operator_hints
 

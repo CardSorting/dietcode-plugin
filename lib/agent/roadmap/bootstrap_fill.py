@@ -37,6 +37,7 @@ def _suggest_replacement(
     ci = fingerprint.get("ci_systems") or []
     scripts = fingerprint.get("entry_points") or []
     make_targets = fingerprint.get("makefile_targets") or []
+    verify_cmds = fingerprint.get("verification_commands") or []
     if make_targets:
         scripts = list(dict.fromkeys([*scripts, *make_targets[:3]]))
 
@@ -74,7 +75,7 @@ def _suggest_replacement(
             "project_fingerprint.runtime_center_hint",
         ),
         "A fragmented patch surface without a documented center of gravity.": (
-            _anti_goal(archetype),
+            _anti_goal(archetype, brief=brief),
             "project_fingerprint.project_archetype",
         ),
         "Initial roadmap bootstrap.": (
@@ -131,7 +132,7 @@ def _suggest_replacement(
             "project_fingerprint.runtime_center_hint",
         ),
         "List anti-goals that protect coherence.": (
-            _anti_goal(archetype),
+            _anti_goal(archetype, brief=brief),
             "project_fingerprint.project_archetype",
         ),
         "Describe what the project is becoming using README, architecture docs, and recent commits.": (
@@ -281,10 +282,15 @@ def _workflow_hint(
     ci: list[str],
 ) -> str:
     parts: list[str] = []
-    if scripts:
+    verify_cmds = fingerprint.get("verification_commands") or []
+    if verify_cmds:
+        parts.append(f"verify via {verify_cmds[0]}")
+    elif scripts:
         parts.append(f"dev/build via {', '.join(scripts[:3])}")
-    if tests:
+    if tests and not verify_cmds:
         parts.append(f"verify with {tests[0]}")
+    elif tests:
+        parts.append(f"tests: {tests[0]}")
     if ci:
         parts.append(f"CI: {ci[0]}")
     archetype = fingerprint.get("project_archetype") or ""
@@ -298,14 +304,19 @@ def _workflow_hint(
     return "Document primary dev, deploy, and agent-assisted workflows from README and scripts."
 
 
-def _anti_goal(archetype: str) -> str:
+def _anti_goal(archetype: str, *, brief: str = "") -> str:
     goals = {
         "hermes-plugin": "A Hermes plugin that stores ROADMAP.md outside the project workspace or drifts from kernel hook conventions.",
         "monorepo": "A monorepo without documented package boundaries and shared center of gravity.",
         "web-app": "A web app whose UI, API, and deploy surfaces diverge without documented authority boundaries.",
         "cli-tool": "A CLI whose entrypoints multiply without a documented operational center.",
+        "library": "A library whose public API surface drifts without documented stability boundaries.",
     }
-    return goals.get(archetype, "A fragmented patch surface without a documented center of gravity.")
+    if archetype in goals:
+        return goals[archetype]
+    if brief:
+        return f"Uncontrolled scope changes to {brief} without a documented center of gravity."
+    return "Uncontrolled scope sprawl without a documented center of gravity."
 
 
 def _primary_risk(evidence: dict[str, Any], fingerprint: dict[str, Any]) -> str:
@@ -482,10 +493,17 @@ def build_project_steering_digest(
         "has_ci": fingerprint.get("has_ci"),
         "has_tests": fingerprint.get("has_tests"),
         "entry_points": fingerprint.get("entry_points") or [],
+        "verification_commands": fingerprint.get("verification_commands") or [],
         "git_remote": fingerprint.get("git_remote"),
         "agent_rules_files": fingerprint.get("agent_rules_files") or [],
         "makefile_targets": fingerprint.get("makefile_targets") or [],
+        "docs_roots": fingerprint.get("docs_roots") or [],
+        "license": fingerprint.get("license"),
+        "runtime_versions": fingerprint.get("runtime_versions"),
+        "has_codeowners": fingerprint.get("has_codeowners"),
+        "dependency_automation": fingerprint.get("dependency_automation"),
         "has_backstage_catalog": fingerprint.get("has_backstage_catalog"),
+        "catalog_name": fingerprint.get("catalog_name"),
     }
     if fill_plan:
         digest["bootstrap_remaining"] = fill_plan.get("remaining_count")
@@ -516,7 +534,7 @@ def bootstrap_steering_bundle(
         "bootstrap_fill_plan": fill_plan,
         "project_steering_digest": build_project_steering_digest(fp, fill_plan=fill_plan),
     }
-    if include_preview and fill_plan.get("tasks"):
+    if include_preview:
         out["bootstrap_autofill_preview"] = apply_bootstrap_fill_draft(roadmap_text, evidence)
     if fill_plan.get("tasks"):
         out["operator_summary"] = fill_plan.get("operator_summary")

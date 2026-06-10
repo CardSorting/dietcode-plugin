@@ -55,6 +55,7 @@ def session_brief(*, workspace: Optional[str] = None) -> dict[str, Any] | None:
             "project_archetype": steering.get("project_archetype"),
             "agent_rules_files": steering.get("agent_rules_files"),
             "makefile_targets": steering.get("makefile_targets"),
+            "verification_commands": steering.get("verification_commands"),
             "has_backstage_catalog": steering.get("has_backstage_catalog"),
             "readme_tagline": steering.get("readme_tagline"),
             "center_of_gravity_excerpt": steering.get("center_of_gravity_excerpt"),

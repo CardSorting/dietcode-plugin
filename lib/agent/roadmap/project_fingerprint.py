@@ -89,7 +89,16 @@ def _fingerprint_cache_token(root: Path) -> float:
         "go.mod",
         "Makefile",
         "AGENTS.md",
+        "CONTRIBUTING.md",
         "catalog-info.yaml",
+        ".nvmrc",
+        ".node-version",
+        ".python-version",
+        ".tool-versions",
+        ".github/CODEOWNERS",
+        "CODEOWNERS",
+        "renovate.json",
+        ".github/dependabot.yml",
     ):
         path = root / rel
         if path.is_file():
@@ -439,6 +448,72 @@ def _catalog_metadata(root: Path) -> dict[str, Optional[str]]:
     return meta
 
 
+def _runtime_versions(root: Path) -> dict[str, str]:
+    versions: dict[str, str] = {}
+    for rel, label in (
+        (".nvmrc", "node"),
+        (".node-version", "node"),
+        (".python-version", "python"),
+        (".tool-versions", "asdf"),
+    ):
+        path = root / rel
+        if not path.is_file():
+            continue
+        line = _read_text(path, limit=64).strip().splitlines()
+        if line:
+            versions[label] = line[0][:32]
+    return versions
+
+
+def _dependency_automation(root: Path) -> list[str]:
+    found: list[str] = []
+    if (root / "renovate.json").is_file() or (root / ".github" / "renovate.json").is_file():
+        found.append("Renovate")
+    if (root / ".github" / "dependabot.yml").is_file() or (root / ".github" / "dependabot.yaml").is_file():
+        found.append("Dependabot")
+    return found
+
+
+def _verification_commands(
+    root: Path,
+    *,
+    entry_points: list[str],
+    makefile_targets: list[str],
+    test_frameworks: list[str],
+) -> list[str]:
+    """Industry-standard verify commands inferred from Makefile, package scripts, and test markers."""
+    cmds: list[str] = []
+    for target in ("verify", "test", "lint", "check", "ci"):
+        if target in makefile_targets:
+            cmds.append(f"make {target}")
+            break
+
+    scripts = _package_json(root).get("scripts")
+    if isinstance(scripts, dict):
+        for name in ("verify", "test", "lint", "ci", "check"):
+            if name in scripts:
+                cmd = f"npm run {name}" if (root / "package.json").is_file() else name
+                if cmd not in cmds:
+                    cmds.append(cmd)
+                break
+
+    if not cmds:
+        if "pytest" in test_frameworks:
+            cmds.append("pytest")
+        elif any(t in test_frameworks for t in ("Jest", "Vitest")):
+            cmds.append("npm test")
+        elif (root / "go.mod").is_file():
+            cmds.append("go test ./...")
+        elif (root / "Cargo.toml").is_file():
+            cmds.append("cargo test")
+        elif entry_points:
+            first = entry_points[0]
+            if first in ("test", "verify", "lint", "check"):
+                cmds.append(f"npm run {first}" if (root / "package.json").is_file() else first)
+
+    return cmds[:4]
+
+
 def _makefile_targets(root: Path) -> list[str]:
     makefile = root / "Makefile"
     if not makefile.is_file():
@@ -491,6 +566,15 @@ def _build_project_fingerprint(root: Path) -> dict[str, Any]:
     docs_roots = _docs_roots(root)
     agent_rules = _agent_rules_files(root)
     makefile_targets = _makefile_targets(root)
+    runtime_versions = _runtime_versions(root)
+    dependency_automation = _dependency_automation(root)
+    has_codeowners = (root / ".github" / "CODEOWNERS").is_file() or (root / "CODEOWNERS").is_file()
+    verification_commands = _verification_commands(
+        root,
+        entry_points=entry_points,
+        makefile_targets=makefile_targets,
+        test_frameworks=test_frameworks,
+    )
     has_backstage = (root / "catalog-info.yaml").is_file()
     catalog_meta = _catalog_metadata(root) if has_backstage else {}
 
@@ -556,6 +640,10 @@ def _build_project_fingerprint(root: Path) -> dict[str, Any]:
         "docs_roots": docs_roots,
         "agent_rules_files": agent_rules,
         "makefile_targets": makefile_targets,
+        "verification_commands": verification_commands,
+        "runtime_versions": runtime_versions or None,
+        "dependency_automation": dependency_automation or None,
+        "has_codeowners": has_codeowners,
         "has_backstage_catalog": has_backstage,
         "catalog_name": catalog_meta.get("catalog_name"),
         "catalog_description": catalog_meta.get("catalog_description"),

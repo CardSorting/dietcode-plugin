@@ -995,12 +995,16 @@ class RoadmapBootstrapFillTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "README.md").write_text("# Template Rec\n", encoding="utf-8")
+            (root / "README.md").write_text("# Template Rec\n\nTagline for steering.\n", encoding="utf-8")
             tmpl = template_brief(workspace=str(root))
-            self.assertIn(
-                "apply_bootstrap_fill",
-                (tmpl.get("bootstrap_fill_plan") or {}).get("agent_next_call") or "",
-            )
+            fill_plan = tmpl.get("bootstrap_fill_plan") or {}
+            self.assertIn("bootstrap_autofill_preview", tmpl)
+            next_call = fill_plan.get("agent_next_call") or tmpl.get("agent_next_call") or ""
+            if fill_plan.get("tasks"):
+                self.assertIn("apply_bootstrap_fill", next_call)
+            else:
+                self.assertIn("validate", next_call)
+                self.assertTrue(fill_plan.get("bootstrap_complete"))
 
     def test_progress_report_mentions_bootstrap_fill(self) -> None:
         from plugins.dietcode.lib.agent.roadmap.progress import format_progress_report
@@ -1165,6 +1169,64 @@ class RoadmapBootstrapFillTests(unittest.TestCase):
             digest = hint.get("project_steering_digest") or {}
             self.assertTrue(hint.get("bootstrap_incomplete"))
             self.assertTrue(digest.get("bootstrap_remaining") or digest.get("sample_fill_task"))
+
+    def test_native_bridge_merge_propagates_digest(self) -> None:
+        import json
+
+        from plugins.dietcode.lib.agent.roadmap.native_bridge import merge_roadmap_hint_into_result, roadmap_write_hint
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Makefile").write_text(".PHONY: verify\nverify:\n\ttrue\n", encoding="utf-8")
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(project_hint="Merge Digest"), encoding="utf-8")
+            hint = roadmap_write_hint(
+                tool_name="write_file",
+                args={"path": "ROADMAP.md"},
+                workspace=str(root),
+            )
+            merged = json.loads(merge_roadmap_hint_into_result({"ok": True}, hint))
+            self.assertIn("project_steering_digest", merged)
+            self.assertIn("apply_bootstrap_fill", merged.get("agent_next_call") or "")
+
+    def test_fingerprint_verification_commands_from_makefile(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Makefile").write_text(".PHONY: verify test\nverify:\n\ttrue\n", encoding="utf-8")
+            fp = build_project_fingerprint(root)
+            self.assertIn("make verify", fp.get("verification_commands") or [])
+            self.assertIn("verify", fp.get("makefile_targets") or [])
+
+    def test_steering_digest_includes_verification_commands(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import build_project_steering_digest
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Makefile").write_text(".PHONY: verify\nverify:\n\ttrue\n", encoding="utf-8")
+            fp = build_project_fingerprint(root)
+            digest = build_project_steering_digest(fp)
+            self.assertIn("make verify", digest.get("verification_commands") or [])
+
+    def test_anti_goal_never_returns_placeholder_phrase(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import build_bootstrap_fill_plan
+
+        phrase = "A fragmented patch surface without a documented center of gravity."
+        plan = build_bootstrap_fill_plan(
+            roadmap_text=f"# Test\n\n{phrase}\n",
+            evidence={
+                "project_fingerprint": {
+                    "steering_brief": "Sample Project",
+                    "project_archetype": "library",
+                },
+                "git": {},
+                "code_soup_audit": {},
+            },
+        )
+        task = (plan.get("tasks") or [{}])[0]
+        self.assertNotEqual(task.get("suggested_replacement"), phrase)
 
 
 class RoadmapWorkspaceResolutionTests(unittest.TestCase):

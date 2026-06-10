@@ -40,6 +40,14 @@ def _project_context_lines(steering: dict[str, Any]) -> list[str]:
     if make_targets:
         lines.append(f"Makefile: {', '.join(make_targets[:4])}")
 
+    verify_cmds = steering.get("verification_commands") or []
+    if verify_cmds:
+        lines.append(f"Verify: {', '.join(verify_cmds[:3])}")
+
+    docs_roots = steering.get("docs_roots") or []
+    if docs_roots:
+        lines.append(f"Docs: {', '.join(docs_roots[:3])}")
+
     if steering.get("has_backstage_catalog"):
         lines.append("Backstage: catalog-info.yaml present")
         catalog = steering.get("catalog_name")

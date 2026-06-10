@@ -276,7 +276,7 @@ def checkpoint_brief(
                 if status.get("phase") == "bootstrap_fill"
                 else "roadmap(action='checkpoint')"
                 if not evidence.get("roadmap", {}).get("exists")
-                else "Edit ROADMAP.md per skill, then roadmap(action='validate'), then return checkpoint summary."
+                else "roadmap(action='validate')"
             )
         ),
     }
@@ -305,10 +305,19 @@ def checkpoint_brief(
             bootstrap_inc=True,
         )
     ctx_lower = (context or "").lower()
-    if any(
-        phrase in ctx_lower
-        for phrase in ("apply autofill", "apply bootstrap", "autofill write", "write autofill")
-    ):
+    autofill_write = (
+        any(
+            phrase in ctx_lower
+            for phrase in (
+                "apply autofill write",
+                "apply bootstrap write",
+                "autofill write",
+                "write autofill",
+            )
+        )
+        or ctx_lower.strip() in ("apply autofill", "apply bootstrap", "autofill")
+    ) and "preview" not in ctx_lower
+    if autofill_write:
         from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import write_bootstrap_autofill
 
         applied = write_bootstrap_autofill(workspace=root, dry_run=False)
