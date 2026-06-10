@@ -1327,6 +1327,43 @@ class RoadmapBootstrapFillTests(unittest.TestCase):
             fp = build_project_fingerprint(root)
             self.assertIn("test", fp.get("ci_workflow_names") or [])
 
+    def test_steering_digest_identity_line(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import (
+            build_project_steering_digest,
+            format_steering_identity_line,
+        )
+
+        digest = build_project_steering_digest({
+            "steering_brief": "Demo App — Python",
+            "stack_summary": "Python, pytest",
+            "verification_commands": ["make verify"],
+            "project_archetype": "library",
+        })
+        self.assertIn("make verify", digest.get("identity_line") or "")
+        self.assertIn("Demo App", format_steering_identity_line(digest))
+
+    def test_evidence_action_includes_digest_without_placeholders(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import enrich_payload_with_bootstrap_context
+        from plugins.dietcode.lib.agent.roadmap.evidence import gather_evidence
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton_from_evidence_autofilled
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Evidence Digest\n\nTagline.\n", encoding="utf-8")
+            (root / "Makefile").write_text(".PHONY: verify\nverify:\n\ttrue\n", encoding="utf-8")
+            evidence = gather_evidence(root, tier="standard")
+            skeleton = bootstrap_skeleton_from_evidence_autofilled(evidence, workspace=str(root))
+            (root / "ROADMAP.md").write_text(skeleton, encoding="utf-8")
+            evidence = gather_evidence(root, tier="standard", roadmap_text=skeleton)
+            payload = enrich_payload_with_bootstrap_context(
+                {"action": "evidence", **evidence},
+                evidence=evidence,
+                roadmap_text=skeleton,
+            )
+            digest = payload.get("project_steering_digest") or {}
+            self.assertTrue(digest.get("identity_line"))
+            self.assertNotIn("bootstrap_fill_plan", payload)
+
 
 class RoadmapWorkspaceResolutionTests(unittest.TestCase):
     def setUp(self) -> None:

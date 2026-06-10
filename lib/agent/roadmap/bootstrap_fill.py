@@ -499,6 +499,24 @@ def apply_bootstrap_fill_draft(
     }
 
 
+def format_steering_identity_line(digest: dict[str, Any]) -> str:
+    """One-line per-project identity for watch lines, cockpit headers, and operator UX."""
+    parts: list[str] = []
+    brief = digest.get("steering_brief") or digest.get("steering_identity")
+    if brief:
+        parts.append(str(brief))
+    stack = digest.get("stack_summary")
+    if stack and stack not in str(brief or ""):
+        parts.append(str(stack))
+    verify = (digest.get("verification_commands") or [])[:1]
+    if verify:
+        parts.append(f"verify `{verify[0]}`")
+    archetype = digest.get("project_archetype")
+    if archetype and archetype != "project" and not parts:
+        parts.append(str(archetype).replace("-", " "))
+    return " · ".join(parts)
+
+
 def build_project_steering_digest(
     fingerprint: dict[str, Any],
     *,
@@ -542,6 +560,7 @@ def build_project_steering_digest(
                 "evidence_source": first.get("evidence_source"),
             }
         digest["agent_next_call"] = fill_plan.get("agent_next_call")
+    digest["identity_line"] = format_steering_identity_line(digest)
     return digest
 
 
@@ -708,7 +727,7 @@ def enrich_payload_with_bootstrap_context(
     roadmap_text: str = "",
     evidence: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """Attach fill plan + steering digest when bootstrap placeholders remain."""
+    """Attach steering digest; include fill plan when bootstrap placeholders remain."""
     bundle = evidence if evidence is not None else payload
     text = roadmap_text or bundle.get("_roadmap_text") or ""
     roadmap = bundle.get("roadmap") or {}
@@ -718,15 +737,19 @@ def enrich_payload_with_bootstrap_context(
 
         metrics = bootstrap_completeness_metrics(text)
         bootstrap_inc = not metrics.get("bootstrap_complete", True)
-    if not bootstrap_inc or not text.strip():
-        return payload
 
     out = dict(payload)
-    out.update(
-        bootstrap_steering_bundle(
-            roadmap_text=text,
-            evidence=bundle,
-            include_preview=True,
+    fp = bundle.get("project_fingerprint") or {}
+    if bootstrap_inc and text.strip():
+        out.update(
+            bootstrap_steering_bundle(
+                roadmap_text=text,
+                evidence=bundle,
+                include_preview=True,
+            )
         )
-    )
+    elif fp:
+        out["project_steering_digest"] = build_project_steering_digest(fp)
+    elif bundle.get("workspace"):
+        out.update(attach_steering_digest_fields({"workspace": bundle["workspace"]}))
     return out

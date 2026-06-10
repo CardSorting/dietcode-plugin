@@ -69,6 +69,11 @@ def _merge_steering_next_actions(
                 hints.append(stack_hint)
 
         digest = roadmap_brief.get("project_steering_digest") or {}
+        id_line = digest.get("identity_line")
+        if id_line:
+            id_hint = f"Identity: {id_line}"
+            if id_hint not in base and id_hint not in hints:
+                hints.append(id_hint)
         remaining = digest.get("bootstrap_remaining")
         verify_cmds = digest.get("verification_commands") or []
         if verify_cmds:

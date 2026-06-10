@@ -280,11 +280,14 @@ def format_progress_report(
         if next_rec.get("command"):
             lines.append(f"Next: {next_rec['command']}")
         digest = snap.get("project_steering_digest") or {}
+        id_line = digest.get("identity_line") or brief
         remaining = digest.get("bootstrap_remaining")
         if remaining and int(remaining) > 0:
             lines.append(
                 f"Bootstrap fill: {remaining} phrase(s) — roadmap(action='apply_bootstrap_fill', context='write')"
             )
+        elif id_line and not brief:
+            lines.append(f"Project: {id_line}")
         return "\n".join(lines)
 
     phase = current.get("phase") or "idle"
@@ -309,6 +312,9 @@ def format_progress_report(
     if next_rec.get("command"):
         lines.append(f"Next: {next_rec.get('command')}")
     digest = snap.get("project_steering_digest") or {}
+    id_line = digest.get("identity_line")
+    if id_line:
+        lines.append(f"Project: {id_line}")
     remaining = digest.get("bootstrap_remaining")
     if remaining and int(remaining) > 0:
         lines.append(
@@ -354,14 +360,15 @@ def format_watch_report(*, workspace: Optional[str] = None) -> str:
     path_hint = snap.get("roadmap_path") or ""
     prefix = f" @ {path_hint}" if path_hint else ""
     brief = snap.get("steering_brief") or snap.get("steering_identity")
+    digest = snap.get("project_steering_digest") or {}
+    id_line = digest.get("identity_line") or brief
     if not current:
         next_rec = snap.get("recommended_next_action") or {}
         hint = next_rec.get("command") or "/roadmap cockpit"
-        digest = snap.get("project_steering_digest") or {}
         remaining = digest.get("bootstrap_remaining")
         fill_bit = f" fill={remaining}" if remaining and int(remaining) > 0 else ""
-        if brief:
-            brief_short = brief if len(brief) <= 48 else brief[:47] + "…"
+        if id_line:
+            brief_short = id_line if len(id_line) <= 48 else id_line[:47] + "…"
             return f"🗺️ ROADMAP{prefix} [{brief_short}] idle{fill_bit} — next: {hint}"
         return f"🗺️ ROADMAP{prefix} … idle{fill_bit} — next: {hint}"
 

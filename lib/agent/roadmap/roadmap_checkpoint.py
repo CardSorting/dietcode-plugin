@@ -61,17 +61,23 @@ def _enrich_with_bootstrap_fill(
     evidence: dict[str, Any],
     bootstrap_inc: bool,
 ) -> None:
-    if not bootstrap_inc:
-        return
-    from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import bootstrap_steering_bundle
-
-    payload.update(
-        bootstrap_steering_bundle(
-            roadmap_text=roadmap_text,
-            evidence=evidence,
-            include_preview=True,
-        )
+    from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import (
+        bootstrap_steering_bundle,
+        build_project_steering_digest,
     )
+
+    if bootstrap_inc:
+        payload.update(
+            bootstrap_steering_bundle(
+                roadmap_text=roadmap_text,
+                evidence=evidence,
+                include_preview=True,
+            )
+        )
+        return
+    fp = evidence.get("project_fingerprint") or {}
+    if fp:
+        payload["project_steering_digest"] = build_project_steering_digest(fp)
 
 
 def operational_status(
@@ -615,8 +621,7 @@ def status_snapshot(*, workspace: Optional[str] = None) -> dict[str, Any]:
         "validation": validation.to_dict() if validation else None,
         "checked_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
-    if steering.get("bootstrap_complete") is False:
-        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
+    from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_bootstrap_steering_fields
 
-        payload.update(attach_bootstrap_steering_fields(steering, tier="light"))
+    payload.update(attach_bootstrap_steering_fields(steering, tier="light"))
     return clarity_envelope(payload)

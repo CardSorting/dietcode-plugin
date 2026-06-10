@@ -131,6 +131,10 @@ def build_cockpit_payload(*, workspace: Optional[str] = None) -> dict[str, Any]:
             bootstrap_inc=True,
         )
         payload.update(enriched)
+    else:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_steering_digest_fields
+
+        payload.update(attach_steering_digest_fields(steering))
 
     return clarity_envelope(payload, phase_info=phase_info)
 
@@ -144,6 +148,10 @@ def format_cockpit_report(*, workspace: Optional[str] = None) -> str:
     ]
     if data.get("steering_brief") or data.get("steering_identity"):
         lines.append(f"Project: {data.get('steering_brief') or data['steering_identity']}")
+    digest = data.get("project_steering_digest") or {}
+    verify_cmds = digest.get("verification_commands") or []
+    if verify_cmds:
+        lines.append(f"Verify: {', '.join(verify_cmds[:2])}")
     if data.get("stack_summary"):
         archetype = data.get("project_archetype")
         stack_line = f"Stack: {data['stack_summary']}"

@@ -362,14 +362,18 @@ def main() -> int:
             failures.append("checkpoint bootstrap_fill plan should recommend apply_bootstrap_fill")
 
         status = status_snapshot(workspace=str(root))
-        if "project_steering_digest" not in status:
-            failures.append("status missing project_steering_digest when bootstrap incomplete")
+        if not status.get("project_steering_digest"):
+            failures.append("status missing project_steering_digest")
+        if not (status.get("project_steering_digest") or {}).get("identity_line"):
+            failures.append("status digest missing identity_line")
 
         validated2 = validate_roadmap(workspace=str(root))
         if "bootstrap_fill_plan" not in validated2:
             failures.append("validate should include bootstrap_fill_plan when placeholders remain")
         if not validated2.get("project_steering_digest"):
             failures.append("validate missing project_steering_digest")
+        if not (validated2.get("project_steering_digest") or {}).get("identity_line"):
+            failures.append("validate digest missing identity_line")
         if "recommended_next_action" not in validated2:
             failures.append("validate missing recommended_next_action")
         rec = validated2.get("recommended_next_action") or {}
