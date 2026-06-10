@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 _config_cache: Optional["RoadmapConfig"] = None
@@ -67,24 +68,133 @@ def get_roadmap_config() -> RoadmapConfig:
     return _config_cache
 
 
-def resolve_workspace_root(explicit: Optional[str] = None) -> str:
-    """Resolve the project workspace for ROADMAP.md."""
-    if explicit and str(explicit).strip():
-        from pathlib import Path
+class RoadmapWorkspaceError(ValueError):
+    """Project workspace for ROADMAP.md could not be resolved safely."""
 
-        return str(Path(explicit).expanduser().resolve())
+
+def _reject_quarantined(root: str) -> None:
+    try:
+        from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
+    except ImportError:
+        return
+    if is_quarantined_root(root):
+        raise RoadmapWorkspaceError(
+            f"ROADMAP.md belongs in your Hermes project workspace, not the DietCode plugin tree: {root}. "
+            "Set kanban.workspace or HERMES_KANBAN_WORKSPACE to your project root."
+        )
+
+
+def _candidate_from_env() -> tuple[Optional[str], str]:
+    for key in (
+        "HERMES_KANBAN_WORKSPACE",
+        "JOYZONING_WORKSPACE_ROOT",
+        "DIETCODE_WORKSPACE_ROOT",
+    ):
+        val = os.environ.get(key, "").strip()
+        if not val:
+            continue
+        root = str(Path(val).expanduser().resolve())
+        try:
+            from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
+
+            if is_quarantined_root(root):
+                continue
+        except ImportError:
+            pass
+        return root, key
+    return None, "env:unset"
+
+
+def _candidate_from_kanban_config() -> tuple[Optional[str], str]:
+    try:
+        from hermes_cli.config import load_config
+
+        raw = load_config()
+        if not isinstance(raw, dict):
+            return None, "kanban:unset"
+        kanban = raw.get("kanban", {})
+        if not isinstance(kanban, dict):
+            return None, "kanban:unset"
+        ws = str(kanban.get("workspace") or kanban.get("workspace_root") or "").strip()
+        if not ws:
+            return None, "kanban:unset"
+        root = str(Path(ws).expanduser().resolve())
+        try:
+            from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
+
+            if is_quarantined_root(root):
+                return None, "kanban:quarantined"
+        except ImportError:
+            pass
+        return root, "kanban.workspace"
+    except Exception:
+        return None, "kanban:unset"
+
+
+def resolve_workspace(*, explicit: Optional[str] = None) -> tuple[str, str]:
+    """Resolve the user project workspace for ROADMAP.md (never plugin/kernel trees).
+
+    Returns ``(absolute_path, resolution_source)``.
+    """
+    if explicit and str(explicit).strip():
+        root = str(Path(explicit).expanduser().resolve())
+        _reject_quarantined(root)
+        return root, "explicit"
+
+    try:
+        from plugins.dietcode.lib.kernel_workspace import (
+            is_quarantined_root,
+            resolve_workspace_root as resolve_kernel_workspace,
+        )
+
+        report = resolve_kernel_workspace()
+        candidate = report.resolved_workspace_root
+        if candidate and not is_quarantined_root(candidate):
+            return candidate, report.resolution_detail
+    except Exception:
+        pass
 
     try:
         from plugins.dietcode.lib.agent.joyzoning.jsdp_harness_client import (
             resolve_workspace_root as _jz_resolve,
         )
 
-        return _jz_resolve(explicit=None)
-    except Exception:
-        from pathlib import Path
+        jz_root = _jz_resolve(explicit=None)
+        if jz_root:
+            try:
+                from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
 
-        for key in ("HERMES_KANBAN_WORKSPACE", "JOYZONING_WORKSPACE_ROOT"):
-            val = os.environ.get(key, "").strip()
-            if val:
-                return str(Path(val).expanduser().resolve())
-        return str(Path.cwd().resolve())
+                if not is_quarantined_root(jz_root):
+                    return jz_root, "joyzoning.jsdp"
+            except ImportError:
+                return jz_root, "joyzoning.jsdp"
+    except Exception:
+        pass
+
+    env_root, env_source = _candidate_from_env()
+    if env_root:
+        return env_root, env_source
+
+    kanban_root, kanban_source = _candidate_from_kanban_config()
+    if kanban_root:
+        return kanban_root, kanban_source
+
+    cwd = str(Path.cwd().resolve())
+    try:
+        from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
+
+        if not is_quarantined_root(cwd):
+            return cwd, "cwd"
+    except ImportError:
+        return cwd, "cwd"
+
+    raise RoadmapWorkspaceError(
+        "Could not resolve a project workspace for ROADMAP.md. "
+        "Set kanban.workspace in ~/.hermes/config.yaml or export HERMES_KANBAN_WORKSPACE "
+        "to your project root (not ~/.hermes/plugins/dietcode)."
+    )
+
+
+def resolve_workspace_root(explicit: Optional[str] = None) -> str:
+    """Resolve the project workspace for ROADMAP.md."""
+    return resolve_workspace(explicit=explicit)[0]

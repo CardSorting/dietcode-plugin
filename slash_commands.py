@@ -584,7 +584,7 @@ def _handle_roadmap(raw_args: str) -> Optional[str]:
 
     try:
         from plugins.dietcode.lib.agent.roadmap.cockpit import format_cockpit_report
-        from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace_root
+        from plugins.dietcode.lib.agent.roadmap.config import RoadmapWorkspaceError, resolve_workspace_root
         from plugins.dietcode.lib.agent.roadmap import evidence as evidence_mod
         from plugins.dietcode.lib.agent.roadmap.doctor import run_checks
         from plugins.dietcode.lib.agent.roadmap.freshness import assess_checkpoint_freshness, format_explain_stale_report
@@ -606,7 +606,10 @@ def _handle_roadmap(raw_args: str) -> Optional[str]:
     except ImportError as exc:
         return f"❌ Roadmap module unavailable: {exc}"
 
-    root = resolve_workspace_root()
+    try:
+        root = resolve_workspace_root()
+    except RoadmapWorkspaceError as exc:
+        return f"❌ {exc}"
 
     if sub == "cockpit":
         return format_cockpit_report(workspace=root)

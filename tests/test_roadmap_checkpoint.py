@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 import tempfile
 import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 if str(_PLUGIN_ROOT) not in sys.path:
@@ -222,12 +224,8 @@ class RoadmapProgressTests(unittest.TestCase):
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmp:
-            os.environ["DIETCODE_SESSION_DIR"] = tmp
-            try:
-                report = format_watch_report()
-                self.assertIn("idle", report.lower())
-            finally:
-                os.environ.pop("DIETCODE_SESSION_DIR", None)
+            report = format_watch_report(workspace=tmp)
+            self.assertIn("idle", report.lower())
 
 
 class RoadmapFreshnessTests(unittest.TestCase):
@@ -547,6 +545,131 @@ class RoadmapOperatorModuleTests(unittest.TestCase):
             brief = session_brief(workspace=tmp)
             assert brief is not None
             self.assertIn("recommended_next_action", brief)
+
+
+    def test_validate_includes_bootstrap_completeness(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            text = bootstrap_skeleton(project_hint="Demo")
+            (root / "ROADMAP.md").write_text(text, encoding="utf-8")
+            result = validate_roadmap(workspace=str(root))
+            self.assertIn("bootstrap_completeness", result)
+            self.assertIn("bootstrap_placeholder_count", result.get("validation") or {})
+
+
+class RoadmapNativeBridgeTests(unittest.TestCase):
+    def test_validate_roadmap_write_target_allows_workspace_root(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.native_bridge import validate_roadmap_write_target
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ok = validate_roadmap_write_target(write_path="ROADMAP.md", workspace=tmp)
+            self.assertTrue(ok.get("allowed"))
+            self.assertIn("ROADMAP.md", ok.get("roadmap_path") or "")
+
+    def test_validate_roadmap_write_target_rejects_outside_workspace(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.native_bridge import validate_roadmap_write_target
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = validate_roadmap_write_target(write_path="/etc/ROADMAP.md", workspace=tmp)
+            self.assertFalse(bad.get("allowed"))
+            self.assertEqual(bad.get("code"), "roadmap_path_invalid")
+
+    def test_roadmap_write_hint_includes_expected_path(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.native_bridge import roadmap_write_hint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            hint = roadmap_write_hint(
+                tool_name="write_file",
+                args={"path": "ROADMAP.md"},
+                workspace=tmp,
+            )
+            self.assertFalse(hint.get("write_rejected"))
+            self.assertIn("ROADMAP.md", hint.get("expected_path") or "")
+
+
+class RoadmapBootstrapEvidenceTests(unittest.TestCase):
+    def test_bootstrap_skeleton_from_evidence(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton_from_evidence
+
+        evidence = {
+            "readmes": [{"excerpt": "# My App\n\nHandles invoices for SMBs."}],
+            "git": {"recent_commits": ["a1b2c3 Add billing module"], "changed_files_recent": ["src/billing.py"]},
+            "code_soup_audit": {"overall_risk": "Medium", "centralization_recommendation": "Consolidate billing helpers."},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            skeleton = bootstrap_skeleton_from_evidence(evidence, workspace=tmp)
+            self.assertIn("My App", skeleton)
+            self.assertIn("billing module", skeleton)
+            self.assertIn("Medium", skeleton)
+            self.assertNotIn("Describe from README and project evidence", skeleton)
+
+    def test_find_bootstrap_placeholders(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.schema import find_bootstrap_placeholders
+
+        sample = "## 1. Project Center of Gravity\n\nDescribe from README and project evidence\n"
+        issues = find_bootstrap_placeholders(sample)
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0].code, "bootstrap_placeholder")
+
+
+class RoadmapWorkspaceResolutionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.project = Path(self._tmpdir.name)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def test_resolve_workspace_rejects_plugin_subdir(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.config import RoadmapWorkspaceError, resolve_workspace
+
+        with self.assertRaises(RoadmapWorkspaceError):
+            resolve_workspace(explicit=str(_PLUGIN_ROOT.resolve() / "lib"))
+
+    def test_resolve_workspace_uses_kernel_project_root(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace
+
+        project = str(self.project)
+        with mock.patch(
+            "plugins.dietcode.lib.kernel_workspace.resolve_workspace_root",
+            return_value=mock.Mock(resolved_workspace_root=project, resolution_detail="explicit"),
+        ):
+            with mock.patch(
+                "plugins.dietcode.lib.kernel_workspace.is_quarantined_root",
+                return_value=False,
+            ):
+                root, source = resolve_workspace()
+        self.assertEqual(Path(root).resolve(), self.project.resolve())
+        self.assertEqual(source, "explicit")
+
+    @mock.patch.dict(os.environ, {"HERMES_KANBAN_WORKSPACE": ""}, clear=False)
+    def test_resolve_workspace_skips_quarantined_kernel_candidate(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace
+
+        with mock.patch(
+            "plugins.dietcode.lib.kernel_workspace.resolve_workspace_root",
+            return_value=mock.Mock(
+                resolved_workspace_root=str(_PLUGIN_ROOT),
+                resolution_detail="hermes_project:quarantined_cwd",
+            ),
+        ):
+            with mock.patch(
+                "plugins.dietcode.lib.kernel_workspace.is_quarantined_root",
+                return_value=True,
+            ):
+                with mock.patch(
+                    "plugins.dietcode.lib.agent.roadmap.config._candidate_from_kanban_config",
+                    return_value=(str(self.project), "kanban.workspace"),
+                ):
+                    with mock.patch(
+                        "plugins.dietcode.lib.agent.roadmap.config._candidate_from_env",
+                        return_value=(None, "env:unset"),
+                    ):
+                        root, source = resolve_workspace()
+        self.assertEqual(Path(root).resolve(), self.project.resolve())
+        self.assertEqual(source, "kanban.workspace")
 
 
 class RoadmapSkillInstallTests(unittest.TestCase):

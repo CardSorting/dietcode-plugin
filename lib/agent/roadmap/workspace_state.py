@@ -99,6 +99,7 @@ def record_validation(
     recent_checkpoint_date: Optional[str] = None,
     phase: str = "",
     issue_count: int = 0,
+    bootstrap_placeholder_count: int = 0,
 ) -> dict[str, Any]:
     state = write_state(
         workspace,
@@ -109,6 +110,8 @@ def record_validation(
             "recent_checkpoint_date": recent_checkpoint_date,
             "phase": phase or None,
             "validation_issue_count": issue_count,
+            "bootstrap_placeholder_count": bootstrap_placeholder_count,
+            "bootstrap_complete": bootstrap_placeholder_count == 0,
             "validation_pending": False,
         },
     )

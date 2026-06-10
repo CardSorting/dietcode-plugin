@@ -12,10 +12,21 @@ def session_brief(*, workspace: Optional[str] = None) -> dict[str, Any] | None:
     if not cfg.enabled:
         return None
 
+    from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
+
+    steering = build_steering_context(workspace=workspace)
+    if not steering.get("ok") and not (workspace and str(workspace).strip()):
+        return {
+            "enabled": True,
+            "success": False,
+            **steering,
+            "first_call": steering.get("agent_next_call"),
+        }
+
     try:
         from plugins.dietcode.lib.agent.roadmap.roadmap_checkpoint import operational_status
 
-        root = resolve_workspace_root(workspace)
+        root = steering.get("workspace") or resolve_workspace_root(workspace)
         status = operational_status(workspace=root, tier="light")
         ws_state = status.get("workspace_state") or {}
         gate_state = status.get("roadmap_gate") or {}
@@ -24,6 +35,9 @@ def session_brief(*, workspace: Optional[str] = None) -> dict[str, Any] | None:
             "enabled": True,
             "success": True,
             "workspace": root,
+            "workspace_source": steering.get("workspace_source") or status.get("workspace_source"),
+            "roadmap_path": steering.get("roadmap_path"),
+            "workspace_safe": steering.get("workspace_safe", True),
             "phase": status.get("phase"),
             "roadmap_exists": status.get("roadmap_exists"),
             "health_status": status.get("health_status") or ws_state.get("health_status"),

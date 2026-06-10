@@ -250,9 +250,18 @@ def roadmap(
             error_envelope(code="module_unavailable", message=str(exc), action=act, safe_to_retry=False)
         )
     except Exception as exc:
-        from plugins.dietcode.lib.agent.roadmap.errors import as_tool_error, from_exception
+        from plugins.dietcode.lib.agent.roadmap.config import RoadmapWorkspaceError
+        from plugins.dietcode.lib.agent.roadmap.errors import as_tool_error, error_envelope, from_exception
 
-        envelope = from_exception(exc, action=act)
+        if isinstance(exc, RoadmapWorkspaceError):
+            envelope = error_envelope(
+                code="workspace_unresolved",
+                message=str(exc),
+                action=act,
+                safe_to_retry=False,
+            )
+        else:
+            envelope = from_exception(exc, action=act)
         _record_error_progress(act, envelope)
         return as_tool_error(envelope)
 

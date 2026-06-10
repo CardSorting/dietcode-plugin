@@ -12,11 +12,19 @@ from plugins.dietcode.lib.agent.roadmap.operator import recommend_next_action
 from plugins.dietcode.lib.agent.roadmap.progress import read_current, read_last_error
 from plugins.dietcode.lib.agent.roadmap.snapshot import get_workspace_snapshot
 from plugins.dietcode.lib.agent.roadmap.skill_install import _SKILL_REL
+from plugins.dietcode.lib.agent.roadmap.steering_context import build_steering_context
 
 
 def build_cockpit_payload(*, workspace: Optional[str] = None) -> dict[str, Any]:
     cfg = get_roadmap_config()
-    root = resolve_workspace_root(workspace)
+    if workspace and str(workspace).strip():
+        root = resolve_workspace_root(workspace)
+        workspace_source = "explicit"
+    else:
+        from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace
+
+        root, workspace_source = resolve_workspace()
+    steering = build_steering_context(workspace=root)
     snap = get_workspace_snapshot(root, tier="full")
     evidence = snap.evidence
     roadmap = evidence.get("roadmap") or {}
@@ -57,6 +65,10 @@ def build_cockpit_payload(*, workspace: Optional[str] = None) -> dict[str, Any]:
             "ok": True,
             "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "workspace": root,
+            "workspace_source": workspace_source,
+            "workspace_safe": steering.get("workspace_safe", True),
+            "bootstrap_complete": ws_state.get("bootstrap_complete"),
+            "bootstrap_placeholder_count": ws_state.get("bootstrap_placeholder_count"),
             "enabled": cfg.enabled,
             "skill_path": _SKILL_REL,
             "roadmap_exists": bool(roadmap.get("exists")),
@@ -96,10 +108,15 @@ def format_cockpit_report(*, workspace: Optional[str] = None) -> str:
     lines = [
         "🗺️ Roadmap cockpit",
         f"Workspace: {data.get('workspace')}",
+        f"ROADMAP.md: {data.get('roadmap_path')}",
+    ]
+    if data.get("workspace_source"):
+        lines.append(f"Workspace source: {data['workspace_source']}")
+    lines.extend([
         f"Phase: {data.get('phase')}",
         f"Enabled: {data.get('enabled')}",
         "",
-    ]
+    ])
 
     if data.get("roadmap_exists"):
         lines.append(f"ROADMAP.md: present | health={data.get('health_status') or 'unparsed'}")
@@ -125,6 +142,10 @@ def format_cockpit_report(*, workspace: Optional[str] = None) -> str:
         for sig in signals[:3]:
             lines.append(f"  • {sig.get('code')}: {sig.get('detail')}")
 
+    if data.get("bootstrap_complete") is False and data.get("bootstrap_placeholder_count"):
+        lines.append(
+            f"⚠️  Bootstrap placeholders: {data['bootstrap_placeholder_count']} — replace template text before closing pass"
+        )
     lines.append("")
     lines.append(data.get("operator_summary") or "")
     if data.get("progress_phase"):

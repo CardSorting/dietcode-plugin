@@ -1,0 +1,10 @@
+{
+  "last_validated_at": "2026-06-10T22:14:53Z",
+  "schema_valid": false,
+  "health_status": null,
+  "recent_checkpoint_date": null,
+  "phase": "validate_pending",
+  "validation_issue_count": 1,
+  "validation_pending": false,
+  "updated_at": "2026-06-10T22:14:53Z"
+}

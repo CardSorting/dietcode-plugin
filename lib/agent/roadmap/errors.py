@@ -41,7 +41,8 @@ def error_envelope(
 def _recovery_for_code(code: str, action: str) -> str:
     mapping = {
         "roadmap_disabled": "Set dietcode.roadmap.enabled: true in Hermes config",
-        "workspace_unresolved": "Set HERMES_KANBAN_WORKSPACE or run from project root",
+        "workspace_unresolved": "Set kanban.workspace in ~/.hermes/config.yaml or export HERMES_KANBAN_WORKSPACE",
+        "workspace_quarantined": "Point workspace at your project — never ~/.hermes/plugins/dietcode",
         "roadmap_missing": "roadmap(action='checkpoint') to bootstrap ROADMAP.md",
         "schema_invalid": "roadmap(action='validate') then repair reported issues",
         "checkpoint_stale": "roadmap(action='checkpoint', context='stale refresh')",
@@ -82,10 +83,13 @@ def as_tool_error(payload: dict[str, Any]) -> str:
 
 
 def from_exception(exc: Exception, *, action: str = "") -> dict[str, Any]:
+    from plugins.dietcode.lib.agent.roadmap.config import RoadmapWorkspaceError
+
+    code = "workspace_unresolved" if isinstance(exc, RoadmapWorkspaceError) else "roadmap_failed"
     return error_envelope(
-        code="roadmap_failed",
+        code=code,
         message=str(exc),
         action=action,
         detail=type(exc).__name__,
-        safe_to_retry=True,
+        safe_to_retry=not isinstance(exc, RoadmapWorkspaceError),
     )

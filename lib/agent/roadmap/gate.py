@@ -96,6 +96,15 @@ def _check_checkpoint_fresh(_: dict[str, Any], inputs: dict[str, Any]) -> bool:
     return not bool((inputs.get("freshness") or {}).get("stale"))
 
 
+def _check_workspace_safe(_: dict[str, Any], inputs: dict[str, Any]) -> bool:
+    try:
+        from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
+    except ImportError:
+        return True
+    ws = str(inputs.get("workspace") or "")
+    return bool(ws) and not is_quarantined_root(ws)
+
+
 def _check_skill_installed(_: dict[str, Any], inputs: dict[str, Any]) -> bool:
     root = inputs.get("workspace") or resolve_workspace_root()
     skill = (
@@ -124,6 +133,15 @@ _GATE_CHECKS: tuple[GateCheck, ...] = (
         "fix": "Set dietcode.roadmap.enabled: true in Hermes config",
         "safe": True,
         "blocks_kanban_complete": False,
+    },
+    {
+        "id": "workspace_safe",
+        "label": "Project workspace (not plugin install tree)",
+        "is_open": _check_workspace_safe,
+        "why_closed": "ROADMAP.md must live in the Hermes project workspace, not the DietCode plugin directory",
+        "fix": "Set kanban.workspace or HERMES_KANBAN_WORKSPACE to your project root",
+        "safe": True,
+        "blocks_kanban_complete": True,
     },
     {
         "id": "roadmap_present",

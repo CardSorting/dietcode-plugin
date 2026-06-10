@@ -48,7 +48,7 @@ class KernelWorkspaceResolutionTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertFalse(result.safe_for_mutation)
         self.assertFalse(result.checks["not_kernel_root"])
-        self.assertIn("kernel_root", result.errors[0])
+        self.assertIn("kernel", result.errors[0].lower())
 
     def test_validate_accepts_writable_project_dir(self) -> None:
         result = kw.validate_workspace_root(
@@ -114,10 +114,13 @@ class KernelWorkspaceResolutionTests(unittest.TestCase):
     def test_resolve_workspace_root_rejects_kernel_via_cwd(self) -> None:
         with mock.patch.object(kw, "get_workspace_root_source", return_value=kw.SOURCE_HERMES_PROJECT):
             with mock.patch.object(Path, "cwd", return_value=self.kernel_root):
-                report = kw.resolve_workspace_root()
-        self.assertEqual(report.resolved_workspace_root, str(self.kernel_root))
-        self.assertFalse(report.safe_for_mutation)
-        self.assertFalse(report.validation.checks["not_kernel_root"])
+                path, detail = kw.resolve_workspace_root_path(source=kw.SOURCE_HERMES_PROJECT)
+        self.assertIsNone(path)
+        self.assertEqual(detail, "hermes_project:quarantined_cwd")
+
+    def test_is_quarantined_root_subdir_of_plugin(self) -> None:
+        nested = self.plugin_root / "lib" / "agent"
+        self.assertTrue(kw.is_quarantined_root(nested))
 
     def test_resolve_workspace_root_accepts_external_project(self) -> None:
         with mock.patch.object(kw, "get_workspace_root_source", return_value=kw.SOURCE_EXPLICIT):

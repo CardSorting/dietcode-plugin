@@ -80,17 +80,25 @@ def get_explicit_workspace_root_config() -> str:
 
 
 def is_quarantined_root(path: Path | str) -> bool:
-    """True when *path* is the plugin install root or kernel subtree root."""
+    """True when *path* is inside the plugin install root or kernel subtree."""
     resolved = _safe_resolve(path)
     if resolved is None:
         return False
     plugin = _safe_resolve(_plugin_root())
     kernel = _safe_resolve(_kernel_root())
-    if plugin is not None and resolved == plugin:
+    return _is_under(resolved, plugin) or _is_under(resolved, kernel)
+
+
+def _is_under(path: Path, base: Optional[Path]) -> bool:
+    if base is None:
+        return False
+    if path == base:
         return True
-    if kernel is not None and resolved == kernel:
+    try:
+        path.relative_to(base)
         return True
-    return False
+    except ValueError:
+        return False
 
 
 def _resolve_hermes_project_path() -> tuple[Optional[Path], str]:
@@ -119,6 +127,8 @@ def _resolve_hermes_project_path() -> tuple[Optional[Path], str]:
 
     cwd = _safe_resolve(Path.cwd())
     if cwd is not None:
+        if is_quarantined_root(cwd):
+            return None, "hermes_project:quarantined_cwd"
         return cwd, "hermes_project:cwd"
     return None, "hermes_project:unresolved"
 
@@ -223,13 +233,13 @@ def validate_workspace_root(
     if checks["exists"] and not checks["is_directory"]:
         errors.append(f"workspace_root is not a directory: {resolved}")
 
-    checks["not_plugin_root"] = plugin is None or resolved != plugin
-    if plugin is not None and resolved == plugin:
-        errors.append(f"workspace_root must not be plugin_root: {resolved}")
+    checks["not_plugin_root"] = plugin is None or not _is_under(resolved, plugin)
+    if plugin is not None and _is_under(resolved, plugin):
+        errors.append(f"workspace_root must not be inside plugin_root: {resolved}")
 
-    checks["not_kernel_root"] = kernel is None or resolved != kernel
-    if kernel is not None and resolved == kernel:
-        errors.append("workspace_root must not be kernel_root (quarantined subtree)")
+    checks["not_kernel_root"] = kernel is None or not _is_under(resolved, kernel)
+    if kernel is not None and _is_under(resolved, kernel):
+        errors.append("workspace_root must not be inside kernel_root (quarantined subtree)")
 
     checks["writable"] = _is_writable_dir(resolved) if checks["is_directory"] else False
     if checks["is_directory"] and not checks["writable"]:

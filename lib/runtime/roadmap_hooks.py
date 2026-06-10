@@ -158,11 +158,42 @@ def _post_tool_call(
 
     if targets_roadmap_file(tool_name=tool_name, args=args):
         mutate_path = (args or {}).get("path") if isinstance(args, dict) else None
+        try:
+            from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace_root
+            from plugins.dietcode.lib.agent.roadmap.native_bridge import validate_roadmap_write_target
+
+            root = resolve_workspace_root()
+            check = validate_roadmap_write_target(
+                write_path=str(mutate_path or ""),
+                workspace=root,
+            )
+        except Exception:
+            check = {"allowed": True, "workspace": None}
+
         mutate_payload = {
             "tool": tool_name,
             "path": mutate_path,
             "followup": "roadmap(action='validate')",
+            "write_allowed": check.get("allowed", True),
+            "expected_path": check.get("expected_path"),
         }
+        if not check.get("allowed"):
+            mutate_payload["write_rejected"] = True
+            mutate_payload["error"] = check.get("error")
+            try:
+                from plugins.dietcode.lib.agent.roadmap.progress import emit_progress
+
+                emit_progress(
+                    "roadmap.write_rejected",
+                    action="file_mutated",
+                    workspace=str(check.get("workspace") or ""),
+                    payload=mutate_payload,
+                    success=False,
+                )
+            except Exception:
+                pass
+            return
+
         try:
             from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace_root
             from plugins.dietcode.lib.agent.roadmap.workspace_state import record_file_mutation
@@ -211,7 +242,7 @@ def on_roadmap_write_transform(
     if not targets_roadmap_file(tool_name=tool_name, args=args):
         return None
 
-    hint = roadmap_write_hint(tool_name=tool_name, args=args)
+    hint = roadmap_write_hint(tool_name=tool_name, args=args, workspace=None)
     try:
         return merge_roadmap_hint_into_result(result, hint)
     except Exception as exc:

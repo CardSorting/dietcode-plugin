@@ -1,6 +1,7 @@
 """Roadmap operator ergonomics — next-action recommendations (kernel cockpit pattern)."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Optional
 
 ACTION_CHECKPOINT = "run_checkpoint"
@@ -13,6 +14,7 @@ ACTION_EXPLAIN_STALE = "explain_stale"
 ACTION_RUN_EXPLAIN_GATE = "run explain-gate"
 ACTION_DOCTOR = "run_doctor"
 ACTION_GUIDE = "run_guide"
+ACTION_CONFIGURE_WORKSPACE = "configure_workspace"
 ACTION_WAIT = "wait"
 
 
@@ -173,7 +175,19 @@ def build_agent_operator_hints(
     """Kernel-style agent/operator hint bundle for roadmap tool responses."""
     from plugins.dietcode.lib.agent.roadmap.gate import build_roadmap_gate_state
 
-    snap = gate if gate is not None else build_roadmap_gate_state(workspace=workspace or None)
+    if gate is not None:
+        snap = gate
+    elif workspace and str(workspace).strip():
+        snap = build_roadmap_gate_state(workspace=workspace)
+    else:
+        snap = {
+            "roadmap_present": False,
+            "schema_valid": False,
+            "kanban_complete_allowed": False,
+            "validation_pending": False,
+            "checkpoint_stale": False,
+            "workspace_state": {},
+        }
     ws_state = snap.get("workspace_state") or {}
     next_rec = recommend_next_action(
         phase=str(ws_state.get("phase") or ""),
@@ -187,6 +201,11 @@ def build_agent_operator_hints(
         "preferred_tool": "roadmap",
         "skill": "auto-rolling-roadmap",
         "workspace": snap.get("workspace"),
+        "roadmap_path": (
+            str(Path(str(snap.get("workspace") or "")).expanduser().resolve() / "ROADMAP.md")
+            if snap.get("workspace")
+            else None
+        ),
         "kanban_complete_allowed": snap.get("kanban_complete_allowed"),
         "validation_pending": bool(snap.get("validation_pending")),
         "preferred_command": next_rec.get("command"),

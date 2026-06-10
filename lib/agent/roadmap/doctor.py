@@ -14,7 +14,33 @@ from plugins.dietcode.lib.agent.roadmap.workspace_state import read_state, state
 
 def run_checks(*, workspace: Optional[str] = None) -> dict[str, Any]:
     cfg = get_roadmap_config()
-    root = resolve_workspace_root(workspace)
+    from plugins.dietcode.lib.agent.roadmap.config import RoadmapWorkspaceError, resolve_workspace
+
+    workspace_source = "explicit"
+    try:
+        if workspace and str(workspace).strip():
+            root = resolve_workspace_root(workspace)
+        else:
+            root, workspace_source = resolve_workspace()
+    except RoadmapWorkspaceError as exc:
+        return {
+            "success": False,
+            "ok": False,
+            "workspace": None,
+            "workspace_source": "unresolved",
+            "enabled": cfg.enabled,
+            "checks": [{"name": "workspace_resolved", "ok": False, "detail": str(exc)}],
+            "recommendations": [
+                "Set kanban.workspace in ~/.hermes/config.yaml",
+                "export HERMES_KANBAN_WORKSPACE=/path/to/your/project",
+            ],
+            "recommended_next_action": {
+                "action": "configure_workspace",
+                "command": "export HERMES_KANBAN_WORKSPACE=/path/to/project",
+                "detail": str(exc),
+            },
+        }
+
     checks: list[dict[str, Any]] = []
     recommendations: list[str] = []
 
@@ -22,6 +48,17 @@ def run_checks(*, workspace: Optional[str] = None) -> dict[str, Any]:
         checks.append({"name": name, "ok": ok, "detail": detail})
 
     _check("roadmap.enabled", cfg.enabled, "enabled" if cfg.enabled else "disabled in config")
+    try:
+        from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
+
+        _check(
+            "workspace_not_plugin_tree",
+            not is_quarantined_root(root),
+            f"{root} ({workspace_source})",
+        )
+    except ImportError:
+        pass
+
     _check(
         "auto_install_skills",
         True,
@@ -129,6 +166,7 @@ def run_checks(*, workspace: Optional[str] = None) -> dict[str, Any]:
         "success": ok,
         "ok": ok,
         "workspace": root,
+        "workspace_source": workspace_source,
         "enabled": cfg.enabled,
         "checks": checks,
         "validation": validation.to_dict() if validation else None,

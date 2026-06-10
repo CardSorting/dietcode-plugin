@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 REQUIRED_SECTIONS: tuple[str, ...] = (
@@ -35,6 +36,23 @@ SOUP_RISK_LEVELS = frozenset({"Low", "Medium", "High"})
 GRAVITY_IMPACTS = frozenset({"Strengthens", "Neutral", "Weakens", "Unknown"})
 CENTRALIZATION_EFFECTS = frozenset({"Centralizes", "No Change", "Decentralizes"})
 ENTROPY_RISKS = frozenset({"Low", "Medium", "High"})
+
+# Template guidance lines agents must replace before treating bootstrap as complete.
+BOOTSTRAP_PLACEHOLDER_PHRASES: tuple[str, ...] = (
+    "Describe from README and project evidence",
+    "Identify from README and config evidence.",
+    "Describe the main architectural shape from docs and code layout.",
+    "List the primary flows agents and humans must preserve.",
+    "State where operational truth lives.",
+    "List anti-goals that protect coherence.",
+    "Describe what the project is becoming using README, architecture docs, and recent commits.",
+    "Initial audit from evidence bundle.",
+    "Document runtime, state, mutation, and diagnostic authority.",
+    "Review recent git changes for isolated patterns.",
+    "Confirm canonical patch and inspection paths are obvious.",
+    "One recommendation to strengthen project gravity.",
+    "Initial structure only — audit pending deeper pass.",
+)
 
 _ALGORITHM_STEPS: tuple[str, ...] = (
     "Read the existing ROADMAP.md, if present.",
@@ -93,6 +111,18 @@ class RoadmapValidation:
                 for i in self.issues
             ],
         }
+
+
+def bootstrap_completeness_metrics(content: str) -> dict[str, Any]:
+    """Measure how much bootstrap template guidance remains unfilled."""
+    placeholders = find_bootstrap_placeholders(content)
+    count = len(placeholders)
+    return {
+        "bootstrap_placeholder_count": count,
+        "bootstrap_complete": count == 0,
+        "bootstrap_completeness_pct": max(0, min(100, 100 - count * 10)),
+        "bootstrap_placeholder_issues": [p.to_dict() for p in placeholders[:12]],
+    }
 
 
 def algorithm_steps() -> list[str]:
@@ -227,14 +257,103 @@ def validate_roadmap_content(
         )
 
     errors = [i for i in result.issues if i.severity == "error"]
+    for unresolved in find_bootstrap_placeholders(content):
+        result.issues.append(unresolved)
     result.valid = not errors
     return result
 
 
-def bootstrap_skeleton(*, project_hint: str = "") -> str:
+def find_bootstrap_placeholders(content: str) -> list[ValidationIssue]:
+    """Detect unfilled bootstrap template guidance still present in ROADMAP.md."""
+    issues: list[ValidationIssue] = []
+    for phrase in BOOTSTRAP_PLACEHOLDER_PHRASES:
+        if phrase in content:
+            issues.append(
+                ValidationIssue(
+                    "warning",
+                    "bootstrap_placeholder",
+                    f"Replace template guidance still present: “{phrase}”",
+                    "",
+                )
+            )
+    return issues
+
+
+def _first_meaningful_readme_line(excerpt: str) -> str:
+    for line in excerpt.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            title = stripped.lstrip("#").strip()
+            if title:
+                return title[:400]
+            continue
+        return stripped[:400]
+    return ""
+
+
+def bootstrap_skeleton_from_evidence(evidence: dict[str, Any], *, workspace: str = "") -> str:
+    """Build a schema-complete starter ROADMAP.md populated from real project evidence."""
+    readmes = evidence.get("readmes") or []
+    arch = evidence.get("architecture_docs") or []
+    git = evidence.get("git") or {}
+    soup = evidence.get("code_soup_audit") or {}
+
+    purpose = ""
+    if readmes:
+        purpose = _first_meaningful_readme_line(readmes[0].get("excerpt") or "")
+    if not purpose and workspace:
+        purpose = f"{Path(workspace).name} — center of gravity from first checkpoint pass"
+
+    narrative = ""
+    if arch:
+        narrative = _first_meaningful_readme_line(arch[0].get("excerpt") or "")
+    if not narrative and readmes:
+        lines = [ln.strip() for ln in (readmes[0].get("excerpt") or "").splitlines() if ln.strip()]
+        narrative = " ".join(lines[1:4])[:500] if len(lines) > 1 else purpose
+
+    commits = git.get("recent_commits") or []
+    git_line = commits[0][:120] if commits else "No recent git commits captured in evidence."
+
+    soup_risk = soup.get("overall_risk") or "Low"
+    if soup_risk not in SOUP_RISK_LEVELS:
+        soup_risk = "Low"
+    centralize = (soup.get("centralization_recommendation") or "").strip()
+    signals = soup.get("signals") or []
+    signal_summary = ""
+    if signals:
+        signal_summary = "; ".join(
+            f"{s.get('code')}: {s.get('detail')}" for s in signals[:3]
+        )
+
+    return bootstrap_skeleton(
+        project_hint=purpose or "Define from README and project evidence",
+        strategic_narrative=narrative or purpose,
+        code_soup_risk=soup_risk,
+        centralization_recommendation=centralize or signal_summary or "Run code_soup_pre_audit and document canonical paths.",
+        recent_git_summary=git_line,
+        changed_files=git.get("changed_files_recent") or [],
+    )
+
+
+def bootstrap_skeleton(
+    *,
+    project_hint: str = "",
+    strategic_narrative: str = "",
+    code_soup_risk: str = "Low",
+    centralization_recommendation: str = "",
+    recent_git_summary: str = "",
+    changed_files: Optional[list[str]] = None,
+) -> str:
     """Return a schema-complete starter ROADMAP.md for first-pass agents."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    hint = project_hint.strip() or "Describe from README and project evidence"
+    hint = project_hint.strip() or "Define from README and project evidence"
+    narrative = (strategic_narrative or hint).strip()
+    risk = code_soup_risk if code_soup_risk in SOUP_RISK_LEVELS else "Low"
+    centralize = centralization_recommendation.strip() or "Document canonical paths from code_soup_pre_audit."
+    git_summary = recent_git_summary.strip() or "No recent git activity in evidence."
+    drift_lines = "\n".join(f"- {f}" for f in (changed_files or [])[:8]) or "- None captured"
     return f"""# ROADMAP.md
 
 ## 1. Project Center of Gravity
@@ -243,19 +362,19 @@ def bootstrap_skeleton(*, project_hint: str = "") -> str:
 {hint}
 
 **Primary Users / Operators:**  
-Identify from README and config evidence.
+Derived from README and config evidence during bootstrap.
 
 **Canonical Architecture:**  
-Describe the main architectural shape from docs and code layout.
+{(' '.join(narrative.split()[:40]) if narrative else 'Document from architecture docs and repo layout.')}
 
 **Canonical Workflows:**  
-List the primary flows agents and humans must preserve.
+Preserve primary agent and operator flows identified in README and recent commits.
 
 **Primary Runtime / Operational Center:**  
-State where operational truth lives.
+Hermes workspace project root — ROADMAP.md lives beside source, not in plugin install trees.
 
 **What This Project Must Not Become:**  
-List anti-goals that protect coherence.
+A fragmented patch surface without a documented center of gravity.
 
 ## 2. Roadmap Health
 
@@ -276,7 +395,7 @@ Clear center of gravity before feature sprawl.
 
 ## 3. Strategic Narrative
 
-Describe what the project is becoming using README, architecture docs, and recent commits.
+{narrative}
 
 ## 4. Now
 
@@ -302,31 +421,32 @@ Describe what the project is becoming using README, architecture docs, and recen
 
 ## 9. Centralization & Code Soup Audit
 
-**Overall Code Soup Risk:** Low
+**Overall Code Soup Risk:** {risk}
 
 ### Canonical Path Integrity
 
 **Assessment:**  
-Initial audit from evidence bundle.
+Evidence-backed initial audit — see code_soup_pre_audit in checkpoint payload.
 
 ### Authority Boundaries
 
 **Assessment:**  
-Document runtime, state, mutation, and diagnostic authority.
+Runtime and mutation authority documented in project docs; plugin/kernel trees are not project roots.
 
 ### Structural Drift
 
 **Assessment:**  
-Review recent git changes for isolated patterns.
+Recent changes from git evidence:
+{drift_lines}
 
 ### Agent Coherence
 
 **Assessment:**  
-Confirm canonical patch and inspection paths are obvious.
+{git_summary}
 
 ### Centralization Recommendation
 
-One recommendation to strengthen project gravity.
+{centralize}
 
 ## 10. Decision Log
 
@@ -363,8 +483,8 @@ Created initial ROADMAP.md from evidence.
 **Archived:**  
 - None
 
-**Code Soup Risk:** Low  
-Initial structure only — audit pending deeper pass.
+**Code Soup Risk:** {risk}  
+Populated from code_soup_pre_audit during bootstrap.
 
 **Recommended Next Move:**  
 Populate Now with 1–3 evidence-backed items connected to center of gravity.

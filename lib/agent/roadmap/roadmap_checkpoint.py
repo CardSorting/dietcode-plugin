@@ -12,6 +12,8 @@ from plugins.dietcode.lib.agent.roadmap.schema import (
     REQUIRED_SECTIONS,
     algorithm_steps,
     bootstrap_skeleton,
+    bootstrap_skeleton_from_evidence,
+    bootstrap_completeness_metrics,
     validate_roadmap_content,
 )
 from plugins.dietcode.lib.agent.roadmap.skill_install import _SKILL_REL, ensure_workspace_skills
@@ -50,7 +52,13 @@ def operational_status(
     tier: str = "standard",
 ) -> dict[str, Any]:
     """Return phase, evidence summary, and next agent call (guide action)."""
-    root = resolve_workspace_root(workspace)
+    from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace
+
+    if workspace and str(workspace).strip():
+        root = resolve_workspace_root(workspace)
+        workspace_source = "explicit"
+    else:
+        root, workspace_source = resolve_workspace()
     bootstrap = _skill_bootstrap(root)
 
     from plugins.dietcode.lib.agent.roadmap.gate import collect_gate_inputs, gate_state_from_inputs
@@ -109,6 +117,7 @@ def operational_status(
         "skill": "auto-rolling-roadmap",
         "skill_path": _SKILL_REL,
         "workspace": root,
+        "workspace_source": workspace_source,
         "roadmap_exists": bool(roadmap.get("exists")),
         "health_status": roadmap.get("health_status"),
         "code_soup_risk": roadmap.get("code_soup_risk")
@@ -161,10 +170,12 @@ def checkpoint_brief(
     )
     status = operational_status(workspace=root, snapshot=snap, evidence=evidence)
     roadmap_path = Path(root) / "ROADMAP.md"
-    project_hint = ""
-    readmes = evidence.get("readmes") or []
-    if readmes:
-        project_hint = (readmes[0].get("excerpt") or "").splitlines()[0].lstrip("# ").strip()
+    if workspace and str(workspace).strip():
+        workspace_source = "explicit"
+    else:
+        from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace
+
+        _, workspace_source = resolve_workspace()
 
     payload = {
         "action": "checkpoint",
@@ -173,6 +184,7 @@ def checkpoint_brief(
         "skill": "auto-rolling-roadmap",
         "skill_path": _SKILL_REL,
         "workspace": root,
+        "workspace_source": workspace_source,
         "roadmap_path": str(roadmap_path),
         "phase": status["phase"],
         "prime_directive": status["prime_directive"],
@@ -189,7 +201,8 @@ def checkpoint_brief(
         "agent_next_call": "Edit ROADMAP.md per skill, then roadmap(action='validate'), then return checkpoint summary.",
     }
     if not evidence.get("roadmap", {}).get("exists"):
-        payload["suggested_bootstrap"] = bootstrap_skeleton(project_hint=project_hint)
+        payload["suggested_bootstrap"] = bootstrap_skeleton_from_evidence(evidence, workspace=root)
+        payload["bootstrap_evidence_driven"] = True
     return clarity_envelope(payload, phase_info={"phase": status["phase"]})
 
 
@@ -211,6 +224,9 @@ def validate_roadmap(*, workspace: Optional[str] = None) -> dict[str, Any]:
             })
 
     validation = validate_roadmap_content(text)
+    completeness = bootstrap_completeness_metrics(text) if text.strip() else {}
+    validation_dict = validation.to_dict()
+    validation_dict.update(completeness)
     parsed = parse_roadmap(text, path=str(roadmap_path)) if text else None
     from plugins.dietcode.lib.agent.roadmap.workspace_state import record_validation
 
@@ -223,6 +239,7 @@ def validate_roadmap(*, workspace: Optional[str] = None) -> dict[str, Any]:
         recent_checkpoint_date=parsed.recent_checkpoint_date if parsed else None,
         phase="validate_pending" if not validation.valid else "checkpoint",
         issue_count=len(validation.issues),
+        bootstrap_placeholder_count=int(completeness.get("bootstrap_placeholder_count") or 0),
     )
     invalidate_snapshot(root)
     phase_info = determine_phase(
@@ -240,16 +257,25 @@ def validate_roadmap(*, workspace: Optional[str] = None) -> dict[str, Any]:
         "ok": validation.valid,
         "workspace": root,
         "roadmap_path": str(roadmap_path),
-        "validation": validation.to_dict(),
+        "validation": validation_dict,
+        "bootstrap_completeness": completeness,
         "operator_summary": (
             "ROADMAP.md passes schema validation."
-            if validation.valid
-            else "ROADMAP.md has schema errors — fix before treating checkpoint as complete."
+            if validation.valid and completeness.get("bootstrap_complete", True)
+            else (
+                "ROADMAP.md passes schema but unfilled bootstrap template text remains — replace placeholder guidance."
+                if validation.valid
+                else "ROADMAP.md has schema errors — fix before treating checkpoint as complete."
+            )
         ),
         "agent_next_call": (
             "Return Required Final Assistant Response summary."
-            if validation.valid
-            else "Fix validation issues and rerun roadmap(action='validate')."
+            if validation.valid and completeness.get("bootstrap_complete", True)
+            else (
+                "Replace bootstrap_placeholder guidance with project-specific facts, then roadmap(action='validate')."
+                if validation.valid
+                else "Fix validation issues and rerun roadmap(action='validate')."
+            )
         ),
     }
     return clarity_envelope(payload, phase_info=phase_info)
@@ -259,11 +285,7 @@ def template_brief(*, workspace: Optional[str] = None) -> dict[str, Any]:
     """Return bootstrap skeleton for first-pass ROADMAP.md creation."""
     root = resolve_workspace_root(workspace)
     evidence = gather_evidence(root, tier="standard")
-    hint = ""
-    readmes = evidence.get("readmes") or []
-    if readmes:
-        hint = (readmes[0].get("excerpt") or "").splitlines()[0].lstrip("# ").strip()
-    skeleton = bootstrap_skeleton(project_hint=hint)
+    skeleton = bootstrap_skeleton_from_evidence(evidence, workspace=root)
     payload = {
         "action": "template",
         "success": True,
@@ -271,7 +293,12 @@ def template_brief(*, workspace: Optional[str] = None) -> dict[str, Any]:
         "workspace": root,
         "roadmap_path": str(Path(root) / "ROADMAP.md"),
         "skeleton": skeleton,
-        "operator_summary": "Use as starting structure — replace guidance lines with evidence-backed content.",
+        "evidence_summary": {
+            "readmes": len(evidence.get("readmes") or []),
+            "git_commits": len((evidence.get("git") or {}).get("recent_commits") or []),
+            "code_soup_risk": (evidence.get("code_soup_audit") or {}).get("overall_risk"),
+        },
+        "operator_summary": "Evidence-driven skeleton — replace any remaining guidance with project-specific facts, then validate.",
         "agent_next_call": "Write skeleton to ROADMAP.md, evolve from checkpoint evidence, then validate.",
     }
     return clarity_envelope(payload)
@@ -280,7 +307,7 @@ def template_brief(*, workspace: Optional[str] = None) -> dict[str, Any]:
 def _agent_instructions(phase: str, evidence: dict[str, Any]) -> list[str]:
     instructions = [
         "Read optional-skills/dietcode/auto-rolling-roadmap/SKILL.md before editing.",
-        "Create or evolve ROADMAP.md at the workspace root — do not replace useful history.",
+        "Create or evolve ROADMAP.md at the workspace root — never in ~/.hermes/plugins/dietcode or plugin install trees.",
         "Keep Now to 1–5 actionable items; archive stale work instead of appending endlessly.",
         "Section 9 (Centralization & Code Soup Audit) is mandatory on every pass.",
         "Use code_soup_pre_audit signals when writing section 9.",
