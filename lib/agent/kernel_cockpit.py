@@ -270,6 +270,20 @@ def _find_last_operation(*, action: str, status: str) -> dict[str, Any] | None:
     return None
 
 
+def _roadmap_cockpit_brief() -> dict[str, Any] | None:
+    """Per-project roadmap steering for unified kernel + roadmap operator view."""
+    try:
+        from plugins.dietcode.lib.agent.roadmap.config import get_roadmap_config
+
+        if not get_roadmap_config().enabled:
+            return None
+        from plugins.dietcode.lib.agent.roadmap.session import session_brief
+
+        return session_brief()
+    except Exception:
+        return None
+
+
 def build_cockpit_report() -> dict[str, Any]:
     try:
         from plugins.dietcode.lib.agent.kernel_progress import (
@@ -342,6 +356,7 @@ def build_cockpit_report() -> dict[str, Any]:
         "operation_state": operation_state,
         "current_operation": current_op,
         "workspace_root": gate.get("resolved_workspace_root"),
+        "roadmap_steering": _roadmap_cockpit_brief(),
         "patch_gate": {
             "patch_allowed": bool(gate.get("patch_allowed")),
             "mutations_enabled": bool(gate.get("mutations_enabled")),
@@ -391,6 +406,29 @@ def format_cockpit_report() -> str:
 
     ws = payload.get("workspace_root") or "(unresolved)"
     lines.append(f"Workspace: {ws}")
+
+    roadmap = payload.get("roadmap_steering") or {}
+    if roadmap.get("enabled"):
+        if roadmap.get("steering_brief") or roadmap.get("steering_identity"):
+            lines.append(f"Project: {roadmap.get('steering_brief') or roadmap.get('steering_identity')}")
+        if roadmap.get("stack_summary"):
+            lines.append(f"Stack: {roadmap['stack_summary']}")
+        digest = roadmap.get("project_steering_digest") or {}
+        verify_cmds = digest.get("verification_commands") or roadmap.get("verification_commands") or []
+        if verify_cmds:
+            lines.append(f"Verify: {verify_cmds[0]}")
+        if roadmap.get("bootstrap_complete") is False:
+            count = roadmap.get("bootstrap_placeholder_count") or digest.get("bootstrap_remaining") or "?"
+            lines.append(
+                f"Roadmap bootstrap: {count} template phrase(s) — "
+                "roadmap(action='apply_bootstrap_fill', context='write')"
+            )
+        elif roadmap.get("roadmap_exists"):
+            health = roadmap.get("health_status") or "present"
+            lines.append(f"Roadmap: health={health} | {roadmap.get('roadmap_path') or 'ROADMAP.md'}")
+        elif roadmap.get("success") is not False:
+            lines.append("Roadmap: missing — roadmap(action='checkpoint')")
+        lines.append("")
 
     pg = payload.get("patch_gate") or {}
     gate_sym = symbol("complete") if pg.get("patch_allowed") else symbol("warning")

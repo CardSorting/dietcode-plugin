@@ -214,6 +214,9 @@ def format_cockpit_report(*, workspace: Optional[str] = None) -> str:
         make_targets = digest.get("makefile_targets") or data.get("project_fingerprint", {}).get("makefile_targets") or []
         if make_targets:
             lines.append(f"Makefile targets: {', '.join(make_targets[:4])}")
+        verify_cmds = digest.get("verification_commands") or data.get("project_fingerprint", {}).get("verification_commands") or []
+        if verify_cmds:
+            lines.append(f"Verify: {', '.join(verify_cmds[:3])}")
         sample = digest.get("sample_fill_task") or {}
         if sample.get("suggested_replacement"):
             repl = str(sample["suggested_replacement"])

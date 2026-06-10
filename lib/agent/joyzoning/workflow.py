@@ -58,6 +58,11 @@ def _merge_steering_next_actions(
 
         digest = roadmap_brief.get("project_steering_digest") or {}
         remaining = digest.get("bootstrap_remaining")
+        verify_cmds = digest.get("verification_commands") or []
+        if verify_cmds:
+            verify_hint = f"Project verify: {verify_cmds[0]}"
+            if verify_hint not in base and verify_hint not in hints:
+                hints.append(verify_hint)
         if remaining and int(remaining) > 0:
             fill_hint = (
                 f"Bootstrap fill: {remaining} template phrase(s) — "

@@ -96,6 +96,7 @@ def collect_gate_inputs(
         "workspace_state": ws_state or None,
         "bootstrap_complete": bootstrap_complete,
         "bootstrap_placeholder_count": bootstrap_placeholder_count,
+        "project_fingerprint": evidence.get("project_fingerprint"),
     }
 
 
@@ -238,16 +239,30 @@ def evaluate_gate_checks(inputs: dict[str, Any]) -> tuple[list[dict[str, Any]], 
     """Return (closed_gates, open_gate_ids) in kernel explain-gate shape."""
     closed: list[dict[str, Any]] = []
     open_ids: list[str] = []
+    fp = inputs.get("project_fingerprint") or {}
+    brief = fp.get("steering_brief") or fp.get("steering_identity") or ""
     for check in _GATE_CHECKS:
         is_open_fn: Callable[..., bool] = check["is_open"]
         if is_open_fn(check, inputs):
             open_ids.append(str(check["id"]))
         else:
+            why = check["why_closed"]
+            fix = check["fix"]
+            gate_id = str(check["id"])
+            if gate_id == "bootstrap_complete" and brief:
+                count = inputs.get("bootstrap_placeholder_count")
+                why = f"{brief}: {count or 'some'} unfilled bootstrap template phrase(s) remain"
+            elif gate_id == "schema_valid" and inputs.get("bootstrap_complete") is False:
+                fix = "roadmap(action='apply_bootstrap_fill', context='write') then roadmap(action='validate')"
+                if brief:
+                    why = f"{brief}: schema validation failed — bootstrap placeholders may still remain"
+            elif gate_id == "schema_valid" and brief:
+                fix = f"Repair ROADMAP.md schema for {brief}, then roadmap(action='validate')"
             closed.append({
-                "id": check["id"],
+                "id": gate_id,
                 "label": check["label"],
-                "why": check["why_closed"],
-                "fix": check["fix"],
+                "why": why,
+                "fix": fix,
                 "safe_to_apply": bool(check["safe"]),
                 "blocks_kanban_complete": bool(check.get("blocks_kanban_complete")),
             })

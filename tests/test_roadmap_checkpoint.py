@@ -1228,6 +1228,38 @@ class RoadmapBootstrapFillTests(unittest.TestCase):
         task = (plan.get("tasks") or [{}])[0]
         self.assertNotEqual(task.get("suggested_replacement"), phrase)
 
+    def test_fingerprint_compose_services(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "docker-compose.yml").write_text(
+                "services:\n  api:\n    image: node\n  db:\n    image: postgres\n",
+                encoding="utf-8",
+            )
+            fp = build_project_fingerprint(root)
+            self.assertIn("api", fp.get("compose_services") or [])
+            self.assertIn("db", fp.get("compose_services") or [])
+
+    def test_gate_closed_bootstrap_includes_project_brief(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.gate import evaluate_gate_checks
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            closed, _open = evaluate_gate_checks({
+                "workspace": str(root),
+                "roadmap_present": True,
+                "bootstrap_complete": False,
+                "bootstrap_placeholder_count": 4,
+                "project_fingerprint": {"steering_brief": "Gate Test — library"},
+                "validation": {"valid": True},
+                "freshness": {"stale": False},
+                "workspace_state": {},
+            })
+            bootstrap = [g for g in closed if g.get("id") == "bootstrap_complete"]
+            self.assertTrue(bootstrap)
+            self.assertIn("Gate Test", bootstrap[0].get("why") or "")
+
 
 class RoadmapWorkspaceResolutionTests(unittest.TestCase):
     def setUp(self) -> None:

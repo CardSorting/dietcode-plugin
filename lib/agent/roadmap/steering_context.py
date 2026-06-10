@@ -170,6 +170,7 @@ _STEERING_PAYLOAD_KEYS: tuple[str, ...] = (
     "runtime_versions",
     "has_codeowners",
     "dependency_automation",
+    "compose_services",
     "has_backstage_catalog",
     "catalog_name",
     "catalog_description",

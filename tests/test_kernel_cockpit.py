@@ -93,13 +93,26 @@ class KernelCockpitTests(unittest.TestCase):
             "resolved_workspace_root": "/tmp/project",
         }
         router = {"raw_write_policy": "warn", "would_block_raw_writes": False, "would_warn_on_raw_write": True}
+        fake_roadmap = {
+            "enabled": True,
+            "steering_brief": "Demo — Python",
+            "stack_summary": "Python",
+            "bootstrap_complete": False,
+            "bootstrap_placeholder_count": 2,
+            "roadmap_exists": True,
+            "project_steering_digest": {"verification_commands": ["make verify"], "bootstrap_remaining": 2},
+        }
         with mock.patch.object(cockpit, "_gate_context", return_value={"config": KernelBridgeConfig(), "gate": gate, "router": router}):
-            payload = cockpit.build_cockpit_report()
+            with mock.patch.object(cockpit, "_roadmap_cockpit_brief", return_value=fake_roadmap):
+                payload = cockpit.build_cockpit_report()
+                text = cockpit.format_cockpit_report()
         self.assertIn("recommended_next_action", payload)
+        self.assertIn("roadmap_steering", payload)
         self.assertEqual(payload["recommended_next_action"]["action"], cockpit.ACTION_ENABLE_MUTATIONS)
-        text = cockpit.format_cockpit_report()
         self.assertIn("Kernel cockpit", text)
         self.assertIn("Next action:", text)
+        self.assertIn("apply_bootstrap_fill", text)
+        self.assertIn("Verify:", text)
 
     def test_ux_budget_enrichment(self) -> None:
         events = [

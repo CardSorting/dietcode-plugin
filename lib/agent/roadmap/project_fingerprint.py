@@ -99,6 +99,8 @@ def _fingerprint_cache_token(root: Path) -> float:
         "CODEOWNERS",
         "renovate.json",
         ".github/dependabot.yml",
+        "docker-compose.yml",
+        "compose.yml",
     ):
         path = root / rel
         if path.is_file():
@@ -424,13 +426,36 @@ def _agent_rules_files(root: Path) -> list[str]:
             found.append(rel)
     rules_dir = root / ".cursor" / "rules"
     if rules_dir.is_dir():
-        for path in sorted(rules_dir.glob("*.md"))[:5]:
+        for path in sorted(list(rules_dir.glob("*.md")) + list(rules_dir.glob("*.mdc")))[:5]:
             rel = f".cursor/rules/{path.name}"
             if rel not in found:
                 found.append(rel)
-        if rules_dir.is_dir() and ".cursor/rules" not in found and not any(p.suffix == ".md" for p in rules_dir.glob("*.md")):
-            found.append(".cursor/rules")
+        if not any(p.suffix in {".md", ".mdc"} for p in rules_dir.iterdir() if p.is_file()):
+            if ".cursor/rules" not in found:
+                found.append(".cursor/rules")
     return found[:8]
+
+
+def _compose_services(root: Path) -> list[str]:
+    for name in ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"):
+        path = root / name
+        if not path.is_file():
+            continue
+        services: list[str] = []
+        in_services = False
+        for line in _read_text(path, limit=4000).splitlines():
+            if re.match(r"^\s*services:\s*$", line):
+                in_services = True
+                continue
+            if not in_services:
+                continue
+            match = re.match(r"^\s{2}([\w-]+):\s*$", line)
+            if match:
+                services.append(match.group(1))
+            elif line.strip() and not line.startswith(" "):
+                break
+        return services[:6]
+    return []
 
 
 def _catalog_metadata(root: Path) -> dict[str, Optional[str]]:
@@ -568,6 +593,7 @@ def _build_project_fingerprint(root: Path) -> dict[str, Any]:
     makefile_targets = _makefile_targets(root)
     runtime_versions = _runtime_versions(root)
     dependency_automation = _dependency_automation(root)
+    compose_services = _compose_services(root)
     has_codeowners = (root / ".github" / "CODEOWNERS").is_file() or (root / "CODEOWNERS").is_file()
     verification_commands = _verification_commands(
         root,
@@ -597,7 +623,10 @@ def _build_project_fingerprint(root: Path) -> dict[str, Any]:
     elif archetype == "web-app":
         runtime_hint = f"Web application root at {root.name} — deploy/runtime config in repo manifests"
     elif has_docker:
-        runtime_hint = "Containerized runtime — Docker/Docker Compose manifests define operational center"
+        if compose_services:
+            runtime_hint = f"Containerized runtime — services: {', '.join(compose_services[:4])}"
+        else:
+            runtime_hint = "Containerized runtime — Docker/Docker Compose manifests define operational center"
     elif frameworks:
         runtime_hint = f"Primary stack: {', '.join(frameworks[:3])} — operational truth in repo config and entrypoints"
 
@@ -644,6 +673,7 @@ def _build_project_fingerprint(root: Path) -> dict[str, Any]:
         "runtime_versions": runtime_versions or None,
         "dependency_automation": dependency_automation or None,
         "has_codeowners": has_codeowners,
+        "compose_services": compose_services or None,
         "has_backstage_catalog": has_backstage,
         "catalog_name": catalog_meta.get("catalog_name"),
         "catalog_description": catalog_meta.get("catalog_description"),

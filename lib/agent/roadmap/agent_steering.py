@@ -44,6 +44,10 @@ def _project_context_lines(steering: dict[str, Any]) -> list[str]:
     if verify_cmds:
         lines.append(f"Verify: {', '.join(verify_cmds[:3])}")
 
+    compose = steering.get("compose_services") or []
+    if compose:
+        lines.append(f"Compose: {', '.join(compose[:4])}")
+
     docs_roots = steering.get("docs_roots") or []
     if docs_roots:
         lines.append(f"Docs: {', '.join(docs_roots[:3])}")

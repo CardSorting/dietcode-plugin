@@ -526,6 +526,83 @@ def main() -> int:
         if not any("apply_bootstrap_fill" in h for h in merged2):
             failures.append("joyzoning merge missing apply_bootstrap_fill from recommended_next_action")
 
+        merged3 = wf_mod._merge_steering_next_actions(
+            ["joyzoning(action='begin')"],
+            roadmap_brief={
+                "enabled": True,
+                "project_steering_digest": {"verification_commands": ["make verify"], "bootstrap_remaining": 2},
+            },
+        )
+        if not any("Project verify:" in h for h in merged3):
+            failures.append("joyzoning merge missing project verify hint from digest")
+
+        from plugins.dietcode.lib.agent.roadmap.gate import evaluate_gate_checks
+
+        gate_inputs = {
+            "config": get_roadmap_config() if False else None,
+            "workspace": str(root),
+            "roadmap_present": True,
+            "bootstrap_complete": False,
+            "bootstrap_placeholder_count": fill_plan.get("remaining_count", 3),
+            "project_fingerprint": fp,
+            "validation": {"valid": False},
+            "freshness": {"stale": False},
+            "workspace_state": {},
+        }
+        from plugins.dietcode.lib.agent.roadmap.config import get_roadmap_config
+
+        gate_inputs["config"] = get_roadmap_config()
+        closed_gates, _open = evaluate_gate_checks(gate_inputs)
+        bootstrap_closed = [g for g in closed_gates if g.get("id") == "bootstrap_complete"]
+        if not bootstrap_closed:
+            failures.append("gate audit expected closed bootstrap_complete gate")
+        elif "Audit Project" not in str(bootstrap_closed[0].get("why") or ""):
+            failures.append("bootstrap gate why should include project steering brief")
+        schema_closed = [g for g in closed_gates if g.get("id") == "schema_valid"]
+        if schema_closed and "apply_bootstrap_fill" not in str(schema_closed[0].get("fix") or ""):
+            failures.append("schema gate fix should prioritize bootstrap fill when placeholders remain")
+
+        try:
+            from plugins.dietcode.lib.agent import kernel_cockpit as kc_mod
+            from unittest import mock as audit_mock
+
+            fake_brief = {
+                "enabled": True,
+                "steering_brief": fp.get("steering_brief"),
+                "stack_summary": fp.get("stack_summary"),
+                "bootstrap_complete": False,
+                "bootstrap_placeholder_count": fill_plan.get("remaining_count", 3),
+                "roadmap_exists": True,
+                "health_status": "Coherent",
+                "roadmap_path": str(root / "ROADMAP.md"),
+                "project_steering_digest": digest,
+            }
+            kernel_gate = {
+                "resolved_workspace_root": str(root),
+                "patch_allowed": True,
+                "mutations_enabled": True,
+                "socket_ready": True,
+                "token_ready": True,
+                "workspace_safe_for_mutation": True,
+            }
+            kernel_router = {"raw_write_policy": "warn", "would_block_raw_writes": False, "would_warn_on_raw_write": False}
+            with audit_mock.patch.object(
+                kc_mod,
+                "_gate_context",
+                return_value={"config": None, "gate": kernel_gate, "router": kernel_router},
+            ):
+                with audit_mock.patch.object(kc_mod, "_roadmap_cockpit_brief", return_value=fake_brief):
+                    kc_payload = kc_mod.build_cockpit_report()
+                    kc_text = kc_mod.format_cockpit_report()
+            if not kc_payload.get("roadmap_steering"):
+                failures.append("kernel cockpit missing roadmap_steering brief")
+            if "apply_bootstrap_fill" not in kc_text:
+                failures.append("kernel cockpit report missing bootstrap fill guidance")
+            if "Verify:" not in kc_text:
+                failures.append("kernel cockpit report missing project verify line")
+        except ImportError:
+            pass
+
         invalidate_snapshot(str(root))
         snapshot_mod._CACHE.clear()
         t0 = time.perf_counter()

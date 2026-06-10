@@ -201,8 +201,17 @@ def _suggest_replacement(
 def _fallback_replacement(phrase: str, *, fingerprint: dict[str, Any]) -> tuple[str, str]:
     brief = fingerprint.get("steering_brief") or fingerprint.get("steering_identity") or ""
     purpose = fingerprint.get("purpose_hint") or ""
+    operators = fingerprint.get("operators_hint") or ""
+    runtime = fingerprint.get("runtime_center_hint") or ""
+    stack = fingerprint.get("stack_summary") or ""
     if purpose:
         return purpose, "project_fingerprint.purpose_hint"
+    if operators:
+        return operators[:240], "project_fingerprint.operators_hint"
+    if runtime:
+        return runtime[:240], "project_fingerprint.runtime_center_hint"
+    if stack and brief:
+        return f"Document project-specific detail for {brief} ({stack}).", "project_fingerprint.stack_summary"
     if brief:
         return f"Document project-specific detail for {brief}.", "project_fingerprint.steering_brief"
     return phrase, "manual — review bootstrap_fill_plan.tasks"
@@ -500,6 +509,7 @@ def build_project_steering_digest(
         "docs_roots": fingerprint.get("docs_roots") or [],
         "license": fingerprint.get("license"),
         "runtime_versions": fingerprint.get("runtime_versions"),
+        "compose_services": fingerprint.get("compose_services"),
         "has_codeowners": fingerprint.get("has_codeowners"),
         "dependency_automation": fingerprint.get("dependency_automation"),
         "has_backstage_catalog": fingerprint.get("has_backstage_catalog"),
