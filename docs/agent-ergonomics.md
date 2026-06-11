@@ -239,42 +239,82 @@ ASCII mode: `DIETCODE_ASCII_ONLY=1`
 
 ## Roadmap checkpoint operator loop
 
-Long-horizon steering surface for product and architecture coherence:
+Long-horizon steering surface for product and architecture coherence. Every
+response is **scoped to the resolved Hermes project workspace** via
+`project_fingerprint` → `project_steering_digest` → `project_identity_line`.
+
+**Full reference:** [roadmap.md](roadmap.md)
+
+### Per-project identity (read this first)
+
+Agents should never infer project context from the DietCode plugin checkout.
+Every roadmap JSON payload includes:
+
+| Field | Purpose |
+| --- | --- |
+| `project_identity_line` | One-line header: brief · stack · verify command |
+| `project_steering_digest` | Entity card: CI, quality tools, governance, verify, bootstrap status |
+| `project_fingerprint` | Raw signals inside checkpoint `evidence` |
+| `bootstrap_fill_plan` | Evidence-backed placeholder replacements (when incomplete) |
+
+Fingerprint sources: README, Makefile, `package.json`, CI workflows, AGENTS.md,
+`.cursor/rules`, Backstage `catalog-info.yaml`, Docker Compose, Renovate,
+Biome/ESLint/Ruff, issue templates, and more. See [roadmap.md](roadmap.md).
+
+### Operator loop
 
 ```text
-1. /roadmap cockpit              → health, schema, freshness, code soup, next action
-2. /roadmap explain-stale        → why checkpoint may be outdated vs git activity
-3. roadmap(action='guide')       → phase + checkpoint_freshness + operator hints
-4. roadmap(action='checkpoint')  → evidence + code_soup_pre_audit + algorithm
-5. Edit ROADMAP.md per skill     → auto _roadmap_write_hint on native writes
-6. roadmap(action='validate')     → schema gate before closing the pass
-7. /roadmap progress --current   → full progress + gate snapshot JSON
-8. Return checkpoint summary     → not the full ROADMAP.md unless asked
+1. /roadmap cockpit                              → health, identity, schema, next action
+2. /roadmap doctor                               → skill + production checks + Identity line
+3. /roadmap explain-gate                         → closed gates vs kanban_complete
+4. roadmap(action='checkpoint')                  → evidence + code_soup_pre_audit
+5. roadmap(action='apply_bootstrap_fill', context='write')  → when placeholders remain
+6. Edit ROADMAP.md at workspace root only        → _roadmap_write_hint on native writes
+7. roadmap(action='validate')                    → schema + bootstrap completeness gate
+8. /roadmap progress --current                   → full progress + gate snapshot JSON
+9. Return checkpoint summary                     → not full ROADMAP.md unless asked
 ```
 
-Progress storage:
+### Agent loop
+
+```text
+1. roadmap(action='guide')                     → phase, steering_line, project_identity_line
+2. roadmap(action='checkpoint')                → evidence + bootstrap_fill_plan when needed
+3. roadmap(action='apply_bootstrap_fill')      → preview/write evidence autofill
+4. roadmap(action='validate')                    → after edits
+5. roadmap(action='explain_gate')              → when kanban_complete blocked
+```
+
+Prime directive: did the latest work strengthen or weaken **center of gravity**?
+Section 9 code soup audit is mandatory. Keep Now ≤ 5 items.
+
+### Progress storage
 
 | Path | Purpose |
 | --- | --- |
 | `~/.dietcode/session/roadmap-progress.jsonl` | Append-only roadmap tool activity |
 | `~/.dietcode/session/roadmap-progress-current.json` | Latest roadmap action snapshot |
-| `.dietcode/roadmap-state.json` | Workspace-local validate/checkpoint memory (includes `validation_pending` after ROADMAP.md writes) |
+| `.dietcode/roadmap-state.json` | Workspace-local validate/checkpoint memory (`validation_pending` after writes) |
 
-Slash commands: `/roadmap cockpit`, `/roadmap explain-gate`, `/roadmap doctor`, `/rm validate`, `/dietcode roadmap`.
-
-Native wiring:
+### Native wiring
 
 - Dedicated Hermes toolset: `roadmap` (tools: `roadmap`, `roadmap_checkpoint`)
-- `joyzoning(action='context')` → `roadmap_checkpoint` brief + merged `next_actions`
-- `joyzoning(action='roadmap')` → full cockpit payload with `recommended_next_action`
-- Stale checkpoint blocks `kanban_complete` at `pre_tool_call` when `warn_on_stale_before_complete` is enabled
+- `joyzoning(action='context')` → session brief + `project_identity_line` + merged `next_actions`
+- `joyzoning(action='roadmap')` → full cockpit payload
+- `/dietcode kernel cockpit` → merges roadmap steering (Project, Identity, Verify)
+- Stale checkpoint blocks `kanban_complete` when `warn_on_stale_before_complete` is enabled
 - Unvalidated ROADMAP.md edits block `kanban_complete` when `block_kanban_on_validation_pending` is enabled (default)
-- `roadmap(action='explain_gate')` returns kernel-style `closed_gates` / `open_gates` diagnostics
-- `session.start` journal payload includes roadmap phase and `first_call`
-- `write_file` / `patch` on `ROADMAP.md` → `_roadmap_write_hint` (validate follow-up)
-- Roadmap tool calls emit `roadmap.*` runtime events when execution journal is on
+- `write_file` / `patch` on `ROADMAP.md` → `_roadmap_write_hint` → validate follow-up
+- Roadmap tool calls emit `roadmap.*` runtime events with `project_identity_line` in telemetry
 
-Checkpoint evidence includes: README/architecture excerpts, git history, TODO markers, test file count, and programmatic `code_soup_audit` signals (duplicate basenames, hook registrars, config sources).
+Checkpoint evidence (tier `full`): README/arch excerpts, git history, TODO markers,
+test file count, `code_soup_audit`, and embedded steering profile on every bundle.
+
+### Verification
+
+```bash
+make verify   # smoke + production audit + operator smoke + 121 unit tests
+```
 
 Smoke: `python scripts/roadmap_smoke.py` · operator: `python scripts/roadmap_operator_smoke.py` · audit: `python scripts/roadmap_audit.py`
 
@@ -288,5 +328,6 @@ Smoke: `python scripts/roadmap_smoke.py` · operator: `python scripts/roadmap_op
 ## Related
 
 - [kernel-bridge-operations.md](kernel-bridge-operations.md) — bridge config and rollback
-- [tools-reference.md](tools-reference.md) — `dietcode_kernel` tool
+- [roadmap.md](roadmap.md) — per-project ROADMAP steering, fingerprint, bootstrap autofill
+- [tools-reference.md](tools-reference.md) — `dietcode_kernel` and `roadmap` tools
 - [../kernel/docs/agent-ergonomics.md](../kernel/docs/agent-ergonomics.md) — native kernel checkpoint model

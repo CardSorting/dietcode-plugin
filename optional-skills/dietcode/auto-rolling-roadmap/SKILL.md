@@ -130,6 +130,23 @@ Do not invent project state.
 
 If evidence is missing, mark uncertainty explicitly.
 
+## Per-Project Identity (DietCode native integration)
+
+Every `roadmap` tool response is scoped to the **Hermes project workspace**, not
+the DietCode plugin install tree. Read these fields before editing:
+
+| Field | Use |
+| --- | --- |
+| `project_identity_line` | One-line header: project brief · stack · verify command |
+| `project_steering_digest` | Entity card: CI, quality tools, governance, verify, bootstrap status |
+| `project_fingerprint` | Raw signals in checkpoint `evidence` (README title, archetype, Makefile targets, …) |
+| `bootstrap_fill_plan` | When template phrases remain — use `tasks[].suggested_replacement` |
+
+Prefer evidence-backed replacements over generic text. When placeholders remain,
+call `roadmap(action='apply_bootstrap_fill')` before manual edits.
+
+Operator reference: `docs/roadmap.md` in the DietCode plugin tree.
+
 ## Required Update Algorithm
 
 Follow this sequence on every roadmap pass:

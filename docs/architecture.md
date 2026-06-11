@@ -138,16 +138,27 @@ Expected tool domains:
 - **joyzoning / convergence** — mutation lifecycle, convergence, JSDP, runtime events.
 - **dietcode_kernel** — kernel bridge status, search, patch, verify.
 - **kanban bridge** — task sync and completion gates backed by BroccoliDB.
-- **roadmap** — auto-rolling `ROADMAP.md` checkpoint, cockpit, explain-gate, progress telemetry.
-
-`tools_loader.py` reports missing modules via `/dietcode tools`.
+- **roadmap** — auto-rolling `ROADMAP.md` checkpoint with per-project fingerprint,
+  evidence autofill, and steering gates. See [roadmap.md](roadmap.md).
 
 ### Roadmap steering gate
 
-`lib/agent/roadmap/gate.py` evaluates schema and checkpoint freshness. When
-`dietcode.roadmap.warn_on_stale_before_complete` is enabled (default), a stale
+`lib/agent/roadmap/gate.py` evaluates schema, bootstrap completeness, checkpoint
+freshness, and validation pending. Gate messages include the project
+`steering_brief` from fingerprint — not generic copy.
+
+When `dietcode.roadmap.warn_on_stale_before_complete` is enabled (default), a stale
 checkpoint closes the steering gate and `convergence_gate.pre_tool_call_block`
 blocks `kanban_complete` with a recovery message pointing to `/roadmap explain-gate`.
+
+When bootstrap placeholder phrases remain, the `bootstrap_complete` gate closes
+and schema gate fix text prioritizes `roadmap(action='apply_bootstrap_fill')`.
+
+Per-project identity flows: `project_fingerprint` → evidence bundle →
+`project_steering_digest` → top-level `project_identity_line` on every tool
+response, JoyZoning context, kernel cockpit, doctor, and progress telemetry.
+
+`tools_loader.py` reports missing modules via `/dietcode tools`.
 
 ## BroccoliDB boundary
 

@@ -54,9 +54,16 @@ ROADMAP_GUIDANCE = (
     "Skill: `auto-rolling-roadmap` at `optional-skills/dietcode/auto-rolling-roadmap/SKILL.md`.\n"
     "Section 9 (Centralization & Code Soup Audit) is mandatory — use `code_soup_pre_audit` from checkpoint.\n"
     "Keep Now to 1–5 actionable items; finish with validate, then return checkpoint summary (not full file).\n"
-    "Per-project steering: every response includes `project_steering_digest` with `identity_line` (brief, stack, verify command).\n"
-    "When bootstrap placeholders remain: `bootstrap_fill_plan`, `bootstrap_autofill_preview`, and `roadmap(action='apply_bootstrap_fill')`.\n"
-    "Bootstrap fill: use `tasks[].suggested_replacement` from checkpoint, or `roadmap(action='apply_bootstrap_fill', context='write')` to apply evidence replacements.\n"
+    "Per-project steering on every response:\n"
+    "- `project_identity_line` — one-line brief · stack · verify command\n"
+    "- `project_steering_digest` — entity card (CI, quality tools, governance, verify, bootstrap status)\n"
+    "- `project_fingerprint` — raw repo signals inside checkpoint `evidence`\n"
+    "\n"
+    "When bootstrap template phrases remain:\n"
+    "- `bootstrap_fill_plan` with `tasks[].suggested_replacement` from evidence\n"
+    "- `roadmap(action='apply_bootstrap_fill')` preview or `context='write'` to apply\n"
+    "\n"
+    "Full operator reference: docs/roadmap.md in the plugin tree.\n"
 )
 
 JOYZONING_GUIDANCE = (

@@ -154,36 +154,49 @@ for physical mutation — JoyZoning hooks journal kernel receipts automatically.
 
 ### Auto-rolling roadmap checkpoint (native toolset: `roadmap`)
 
+**Deep reference:** [roadmap.md](roadmap.md)
+
 | Tool | Actions | Purpose |
 | --- | --- | --- |
-| `roadmap` | `guide`, `checkpoint`, `evidence`, `status`, `doctor`, `cockpit`, `validate`, `template`, `progress`, `watch`, `last_error`, `explain_stale`, `explain_gate` | First-class native steering primitive for `ROADMAP.md`. |
-| `roadmap_checkpoint` | Alias actions | Compatibility alias for `roadmap`. |
+| `roadmap` | `guide`, `checkpoint`, `evidence`, `status`, `doctor`, `cockpit`, `validate`, `template`, `progress`, `watch`, `last_error`, `explain_stale`, `explain_gate`, `apply_bootstrap_fill` | Per-project steering for `ROADMAP.md` |
+| `roadmap_checkpoint` | Alias actions | Compatibility alias for `roadmap` |
 
-Native integration:
+#### Per-project response fields
 
-- `joyzoning(action='context')` returns `roadmap_checkpoint` session brief and merged `next_actions`.
-- `joyzoning(action='roadmap')` returns the roadmap cockpit payload (one-screen steering).
-- `session.start` journal events include `roadmap_checkpoint` payload.
-- Writes to `ROADMAP.md` via `write_file` / `patch` receive `_roadmap_write_hint` → `roadmap(action='validate')`.
-- Roadmap tool calls emit `roadmap.*` runtime journal events when JoyZoning execution journal is enabled.
+Every roadmap action returns (via `clarity_envelope`):
+
+- `project_identity_line` — one-line brief · stack · verify
+- `project_steering_digest` — CI, quality tools, governance, verify commands, bootstrap status
+- `steering_line` — multi-line live steering for prompts
+- `_roadmap_operator_hints` — `write_guard`, `next_action`, `recovery_suggestion`
+
+When bootstrap template phrases remain: `bootstrap_fill_plan`, optional
+`bootstrap_autofill_preview`, and `roadmap(action='apply_bootstrap_fill')`.
+
+#### Native integration
+
+- `joyzoning(action='context')` → session brief, `project_identity_line`, merged `next_actions`
+- `joyzoning(action='roadmap')` → cockpit payload with `recommended_next_action`
+- `/dietcode kernel cockpit` → roadmap steering merged (Project, Identity, Verify)
+- `session.start` → roadmap phase, `first_call`, steering digest
+- Writes to `ROADMAP.md` → `_roadmap_write_hint` → `roadmap(action='validate')`
+- Tool calls → `roadmap.*` journal events with identity in progress telemetry
 
 Slash commands:
 
 | Command | Purpose |
 | --- | --- |
 | `/roadmap cockpit` | One-screen operator summary |
-| `/roadmap doctor` | Install skill + health checks |
-| `/roadmap checkpoint [context]` | Checkpoint briefing |
+| `/roadmap doctor` | Install skill + health checks (shows Identity line) |
+| `/roadmap explain-gate` | Closed gates and kanban_complete policy |
+| `/roadmap checkpoint [context]` | Checkpoint briefing; `apply autofill preview/write` contexts |
 | `/roadmap progress --current` | Full progress + gate snapshot JSON |
-| `/dietcode roadmap` | Feature health JSON |
+| `/dietcode roadmap` | Feature health JSON with `project_identity_line` |
 | `/dietcode roadmap cockpit` | Cockpit via dietcode console |
-| `/dietcode roadmap explain-gate` | Closed gates and kanban_complete policy |
-
-Agent responses include `_roadmap_operator_hints` with `next_action`, `suggested_slash_command`, and `recovery_suggestion`.
 
 Skill: `optional-skills/dietcode/auto-rolling-roadmap/SKILL.md` (auto-installed when `dietcode.roadmap.auto_install_skills` is true).
 
-Smoke: `python scripts/roadmap_smoke.py`
+Verification: `make verify` (smoke + audit + operator smoke + unit tests)
 
 ## Kanban bridge tools
 

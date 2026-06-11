@@ -187,6 +187,7 @@ Operator guide: [docs/kernel-bridge-operations.md](docs/kernel-bridge-operations
 | [docs/README.md](docs/README.md) | Documentation index |
 | [docs/dietcode-plugin.md](docs/dietcode-plugin.md) | Plugin overview, config, workflow |
 | [docs/architecture.md](docs/architecture.md) | Runtime layers, hook flow, authority split |
+| [docs/roadmap.md](docs/roadmap.md) | Per-project ROADMAP steering, fingerprint, bootstrap autofill |
 | [docs/kernel-bridge-operations.md](docs/kernel-bridge-operations.md) | Kernel bridge operator manual |
 | [docs/tools-reference.md](docs/tools-reference.md) | Slash commands and Hermes tools |
 | [docs/broccolidb.md](docs/broccolidb.md) | BroccoliDB runtime and RPC |

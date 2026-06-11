@@ -19,6 +19,7 @@ intent → patch → receipt → journal → verify → verification journal →
 | **Installing the plugin** | [dietcode-plugin.md](dietcode-plugin.md) | Run `/dietcode doctor` |
 | **Operating the kernel bridge** | [kernel-bridge-operations.md](kernel-bridge-operations.md) | `/dietcode kernel status` |
 | **Understanding the runtime** | [architecture.md](architecture.md) | [tools-reference.md](tools-reference.md) |
+| **Governed roadmap steering** | [roadmap.md](roadmap.md) | `/roadmap cockpit` |
 | **Working with BroccoliDB** | [broccolidb.md](broccolidb.md) | `/broccolidb status` |
 | **Building the kernel binary** | [../kernel/README.md](../kernel/README.md) | `make -C kernel validate` |
 | **Upgrading to v1.9.4** | [releases/v1.9.4.md](releases/v1.9.4.md) | [../CHANGELOG.md](../CHANGELOG.md) |
@@ -37,7 +38,8 @@ intent → patch → receipt → journal → verify → verification journal →
 | [tools-reference.md](tools-reference.md) | Slash commands and registered Hermes tools (`dietcode_kernel`, JoyZoning, BroccoliDB). |
 | [broccolidb.md](broccolidb.md) | Bundled BroccoliDB package, RPC worker, database location, smoke tests. |
 | [broccolidb-native-execution-throughput.md](broccolidb-native-execution-throughput.md) | Native RPC execution model and throughput notes. |
-| [agent-ergonomics.md](agent-ergonomics.md) | Kernel progress telemetry, stuck-operator runbook. |
+| [agent-ergonomics.md](agent-ergonomics.md) | Kernel progress telemetry, stuck-operator runbook, roadmap loop summary. |
+| [roadmap.md](roadmap.md) | Per-project ROADMAP.md steering, fingerprint, bootstrap autofill, gates. |
 | [releases/v1.9.4.md](releases/v1.9.4.md) | v1.9.4 sonic kernel UX release notes. |
 | [releases/v1.9.3.md](releases/v1.9.3.md) | v1.9.3 cockpit responsiveness release notes. |
 | [releases/v1.9.2.md](releases/v1.9.2.md) | v1.9.2 performance pass release notes. |
