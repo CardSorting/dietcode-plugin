@@ -32,7 +32,7 @@ intent → patch → receipt → journal → verify → verification journal →
 
 | Document | Purpose |
 | --- | --- |
-| [dietcode-plugin.md](dietcode-plugin.md) | Install, verification, configuration, governed workflow. |
+| [dietcode-plugin.md](dietcode-plugin.md) | Install, verification, configuration, governed workflow (includes roadmap config). |
 | [architecture.md](architecture.md) | Runtime layout, hook wiring, authority split, subprocess boundaries. |
 | [kernel-bridge-operations.md](kernel-bridge-operations.md) | Warn/block modes, rehearsal, rollback, doctor interpretation, failure modes. |
 | [tools-reference.md](tools-reference.md) | Slash commands and registered Hermes tools (`dietcode_kernel`, JoyZoning, BroccoliDB). |

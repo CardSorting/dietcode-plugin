@@ -41,6 +41,14 @@ Skill file (auto-installed when enabled):
 18. [Verification](#verification)
 19. [Troubleshooting](#troubleshooting)
 20. [Anti-patterns](#anti-patterns)
+21. [Slash command reference](#slash-command-reference)
+22. [Checkpoint freshness algorithm](#checkpoint-freshness-algorithm)
+23. [Kanban and JoyZoning integration](#kanban-and-joyzoning-integration)
+24. [Hook lifecycle and journal events](#hook-lifecycle-and-journal-events)
+25. [Section authoring guide](#section-authoring-guide)
+26. [Required final assistant response](#required-final-assistant-response)
+27. [Skill installation](#skill-installation)
+28. [Contributor guide](#contributor-guide)
 
 ---
 
@@ -71,6 +79,28 @@ Skill file (auto-installed when enabled):
 
 Prime directive every pass: **did the latest work strengthen or weaken the
 project's center of gravity?**
+
+### Decision tree (which call next?)
+
+```text
+ROADMAP.md missing?
+  └─ yes → roadmap(action='checkpoint') or roadmap(action='template')
+
+Placeholders remain (bootstrap_complete: false)?
+  └─ yes → roadmap(action='apply_bootstrap_fill') preview, then context='write', then validate
+
+validation_pending in .dietcode/roadmap-state.json?
+  └─ yes → roadmap(action='validate')
+
+kanban_complete blocked?
+  └─ yes → /roadmap explain-gate → fix first closed gate → validate
+
+Stale checkpoint (section 11 old + git activity)?
+  └─ yes → roadmap(action='checkpoint', context='stale refresh')
+
+Ready for rolling update?
+  └─ checkpoint → edit ROADMAP.md → validate → return checkpoint summary
+```
 
 ---
 
@@ -826,6 +856,292 @@ python3 -m unittest tests.test_roadmap_checkpoint -q
 - Use evidence autofill preview before write when placeholders remain
 - Keep Now ≤ 5 items connected to center of gravity
 - Mark uncertainty explicitly when evidence is thin
+
+---
+
+## Slash command reference
+
+Hermes console: `/roadmap …` (alias `/rm …` where registered).
+
+| Subcommand | Maps to | Output |
+| --- | --- | --- |
+| `cockpit` | `format_cockpit_report()` | Human one-screen summary |
+| `doctor` | skill install + `run_checks()` | Checklist with recommendations |
+| `status` | `status_snapshot()` | Parse health, sections missing |
+| `evidence` | `gather_evidence(tier=full)` | Human evidence summary |
+| `checkpoint [context]` | `checkpoint_brief(context=…)` | Human briefing + JSON pointer |
+| `validate` | `validate_roadmap()` | Validation result summary |
+| `template` | `template_brief()` | Bootstrap skeleton preview |
+| `guide` | `operational_status()` | Phase + next call |
+| `progress` | `format_progress_report()` | Activity summary |
+| `progress --current` | full progress JSON | Gate snapshot included |
+| `progress --tail` | JSONL tail | Raw event lines |
+| `watch` | `format_watch_report()` | Compact last-action line |
+| `last-error` | `read_last_error()` | Last failure envelope |
+| `explain-stale` | freshness report | Why section 11 may be outdated |
+| `explain-gate` | `build_explain_gate_payload()` | Closed gates + fixes |
+
+DietCode console equivalents:
+
+| Command | Purpose |
+| --- | --- |
+| `/dietcode roadmap` | JSON health (same family as doctor roadmap section) |
+| `/dietcode roadmap cockpit` | Cockpit via dietcode handler |
+
+Tool parity: every slash subcommand has a matching `roadmap(action='…')` except
+progress variants use `roadmap(action='progress', context='--current')` for full JSON.
+
+---
+
+## Checkpoint freshness algorithm
+
+Implemented in `lib/agent/roadmap/freshness.py`. Reads **section 11** date
+(`YYYY-MM-DD`) and compares to git activity.
+
+| Condition | `stale` | `reason` |
+| --- | --- | --- |
+| No parseable Recent Checkpoint date | `true` | `no_recent_checkpoint_date` |
+| `schema_valid` is false | `true` | `schema_invalid` |
+| Age > `stale_checkpoint_days` (default 7) **and** ≥3 git commits since that date | `true` | `checkpoint_older_than_git_activity` |
+| Age > `2 × stale_checkpoint_days` | `true` | `checkpoint_expired` |
+| Otherwise | `false` | `fresh` |
+
+Freshness payload fields:
+
+| Field | Meaning |
+| --- | --- |
+| `days_since_checkpoint` | Calendar days since section 11 date |
+| `git_commits_since_checkpoint` | Commits after checkpoint date (when git available) |
+| `git_commits_in_window` | Commits in evidence window |
+| `recommended_action` | `checkpoint` with stale context, or `guide` when fresh |
+
+When `warn_on_stale_before_complete` is enabled, stale freshness closes the
+`checkpoint_fresh` gate and blocks `kanban_complete` via
+`require_fresh_checkpoint_before_complete()`.
+
+---
+
+## Kanban and JoyZoning integration
+
+Roadmap gates participate in **convergence authority** — they do not auto-complete
+tasks; they block `kanban_complete` when steering is unsafe.
+
+### Where blocking happens
+
+1. **`lib/agent/joyzoning/convergence_gate.py`** — calls
+   `require_fresh_checkpoint_before_complete()` before allowing kanban completion
+2. **`joyzoning(action='context')`** — sets `kanban_complete_allowed` false when
+   `build_roadmap_gate_state()` reports closed blocking gates; surfaces
+   `roadmap_complete_block_reason`
+3. **`pre_tool_call`** (JoyZoning hook chain) — same gate message on
+   `kanban_complete` tool when configured
+
+### Gate state shape (`build_roadmap_gate_state`)
+
+```json
+{
+  "enabled": true,
+  "kanban_complete_allowed": false,
+  "closed_gates": [{ "id": "validation_current", "why": "…", "fix": "…" }],
+  "open_gates": ["workspace_safe", "roadmap_present"],
+  "blocking_gates": [{ "id": "validation_current", "label": "…", "why": "…", "fix": "…" }],
+  "validation_pending": true,
+  "bootstrap_complete": true,
+  "bootstrap_placeholder_count": 0,
+  "stale": false,
+  "stale_reason": "fresh",
+  "preferred_command": "roadmap(action='validate')"
+}
+```
+
+### JoyZoning context fields (roadmap subset)
+
+| Field | Meaning |
+| --- | --- |
+| `roadmap_checkpoint` | Full session/checkpoint brief |
+| `roadmap_steering_line` | Live multi-line steering |
+| `project_steering_digest` | Entity card |
+| `project_identity_line` | One-line identity |
+| `roadmap_gate` | Gate snapshot above |
+| `kanban_complete_allowed` | false when JoyZoning **or** roadmap gates closed |
+| `roadmap_complete_block_reason` | Human message when roadmap gate blocks |
+
+Agents should call `joyzoning(action='context')` at session start — roadmap
+brief and merged `next_actions` are included automatically when roadmap is enabled.
+
+---
+
+## Hook lifecycle and journal events
+
+Registered in `hooks.py` → `lib/runtime/roadmap_hooks.py`.
+
+```mermaid
+sequenceDiagram
+  participant S as session.start
+  participant T as tool call
+  participant P as pre_tool_call
+  participant W as write_file/patch
+  participant X as transform_result
+  participant Po as post_tool_call
+
+  S->>S: ensure_primary_skill
+  S->>S: session_brief + roadmap.session_started
+
+  T->>P: kanban_complete / ROADMAP write
+  P-->>T: block if gate closed or path invalid
+
+  W->>X: on_write_transform
+  X-->>W: _roadmap_write_hint merged
+  W->>Po: record_file_mutation
+  Po->>Po: validation_pending=true
+```
+
+### Runtime journal events (`roadmap.*`)
+
+Emitted via `emit_roadmap_event()` when JoyZoning execution journal is on:
+
+| Event suffix | Trigger |
+| --- | --- |
+| `session_started` | Session start with session brief payload |
+| `session_ended` | Session end snapshot |
+| `guide` | `roadmap(action='guide')` |
+| `checkpoint_brief` | `roadmap(action='checkpoint')` |
+| `validated` | `roadmap(action='validate')` |
+| `doctor` | `roadmap(action='doctor')` |
+| `apply_bootstrap_fill` | Autofill action |
+| `cockpit` | Cockpit action |
+| `explain_gate` | Gate diagnostics |
+
+Progress JSONL (`roadmap-progress.jsonl`) mirrors tool activity with
+`project_identity_line`, `valid`, `stale`, and phase when `progress_enabled`.
+
+---
+
+## Section authoring guide
+
+What belongs in each section — agents should **replace template text**, not append
+generic boilerplate.
+
+| § | Write about | Avoid |
+| --- | --- | --- |
+| **1 Center of Gravity** | 3–7 concepts/workflows that explain the system; canonical paths | Listing every file; duplicating README wholesale |
+| **2 Health** | One status word + 1–2 sentences of evidence | Vague "good" without signals |
+| **3 Strategic Narrative** | Direction from README, commits, architecture — project-specific | "Describe from README…" placeholder |
+| **4 Now** | 1–5 items max; each ties to center of gravity | Backlog dumps; >5 items |
+| **5 Next** | Near-term after Now clears | Everything aspirational |
+| **6 Later** | Honest deferrals | Hidden backlog |
+| **7 Discovery** | Uncertainty, spikes, unvalidated ideas | Committed work disguised as discovery |
+| **8 Maintenance Gravity** | Recurring upkeep (deps, CI, docs drift) | One-off tasks |
+| **9 Code Soup Audit** | Translate `code_soup_pre_audit` signals; name canonical authority | Skipping audit; generic "low risk" |
+| **10 Decision Log** | Dated decisions with rationale | Meeting notes |
+| **11 Recent Checkpoint** | `YYYY-MM-DD` + summary of this pass | Missing date (triggers stale gate) |
+| **12 Archive** | Demoted/completed with reason | Deleting history |
+
+### Now item shape (recommended)
+
+Each Now entry should connect to evidence:
+
+```markdown
+- **Title** — Goal: … | Evidence: git/README/audit | Impact: Strengthens/Neutral/Weakens
+```
+
+---
+
+## Required final assistant response
+
+After updating `ROADMAP.md`, agents return a **checkpoint summary** (not the full
+file unless asked). Format from the skill contract:
+
+```markdown
+## Roadmap Checkpoint Updated
+
+**Health:** Coherent
+
+**Center of Gravity:**  
+One sentence describing the authoritative operational core.
+
+**Moved:**  
+- Item X: Now → Archive (reason)
+
+**Added:**  
+- None
+
+**Updated:**  
+- Section 9: reflected code_soup_pre_audit Medium risk
+
+**Archived:**  
+- None
+
+**Code Soup Risk:** Low  
+Duplicate hook registrars resolved; single pre_tool_call chain documented.
+
+**Recommended Next Move:**  
+Run make verify before closing the kanban task.
+```
+
+Include **project identity** context when relevant (verify command, bootstrap
+remaining count). If validate not yet run after edits, say so explicitly.
+
+---
+
+## Skill installation
+
+When `auto_install_skills: true` (default):
+
+| Path | Content |
+| --- | --- |
+| Source (bundled) | `{plugin}/optional-skills/dietcode/auto-rolling-roadmap/SKILL.md` |
+| Workspace copy | `{workspace}/optional-skills/dietcode/auto-rolling-roadmap/SKILL.md` |
+
+Install triggers:
+
+- `session.start` → `ensure_primary_skill()` (non-fatal on failure)
+- `/roadmap doctor` → `ensure_workspace_skills()`
+- `roadmap(action='doctor')` → same
+
+Doctor check `workspace_skill_installed` verifies the workspace copy exists.
+Agents reference the workspace skill path in `_roadmap_operator_hints.skill_path`.
+
+---
+
+## Contributor guide
+
+Extending roadmap behavior in this repository:
+
+### Add fingerprint signals
+
+1. Edit `lib/agent/roadmap/project_fingerprint.py` — markers, cache token paths
+2. Flow through `build_project_steering_digest()` if agents need the signal
+3. Add audit assertion in `scripts/roadmap_audit.py`
+4. Add unit test in `tests/test_roadmap_checkpoint.py`
+
+### Add bootstrap placeholder phrases
+
+1. Add phrase to `BOOTSTRAP_PLACEHOLDER_PHRASES` in `schema.py`
+2. Map in `bootstrap_fill.py` (`_replacement_for_phrase` or phrase table)
+3. Audit loop verifies every phrase gets a non-identical `suggested_replacement`
+
+### Verify before PR
+
+```bash
+make verify
+```
+
+Individual scripts:
+
+```bash
+python3 scripts/roadmap_audit.py          # production hardening
+python3 scripts/roadmap_operator_smoke.py # ergonomics
+python3 -m unittest tests.test_roadmap_checkpoint tests.test_kernel_cockpit -q
+```
+
+### Production audit expectations
+
+`roadmap_audit.py` validates: fingerprint detection, autofill mapping for all
+phrases, `project_identity_line` on session/validate/progress/doctor/clarity
+envelope/checkpoint, joyzoning merge hints, kernel cockpit Identity line, gate
+personalization with project brief, write guard, and autofill write →
+`validation_pending`.
 
 ---
 

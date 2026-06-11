@@ -200,11 +200,42 @@ dietcode:
 | `warn` | Non-blocking hint to prefer `dietcode_kernel` |
 | `block` | Hard block only with `DIETCODE_KERNEL_RAW_WRITE_BLOCK=1` |
 
+### Roadmap checkpoint
+
+Per-project `ROADMAP.md` steering with evidence autofill, schema gates, and
+kanban completion policy. **Full reference:** [roadmap.md](roadmap.md).
+
+```yaml
+dietcode:
+  roadmap:
+    enabled: true
+    auto_install_skills: true
+    nudge_on_roadmap_write: true
+    progress_enabled: true
+    stale_checkpoint_days: 7
+    warn_on_stale_before_complete: true
+    block_kanban_on_validation_pending: true
+    block_kanban_on_invalid_schema: false
+    block_kanban_on_bootstrap_incomplete: false
+    block_writes_outside_workspace: true
+```
+
+Quick verification:
+
+```text
+/roadmap cockpit
+/roadmap doctor
+/dietcode roadmap
+make verify    # in plugin dev checkout — smoke + audit + 121 tests
+```
+
+Install seeds roadmap defaults via `install.py` when keys are absent.
+
 ### Environment variables
 
 | Variable | Purpose |
 | --- | --- |
-| `HERMES_KANBAN_WORKSPACE` | User project root (required for safe kernel mutation) |
+| `HERMES_KANBAN_WORKSPACE` | User project root — kernel mutation, ROADMAP.md, BroccoliDB context ([roadmap.md](roadmap.md)) |
 | `HERMES_KANBAN_TASK` | Active task scope for JoyZoning and coherence |
 | `JOYZONING_SCOPE_ID` | Explicit JoyZoning scope override |
 | `DIETCODE_KERNEL_RAW_WRITE_BLOCK` | Env fuse for Phase 3B hard block (`1` to enable) |
@@ -230,9 +261,10 @@ Kernel socket paths (global, not plugin-local):
 
 1. Install plugin and run `npm ci` in `broccolidb/`.
 2. Run `/dietcode doctor`.
-3. Use `joyzoning(action="context")` before governed work.
-4. Record lifecycle with `begin` → `patch` → `verify` → `request_review`.
-5. Complete kanban only after convergence gates allow it.
+3. Use `joyzoning(action="context")` before governed work — includes roadmap brief and gates.
+4. Maintain `ROADMAP.md` at project root: `/roadmap cockpit` or `roadmap(action='guide')`.
+5. Record lifecycle with `begin` → `patch` → `verify` → `request_review`.
+6. Complete kanban only after convergence **and** roadmap gates allow it (`/roadmap explain-gate`).
 
 ### With kernel bridge (macOS, opt-in)
 
@@ -268,6 +300,7 @@ npm test
 Python / kernel bridge:
 
 ```bash
+make verify                  # roadmap smoke + audit + unit tests (plugin checkout)
 python3 -m unittest discover -s tests -p 'test_*.py'
 make -C kernel validate    # macOS kernel coherence baseline
 ```

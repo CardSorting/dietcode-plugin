@@ -248,12 +248,18 @@ gates, workspace resolution, write guard, code soup audit, anti-patterns.
 
 | Topic in roadmap.md | Section |
 | --- | --- |
+| Which call to run next | [Decision tree](roadmap.md#decision-tree-which-call-next) |
 | 12-section ROADMAP.md contract | [Document contract](roadmap.md#roadmapmd-document-contract) |
+| Per-section writing guide | [Section authoring guide](roadmap.md#section-authoring-guide) |
 | Example `guide` / `checkpoint` / `validate` JSON | [Example payloads](roadmap.md#example-payloads) |
+| `/roadmap` slash commands | [Slash command reference](roadmap.md#slash-command-reference) |
+| Staleness rules (section 11) | [Freshness algorithm](roadmap.md#checkpoint-freshness-algorithm) |
+| kanban_complete blocking | [Kanban integration](roadmap.md#kanban-and-joyzoning-integration) |
 | All `dietcode.roadmap` config keys | [Configuration reference](roadmap.md#configuration-reference) |
 | Gate IDs and kanban blocking | [Steering gates](roadmap.md#steering-gates) |
 | Workspace resolution order | [Workspace resolution](roadmap.md#workspace-resolution) |
 | Native write hints | [Write guard](roadmap.md#write-guard-and-native-hints) |
+| Extending fingerprint / PR checklist | [Contributor guide](roadmap.md#contributor-guide) |
 
 ### Per-project identity (read this first)
 
