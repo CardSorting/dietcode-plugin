@@ -511,6 +511,10 @@ def format_steering_identity_line(digest: dict[str, Any]) -> str:
     verify = (digest.get("verification_commands") or [])[:1]
     if verify:
         parts.append(f"verify `{verify[0]}`")
+    runtime = digest.get("runtime_versions") or {}
+    if runtime and len(parts) < 3:
+        label, version = next(iter(runtime.items()))
+        parts.append(f"{label} {version}")
     archetype = digest.get("project_archetype")
     if archetype and archetype != "project" and not parts:
         parts.append(str(archetype).replace("-", " "))
@@ -546,6 +550,11 @@ def build_project_steering_digest(
         "has_backstage_catalog": fingerprint.get("has_backstage_catalog"),
         "catalog_name": fingerprint.get("catalog_name"),
         "ci_workflow_names": fingerprint.get("ci_workflow_names") or [],
+        "ci_systems": fingerprint.get("ci_systems") or [],
+        "monorepo_tools": fingerprint.get("monorepo_tools") or [],
+        "quality_tools": fingerprint.get("quality_tools") or [],
+        "package_managers": fingerprint.get("package_managers") or [],
+        "issue_templates": fingerprint.get("issue_templates") or [],
         "has_pre_commit": fingerprint.get("has_pre_commit"),
     }
     if fill_plan:
@@ -574,10 +583,13 @@ def bootstrap_steering_bundle(
     """Build fill plan + digest (+ optional preview) from an evidence bundle."""
     fill_plan = build_bootstrap_fill_plan(roadmap_text=roadmap_text, evidence=evidence)
     fp = fingerprint or evidence.get("project_fingerprint") or {}
+    digest = build_project_steering_digest(fp, fill_plan=fill_plan)
     out: dict[str, Any] = {
         "bootstrap_fill_plan": fill_plan,
-        "project_steering_digest": build_project_steering_digest(fp, fill_plan=fill_plan),
+        "project_steering_digest": digest,
     }
+    if digest.get("identity_line"):
+        out["project_identity_line"] = digest["identity_line"]
     if include_preview:
         out["bootstrap_autofill_preview"] = apply_bootstrap_fill_draft(roadmap_text, evidence)
     if fill_plan.get("tasks"):
@@ -618,7 +630,11 @@ def attach_steering_digest_fields(steering: dict[str, Any]) -> dict[str, Any]:
         }
     if not fp:
         fp = {"steering_identity": Path(str(root)).name}
-    return {"project_steering_digest": build_project_steering_digest(fp)}
+    digest = build_project_steering_digest(fp)
+    out: dict[str, Any] = {"project_steering_digest": digest}
+    if digest.get("identity_line"):
+        out["project_identity_line"] = digest["identity_line"]
+    return out
 
 
 def attach_bootstrap_steering_fields(
@@ -752,4 +768,7 @@ def enrich_payload_with_bootstrap_context(
         out["project_steering_digest"] = build_project_steering_digest(fp)
     elif bundle.get("workspace"):
         out.update(attach_steering_digest_fields({"workspace": bundle["workspace"]}))
+    digest = out.get("project_steering_digest") if isinstance(out.get("project_steering_digest"), dict) else {}
+    if digest.get("identity_line"):
+        out["project_identity_line"] = digest["identity_line"]
     return out

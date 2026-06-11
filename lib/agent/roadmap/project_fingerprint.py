@@ -53,6 +53,20 @@ _TEST_MARKERS: tuple[tuple[str, str], ...] = (
     ("Cargo.toml", "cargo test"),
 )
 
+_LINT_MARKERS: tuple[tuple[str, str], ...] = (
+    ("biome.json", "Biome"),
+    ("eslint.config.js", "ESLint"),
+    ("eslint.config.mjs", "ESLint"),
+    ("eslint.config.ts", "ESLint"),
+    (".eslintrc.json", "ESLint"),
+    (".eslintrc.cjs", "ESLint"),
+    ("ruff.toml", "Ruff"),
+    (".prettierrc", "Prettier"),
+    (".prettierrc.json", "Prettier"),
+    ("mise.toml", "mise"),
+    (".editorconfig", "EditorConfig"),
+)
+
 _MONOREPO_MARKERS: tuple[tuple[str, str], ...] = (
     ("turbo.json", "Turborepo"),
     ("nx.json", "Nx"),
@@ -107,6 +121,10 @@ def _fingerprint_cache_token(root: Path) -> float:
         "SECURITY.md",
         "compose.yml",
         ".pre-commit-config.yaml",
+        "biome.json",
+        "eslint.config.js",
+        "ruff.toml",
+        "mise.toml",
     ):
         path = root / rel
         if path.is_file():
@@ -562,6 +580,28 @@ def _runtime_versions(root: Path) -> dict[str, str]:
     return versions
 
 
+def _issue_templates(root: Path) -> list[str]:
+    found: list[str] = []
+    tpl_dir = root / ".github" / "ISSUE_TEMPLATE"
+    if tpl_dir.is_dir():
+        for path in sorted(tpl_dir.glob("*.md"))[:4]:
+            rel = f".github/ISSUE_TEMPLATE/{path.name}"
+            if rel not in found:
+                found.append(rel)
+        for path in sorted(tpl_dir.glob("*.yaml"))[:2]:
+            rel = f".github/ISSUE_TEMPLATE/{path.name}"
+            if rel not in found:
+                found.append(rel)
+    for rel in (
+        ".github/pull_request_template.md",
+        ".github/PULL_REQUEST_TEMPLATE.md",
+        "pull_request_template.md",
+    ):
+        if (root / rel).is_file() and rel not in found:
+            found.append(rel)
+    return found[:6]
+
+
 def _dependency_automation(root: Path) -> list[str]:
     found: list[str] = []
     if (root / "renovate.json").is_file() or (root / ".github" / "renovate.json").is_file():
@@ -652,6 +692,7 @@ def _build_project_fingerprint(root: Path) -> dict[str, Any]:
     primary_lang = _primary_language(root)
     ci_systems = _detect_markers(root, _CI_MARKERS, dir_ok=True)
     test_frameworks = _detect_markers(root, _TEST_MARKERS)
+    quality_tools = _detect_markers(root, _LINT_MARKERS)
     monorepo_tools = _detect_markers(root, _MONOREPO_MARKERS)
     package_managers = _detect_markers(root, _PACKAGE_MANAGER_MARKERS)
     has_docker = (root / "Dockerfile").is_file() or (root / "docker-compose.yml").is_file()
@@ -669,6 +710,7 @@ def _build_project_fingerprint(root: Path) -> dict[str, Any]:
     governance_files = _governance_files(root)
     workspace_packages = _workspace_packages(root)
     ci_workflow_names = _ci_workflow_names(root)
+    issue_templates = _issue_templates(root)
     has_pre_commit = (root / ".pre-commit-config.yaml").is_file()
     has_codeowners = (root / ".github" / "CODEOWNERS").is_file() or (root / "CODEOWNERS").is_file()
     verification_commands = _verification_commands(
@@ -731,6 +773,7 @@ def _build_project_fingerprint(root: Path) -> dict[str, Any]:
         "project_archetype": archetype,
         "ci_systems": ci_systems,
         "test_frameworks": test_frameworks,
+        "quality_tools": quality_tools or None,
         "monorepo_tools": monorepo_tools,
         "package_managers": package_managers,
         "has_ci": bool(ci_systems),
@@ -753,6 +796,7 @@ def _build_project_fingerprint(root: Path) -> dict[str, Any]:
         "governance_files": governance_files or None,
         "workspace_packages": workspace_packages or None,
         "ci_workflow_names": ci_workflow_names or None,
+        "issue_templates": issue_templates or None,
         "has_pre_commit": has_pre_commit,
         "has_backstage_catalog": has_backstage,
         "catalog_name": catalog_meta.get("catalog_name"),

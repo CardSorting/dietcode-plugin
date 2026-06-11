@@ -74,10 +74,25 @@ class KernelCockpitTests(unittest.TestCase):
             self.assertEqual(cockpit.symbol("failed"), "FAIL")
 
     def test_recommend_next_action_single(self) -> None:
-        rec = cockpit.recommend_next_action(operation_state=cockpit.STATE_VERIFYING)
+        gate = {
+            "bridge_enabled": True,
+            "patch_allowed": True,
+            "mutations_enabled": True,
+            "socket_ready": True,
+            "token_ready": True,
+            "workspace_safe_for_mutation": True,
+        }
+        router = {"would_block_raw_writes": False}
+        rec = cockpit.recommend_next_action(
+            operation_state=cockpit.STATE_VERIFYING,
+            gate=gate,
+            router=router,
+        )
         self.assertEqual(rec["action"], cockpit.ACTION_WAIT)
         rec_fail = cockpit.recommend_next_action(
             operation_state=cockpit.STATE_FAILED,
+            gate=gate,
+            router=router,
             last_error={"ok": False, "last_error": {"safe_to_retry": True, "retry_command": "retry"}},
         )
         self.assertEqual(rec_fail["action"], cockpit.ACTION_RETRY)
@@ -100,7 +115,8 @@ class KernelCockpitTests(unittest.TestCase):
             "bootstrap_complete": False,
             "bootstrap_placeholder_count": 2,
             "roadmap_exists": True,
-            "project_steering_digest": {"verification_commands": ["make verify"], "bootstrap_remaining": 2},
+            "project_steering_digest": {"verification_commands": ["make verify"], "bootstrap_remaining": 2, "identity_line": "Demo — Python · verify `make verify`"},
+            "project_identity_line": "Demo — Python · verify `make verify`",
         }
         with mock.patch.object(cockpit, "_gate_context", return_value={"config": KernelBridgeConfig(), "gate": gate, "router": router}):
             with mock.patch.object(cockpit, "_roadmap_cockpit_brief", return_value=fake_roadmap):
@@ -113,6 +129,7 @@ class KernelCockpitTests(unittest.TestCase):
         self.assertIn("Next action:", text)
         self.assertIn("apply_bootstrap_fill", text)
         self.assertIn("Verify:", text)
+        self.assertIn("Identity:", text)
 
     def test_ux_budget_enrichment(self) -> None:
         events = [

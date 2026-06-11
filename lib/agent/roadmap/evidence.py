@@ -343,6 +343,7 @@ def extend_evidence(
         except Exception:
             evidence["project_fingerprint"] = {"steering_identity": root.name}
 
+    _attach_steering_profile_to_evidence(evidence)
     return evidence
 
 
@@ -447,6 +448,7 @@ def gather_evidence(
         if do_soup:
             evidence["code_soup_audit"] = assess_code_soup(root, heavy_scan=heavy)
 
+    _attach_steering_profile_to_evidence(evidence)
     return evidence
 
 
@@ -469,3 +471,19 @@ def _uncertainty_notes(
     if parsed.now_item_count > 5:
         notes.append(f"Now section overloaded ({parsed.now_item_count} items) — demote to Next or Archive.")
     return notes
+
+
+def _attach_steering_profile_to_evidence(evidence: dict[str, Any]) -> None:
+    """Embed compact per-project steering on every evidence bundle."""
+    fp = evidence.get("project_fingerprint") or {}
+    if not fp:
+        return
+    try:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import build_project_steering_digest
+
+        digest = build_project_steering_digest(fp)
+        evidence["project_steering_digest"] = digest
+        if digest.get("identity_line"):
+            evidence["project_identity_line"] = digest["identity_line"]
+    except Exception:
+        pass

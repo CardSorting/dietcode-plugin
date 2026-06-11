@@ -215,6 +215,7 @@ def run_checks(*, workspace: Optional[str] = None) -> dict[str, Any]:
         "stack_summary": steering.get("stack_summary"),
         "bootstrap_fill_plan": fill_plan,
         "project_steering_digest": steering_digest,
+        "project_identity_line": (steering_digest or {}).get("identity_line") if steering_digest else None,
         "enabled": cfg.enabled,
         "checks": checks,
         "validation": validation.to_dict() if validation else None,
@@ -236,6 +237,10 @@ def format_doctor_report(*, workspace: Optional[str] = None) -> str:
     ]
     if data.get("steering_brief"):
         lines.append(f"Project: {data['steering_brief']}")
+    if data.get("project_identity_line"):
+        lines.append(f"Identity: {data['project_identity_line']}")
+    elif (data.get("project_steering_digest") or {}).get("identity_line"):
+        lines.append(f"Identity: {data['project_steering_digest']['identity_line']}")
     if data.get("stack_summary"):
         lines.append(f"Stack: {data['stack_summary']}")
     digest = data.get("project_steering_digest") or {}

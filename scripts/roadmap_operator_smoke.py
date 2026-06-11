@@ -120,6 +120,10 @@ def main() -> int:
         envelope = clarity_envelope({"action": "guide", "workspace": str(root)})
         if not envelope.get("steering_line"):
             failures.append("clarity_envelope missing steering_line")
+        if not envelope.get("project_identity_line"):
+            failures.append("clarity_envelope missing project_identity_line")
+        if not brief_ckpt.get("project_identity_line"):
+            failures.append("checkpoint_brief missing project_identity_line")
 
         (root / "ROADMAP.md").write_text(bootstrap_skeleton(), encoding="utf-8")
         validated = validate_roadmap(workspace=str(root))
@@ -140,6 +144,8 @@ def main() -> int:
                 failures.append("joyzoning context missing roadmap_steering_line")
             if (brief or {}).get("project_steering_digest") and not ctx.get("project_steering_digest"):
                 failures.append("joyzoning context missing project_steering_digest")
+            if (brief or {}).get("project_steering_digest") and not ctx.get("project_identity_line"):
+                failures.append("joyzoning context missing project_identity_line")
         except ImportError:
             pass
 

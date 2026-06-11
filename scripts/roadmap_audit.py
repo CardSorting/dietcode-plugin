@@ -205,7 +205,7 @@ def main() -> int:
         if not steering.get("steering_brief"):
             failures.append("steering context missing steering_brief")
 
-        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint, invalidate_fingerprint_cache
 
         fp = build_project_fingerprint(root)
         if fp.get("readme_title") != "Audit Project":
@@ -218,6 +218,11 @@ def main() -> int:
             failures.append("fingerprint should detect Makefile targets")
         if "make verify" not in (fp.get("verification_commands") or []):
             failures.append("fingerprint missing make verify from Makefile targets")
+        (root / "biome.json").write_text("{}", encoding="utf-8")
+        invalidate_fingerprint_cache(root)
+        fp_lint = build_project_fingerprint(root)
+        if "Biome" not in (fp_lint.get("quality_tools") or []):
+            failures.append("fingerprint should detect Biome from biome.json")
         (root / "SECURITY.md").write_text("# Security\n", encoding="utf-8")
         fp_sec = build_project_fingerprint(root)
         if "SECURITY.md" not in (fp_sec.get("governance_files") or []):
@@ -225,8 +230,6 @@ def main() -> int:
         wf_dir = root / ".github" / "workflows"
         wf_dir.mkdir(parents=True, exist_ok=True)
         (wf_dir / "ci.yml").write_text("name: ci\n", encoding="utf-8")
-        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import invalidate_fingerprint_cache
-
         invalidate_fingerprint_cache(root)
         fp_ci = build_project_fingerprint(root)
         if "ci" not in (fp_ci.get("ci_workflow_names") or []):
@@ -266,6 +269,8 @@ def main() -> int:
         dr = run_checks(workspace=str(root))
         if not dr.get("recommended_next_action"):
             failures.append("doctor missing recommended_next_action")
+        if not dr.get("project_identity_line"):
+            failures.append("doctor missing project_identity_line")
         if "apply_bootstrap_fill" not in format_doctor_report(workspace=str(root)):
             failures.append("doctor report missing bootstrap fill hint")
 
@@ -277,6 +282,18 @@ def main() -> int:
         )
         if not extended.get("project_fingerprint"):
             failures.append("extend_evidence missing project_fingerprint")
+        if not extended.get("project_steering_digest"):
+            failures.append("extend_evidence missing project_steering_digest")
+        if not extended.get("project_identity_line"):
+            failures.append("extend_evidence missing project_identity_line")
+
+        from plugins.dietcode.lib.agent.roadmap.evidence import gather_evidence
+
+        gathered = gather_evidence(root, tier="standard")
+        if not gathered.get("project_steering_digest"):
+            failures.append("gather_evidence missing project_steering_digest")
+        if not gathered.get("project_identity_line"):
+            failures.append("gather_evidence missing project_identity_line")
 
         brief = session_brief(workspace=str(root))
         if not brief or not brief.get("roadmap_path"):
@@ -287,6 +304,8 @@ def main() -> int:
             failures.append("session_brief missing steering_line")
         if not (brief or {}).get("project_steering_digest"):
             failures.append("session_brief missing project_steering_digest")
+        if not brief.get("project_identity_line"):
+            failures.append("session_brief missing project_identity_line")
         if not ((brief or {}).get("project_steering_digest") or {}).get("identity_line"):
             failures.append("session_brief digest missing identity_line")
 
@@ -376,6 +395,8 @@ def main() -> int:
             failures.append("validate should include bootstrap_fill_plan when placeholders remain")
         if not validated2.get("project_steering_digest"):
             failures.append("validate missing project_steering_digest")
+        if not validated2.get("project_identity_line"):
+            failures.append("validate missing project_identity_line")
         if not (validated2.get("project_steering_digest") or {}).get("identity_line"):
             failures.append("validate digest missing identity_line")
         if "recommended_next_action" not in validated2:
@@ -434,6 +455,8 @@ def main() -> int:
         for key in ("roadmap_path", "agent_instructions", "steering_line", "open_todo_marker_count", "project_fingerprint"):
             if key not in brief:
                 failures.append(f"checkpoint brief missing {key}")
+        if not brief.get("project_identity_line"):
+            failures.append("checkpoint brief missing project_identity_line")
 
         tmpl2 = template_brief(workspace=str(root))
         if "evidence_summary" not in tmpl2:
@@ -442,6 +465,8 @@ def main() -> int:
         guide = clarity_envelope({"action": "guide", "workspace": str(root)})
         if not guide.get("steering_line"):
             failures.append("clarity_envelope missing steering_line")
+        if not guide.get("project_identity_line"):
+            failures.append("clarity_envelope missing project_identity_line")
         if not (guide.get("_roadmap_operator_hints") or {}).get("write_guard"):
             failures.append("clarity_envelope missing write_guard hint")
         op_status = operational_status(workspace=str(root))
@@ -469,6 +494,8 @@ def main() -> int:
         prog = build_progress_snapshot(workspace=str(root))
         if not prog.get("project_steering_digest"):
             failures.append("progress missing project_steering_digest")
+        if not prog.get("project_identity_line"):
+            failures.append("progress missing project_identity_line")
 
         if not (explain.get("project_steering_digest") or {}).get("steering_brief"):
             failures.append("explain_gate missing project_steering_digest steering_brief")
@@ -636,6 +663,8 @@ def main() -> int:
                 failures.append("kernel cockpit report missing bootstrap fill guidance")
             if "Verify:" not in kc_text:
                 failures.append("kernel cockpit report missing project verify line")
+            if "Identity:" not in kc_text:
+                failures.append("kernel cockpit report missing project identity line")
         except ImportError:
             pass
 

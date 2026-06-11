@@ -217,7 +217,8 @@ def _post_tool_call(
                         "stale": (parsed.get("checkpoint_freshness") or {}).get("stale"),
                         "steering_brief": parsed.get("steering_brief"),
                         "project_archetype": parsed.get("project_archetype"),
-                        "project_identity_line": (parsed.get("project_steering_digest") or {}).get("identity_line"),
+                        "project_identity_line": parsed.get("project_identity_line")
+                        or (parsed.get("project_steering_digest") or {}).get("identity_line"),
                         "verification_commands": (parsed.get("project_steering_digest") or {}).get("verification_commands"),
                     },
                     success=success,

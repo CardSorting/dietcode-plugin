@@ -20,7 +20,7 @@ verify test-roadmap:
 	python3 scripts/roadmap_smoke.py
 	python3 scripts/roadmap_audit.py
 	python3 scripts/roadmap_operator_smoke.py
-	python3 -m unittest tests.test_roadmap_checkpoint -q
+	python3 -m unittest tests.test_roadmap_checkpoint tests.test_kernel_cockpit -q
 
 install:
 	python3 install.py

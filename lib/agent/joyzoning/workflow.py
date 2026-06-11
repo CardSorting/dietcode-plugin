@@ -242,6 +242,7 @@ def build_operational_context(*, scope_id: str | None = None) -> dict[str, Any]:
         "roadmap_gate": roadmap_gate_state,
         "roadmap_steering_line": (roadmap_brief or {}).get("steering_line"),
         "project_steering_digest": (roadmap_brief or {}).get("project_steering_digest"),
+        "project_identity_line": ((roadmap_brief or {}).get("project_steering_digest") or {}).get("identity_line"),
         "scope_bindings": bindings,
         "active_mutation": active_mutation,
         "config": {

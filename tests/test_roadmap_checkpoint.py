@@ -1359,6 +1359,49 @@ class RoadmapBootstrapFillTests(unittest.TestCase):
             fp = build_project_fingerprint(root)
             self.assertIn("test", fp.get("ci_workflow_names") or [])
 
+    def test_fingerprint_quality_tools(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "biome.json").write_text("{}", encoding="utf-8")
+            (root / "ruff.toml").write_text("[lint]\n", encoding="utf-8")
+            fp = build_project_fingerprint(root)
+            tools = fp.get("quality_tools") or []
+            self.assertIn("Biome", tools)
+            self.assertIn("Ruff", tools)
+
+    def test_fingerprint_issue_templates(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.project_fingerprint import build_project_fingerprint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tpl = root / ".github" / "ISSUE_TEMPLATE"
+            tpl.mkdir(parents=True)
+            (tpl / "bug.md").write_text("---\nname: Bug\n---\n", encoding="utf-8")
+            fp = build_project_fingerprint(root)
+            self.assertTrue(any("ISSUE_TEMPLATE" in t for t in (fp.get("issue_templates") or [])))
+
+    def test_doctor_returns_project_identity_line(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.doctor import run_checks
+        from plugins.dietcode.lib.agent.roadmap.schema import bootstrap_skeleton
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Doctor Test\n\nPurpose.\n", encoding="utf-8")
+            (root / "Makefile").write_text(".PHONY: verify\nverify:\n\ttrue\n", encoding="utf-8")
+            (root / "ROADMAP.md").write_text(bootstrap_skeleton(), encoding="utf-8")
+            with mock.patch(
+                "plugins.dietcode.lib.agent.roadmap.config.resolve_workspace_root",
+                return_value=str(root),
+            ):
+                with mock.patch(
+                    "plugins.dietcode.lib.agent.roadmap.config.resolve_workspace",
+                    return_value=(str(root), "explicit"),
+                ):
+                    result = run_checks(workspace=str(root))
+            self.assertTrue(result.get("project_identity_line"))
+
     def test_steering_digest_identity_line(self) -> None:
         from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import (
             build_project_steering_digest,
@@ -1370,9 +1413,12 @@ class RoadmapBootstrapFillTests(unittest.TestCase):
             "stack_summary": "Python, pytest",
             "verification_commands": ["make verify"],
             "project_archetype": "library",
+            "quality_tools": ["Biome", "Ruff"],
+            "ci_systems": ["GitHub Actions"],
         })
         self.assertIn("make verify", digest.get("identity_line") or "")
         self.assertIn("Demo App", format_steering_identity_line(digest))
+        self.assertEqual(digest.get("quality_tools"), ["Biome", "Ruff"])
 
     def test_evidence_action_includes_digest_without_placeholders(self) -> None:
         from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import enrich_payload_with_bootstrap_context
@@ -1395,6 +1441,43 @@ class RoadmapBootstrapFillTests(unittest.TestCase):
             digest = payload.get("project_steering_digest") or {}
             self.assertTrue(digest.get("identity_line"))
             self.assertNotIn("bootstrap_fill_plan", payload)
+
+
+class RoadmapEvidenceSteeringTests(unittest.TestCase):
+    def test_gather_evidence_attaches_steering_profile(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.evidence import gather_evidence
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Gather Test\n\nTagline.\n", encoding="utf-8")
+            (root / "Makefile").write_text(".PHONY: verify\nverify:\n\ttrue\n", encoding="utf-8")
+            evidence = gather_evidence(root, tier="standard")
+            self.assertTrue(evidence.get("project_steering_digest"))
+            self.assertTrue(evidence.get("project_identity_line"))
+            self.assertIn("verify", evidence["project_identity_line"])
+
+    def test_clarity_envelope_promotes_project_identity_line(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.phase_guide import clarity_envelope
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Envelope Test\n\nPurpose.\n", encoding="utf-8")
+            (root / "Makefile").write_text(".PHONY: verify\nverify:\n\ttrue\n", encoding="utf-8")
+            envelope = clarity_envelope({"action": "guide", "workspace": str(root)})
+            self.assertTrue(envelope.get("project_identity_line"))
+            digest = envelope.get("project_steering_digest") or {}
+            self.assertEqual(envelope.get("project_identity_line"), digest.get("identity_line"))
+
+    def test_attach_steering_digest_fields_promotes_identity(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.bootstrap_fill import attach_steering_digest_fields
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("# Attach Test\n\nLine.\n", encoding="utf-8")
+            attached = attach_steering_digest_fields({"workspace": str(root)})
+            self.assertTrue(attached.get("project_identity_line"))
+            digest = attached.get("project_steering_digest") or {}
+            self.assertEqual(attached.get("project_identity_line"), digest.get("identity_line"))
 
 
 class RoadmapWorkspaceResolutionTests(unittest.TestCase):

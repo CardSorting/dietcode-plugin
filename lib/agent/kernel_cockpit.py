@@ -414,6 +414,9 @@ def format_cockpit_report() -> str:
         if roadmap.get("stack_summary"):
             lines.append(f"Stack: {roadmap['stack_summary']}")
         digest = roadmap.get("project_steering_digest") or {}
+        identity = roadmap.get("project_identity_line") or digest.get("identity_line")
+        if identity:
+            lines.append(f"Identity: {identity}")
         verify_cmds = digest.get("verification_commands") or roadmap.get("verification_commands") or []
         if verify_cmds:
             lines.append(f"Verify: {verify_cmds[0]}")

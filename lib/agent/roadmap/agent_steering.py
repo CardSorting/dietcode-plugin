@@ -67,6 +67,10 @@ def _project_context_lines(steering: dict[str, Any]) -> list[str]:
     if steering.get("has_pre_commit"):
         lines.append("Hooks: pre-commit configured")
 
+    quality = steering.get("quality_tools") or []
+    if quality:
+        lines.append(f"Quality: {', '.join(quality[:3])}")
+
     git_remote = steering.get("git_remote")
     if git_remote:
         lines.append(f"Origin: {git_remote}")

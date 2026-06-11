@@ -47,7 +47,7 @@ Roadmap autonomous loop (agents)
 7. Return Required Final Assistant Response summary (not the full file)
 
 Every roadmap tool response includes steering_line and write_guard hints.
-Per-project identity lives in project_steering_digest.identity_line, project_fingerprint, and bootstrap_fill_plan when placeholders remain.
+Per-project identity lives in project_identity_line, project_steering_digest.identity_line, project_fingerprint, and bootstrap_fill_plan when placeholders remain.
 Prime directive: did the latest work strengthen or weaken center of gravity?
 Section 9 code soup audit is mandatory every pass. Keep Now ≤ 5 items.
 """.strip()
@@ -133,6 +133,8 @@ def clarity_envelope(payload: dict[str, Any], *, phase_info: Optional[dict[str, 
         last_error=enriched.get("last_error") if isinstance(enriched.get("last_error"), dict) else None,
     )
     steering_line = format_agent_steering_line(workspace=str(enriched.get("workspace") or "") or None)
+    digest = enriched.get("project_steering_digest") if isinstance(enriched.get("project_steering_digest"), dict) else {}
+    identity_line = operator_hints.get("project_identity_line") or digest.get("identity_line")
     return {
         **enriched,
         "success": enriched.get("success", enriched.get("ok", True)),
@@ -143,6 +145,7 @@ def clarity_envelope(payload: dict[str, Any], *, phase_info: Optional[dict[str, 
         "operator_playbook": OPERATOR_PLAYBOOK,
         "required_section_count": len(REQUIRED_SECTIONS),
         "steering_line": steering_line or None,
+        "project_identity_line": identity_line or None,
         "_roadmap_operator_hints": {
             **operator_hints,
             "skill_path": enriched.get("skill_path"),

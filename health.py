@@ -191,6 +191,7 @@ def _roadmap_health() -> dict[str, Any]:
         except Exception:
             pass
         project_steering_digest = doctor.get("project_steering_digest")
+        identity_line = doctor.get("project_identity_line") or (project_steering_digest or {}).get("identity_line")
         return {
             "ok": doctor.get("ok", False),
             "enabled": cfg.enabled,
@@ -200,6 +201,7 @@ def _roadmap_health() -> dict[str, Any]:
             "steering_line": steering_line,
             "steering_brief": steering_brief,
             "project_archetype": project_archetype,
+            "project_identity_line": identity_line,
             "project_steering_digest": project_steering_digest,
             "bootstrap_fill_plan": doctor.get("bootstrap_fill_plan"),
             "roadmap_present": any(
@@ -527,8 +529,10 @@ def format_status_report(
         )
         if roadmap.get("steering_brief"):
             lines.append(f"   Project: {roadmap['steering_brief']}")
+        if roadmap.get("project_identity_line"):
+            lines.append(f"   Identity: {roadmap['project_identity_line']}")
         digest = roadmap.get("project_steering_digest") or {}
-        if digest.get("identity_line"):
+        if not roadmap.get("project_identity_line") and digest.get("identity_line"):
             lines.append(f"   Identity: {digest['identity_line']}")
         verify_cmds = digest.get("verification_commands") or []
         if verify_cmds:
