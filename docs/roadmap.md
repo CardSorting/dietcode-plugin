@@ -19,12 +19,37 @@ Skill file (auto-installed when enabled):
 
 ---
 
+## Contents
+
+1. [Quick loops](#quick-loops)
+2. [End-to-end lifecycle](#end-to-end-lifecycle)
+3. [ROADMAP.md document contract](#roadmapmd-document-contract)
+4. [Per-project identity architecture](#per-project-identity-architecture)
+5. [Bootstrap fill (evidence autofill)](#bootstrap-fill-evidence-autofill)
+6. [Tool actions](#tool-actions)
+7. [Response contract (agent JSON)](#response-contract-agent-json)
+8. [Example payloads](#example-payloads)
+9. [Phases and next-action logic](#phases-and-next-action-logic)
+10. [Steering gates](#steering-gates)
+11. [Workspace resolution](#workspace-resolution)
+12. [Configuration reference](#configuration-reference)
+13. [Native integration](#native-integration)
+14. [Write guard and native hints](#write-guard-and-native-hints)
+15. [Progress, state, and telemetry](#progress-state-and-telemetry)
+16. [Code soup audit](#code-soup-audit)
+17. [Module map](#module-map)
+18. [Verification](#verification)
+19. [Troubleshooting](#troubleshooting)
+20. [Anti-patterns](#anti-patterns)
+
+---
+
 ## Quick loops
 
 ### Operator
 
 ```text
-1. /roadmap cockpit                    → health, schema, code soup, next action
+1. /roadmap cockpit                    → health, identity, schema, code soup, next action
 2. /roadmap doctor                     → install skill + production checks
 3. /roadmap explain-gate               → closed gates blocking kanban_complete
 4. roadmap(action='checkpoint')        → evidence + algorithm before edits
@@ -49,6 +74,83 @@ project's center of gravity?**
 
 ---
 
+## End-to-end lifecycle
+
+```mermaid
+stateDiagram-v2
+  [*] --> bootstrap: ROADMAP.md missing
+  bootstrap --> bootstrap_fill: template written
+  bootstrap_fill --> validate_pending: apply_bootstrap_fill write
+  bootstrap_fill --> bootstrap_fill: placeholders remain
+  validate_pending --> checkpoint: validate OK
+  checkpoint --> validate_pending: agent edits ROADMAP.md
+  checkpoint --> coherence_recovery: health degraded
+  coherence_recovery --> validate_pending: repair + validate
+  structure_repair --> validate_pending: sections restored
+  validate_pending --> checkpoint: validate OK, fresh pass
+```
+
+Typical first-time project flow:
+
+```text
+roadmap(action='template')           → evidence-driven skeleton (optional)
+roadmap(action='checkpoint')         → evidence + suggested_bootstrap + fill plan
+roadmap(action='apply_bootstrap_fill', context='write')
+roadmap(action='validate')           → persists .dietcode/roadmap-state.json
+… rolling checkpoints …
+roadmap(action='checkpoint') → edit sections → roadmap(action='validate')
+```
+
+Rolling checkpoint pass (ROADMAP.md already healthy):
+
+```text
+roadmap(action='checkpoint')         → read evidence, code_soup_pre_audit, algorithm
+Edit ROADMAP.md (sections 4–11 typical)
+roadmap(action='validate')
+Return Required Final Assistant Response summary
+```
+
+---
+
+## ROADMAP.md document contract
+
+`lib/agent/roadmap/schema.py` defines **12 required sections**. Validation fails
+if any heading is missing or if enumerated fields (health status, soup risk, etc.)
+use values outside allowed sets.
+
+| # | Section | Purpose |
+| --- | --- | --- |
+| 1 | **Project Center of Gravity** | Smallest set of concepts/workflows that explain how the system works |
+| 2 | **Roadmap Health** | One of: Coherent, Accelerating, Drifting, Fragmenting, Blocked, Overloaded, Recovering |
+| 3 | **Strategic Narrative** | What the project is becoming (evidence-backed, not generic) |
+| 4 | **Now** | 1–5 actionable items max — overloaded Now triggers recommendations |
+| 5 | **Next** | Near-term items not yet in Now |
+| 6 | **Later** | Deferred strategic items |
+| 7 | **Discovery** | Uncertain or unvalidated ideas |
+| 8 | **Maintenance Gravity** | Ongoing upkeep that prevents drift |
+| 9 | **Centralization & Code Soup Audit** | Mandatory every pass — duplicate paths, hook sprawl, config authority |
+| 10 | **Decision Log** | Durable decisions with dates |
+| 11 | **Recent Checkpoint** | Date + summary of last pass (freshness gate reads this) |
+| 12 | **Archive** | Demoted or completed items (history preserved) |
+
+### Enumerated values
+
+| Field | Allowed values |
+| --- | --- |
+| Roadmap health (§2) | Coherent, Accelerating, Drifting, Fragmenting, Blocked, Overloaded, Recovering |
+| Soup risk (§9) | Low, Medium, High |
+| Gravity impact (items) | Strengthens, Neutral, Weakens, Unknown |
+| Centralization effect | Centralizes, No Change, Decentralizes |
+| Entropy risk | Low, Medium, High |
+
+### Bootstrap vs complete
+
+A file can be **schema-complete** (all 12 sections present) but **bootstrap-incomplete**
+(still contains template guidance phrases from the skeleton). Gates treat these
+independently: `schema_valid` vs `bootstrap_complete`.
+
+---
+
 ## Per-project identity architecture
 
 Roadmap ergonomics mirror industry patterns (Backstage entity cards, CI catalog
@@ -56,22 +158,37 @@ metadata, repo-level agent rules) by building a **project fingerprint** on every
 workspace scan and attaching it to all agent-facing surfaces.
 
 ```mermaid
-flowchart LR
-  FP[project_fingerprint] --> EV[gather_evidence / extend_evidence]
-  EV --> DIG[project_steering_digest]
-  DIG --> ID[project_identity_line]
-  EV --> BF[bootstrap_fill_plan]
+flowchart TB
+  subgraph scan [Workspace scan]
+    FP[project_fingerprint]
+  end
+  subgraph evidence [Evidence pipeline]
+    EV[gather_evidence / extend_evidence]
+    BF[bootstrap_fill_plan]
+  end
+  subgraph card [Steering card]
+    DIG[project_steering_digest]
+    ID[project_identity_line]
+  end
+  subgraph surfaces [Agent surfaces]
+    S1[guide / checkpoint / validate]
+    S2[cockpit / doctor / health]
+    S3[joyzoning / kernel cockpit]
+    S4[write hints / progress JSONL]
+  end
+  FP --> EV
+  EV --> DIG
+  EV --> BF
   BF --> DIG
-  ID --> S1[session / guide / validate]
-  ID --> S2[cockpit / doctor / health]
-  ID --> S3[joyzoning context / kernel cockpit]
-  ID --> S4[native write hints / progress telemetry]
+  DIG --> ID
+  ID --> S1 & S2 & S3 & S4
 ```
 
 ### Layer 1 — `project_fingerprint`
 
-Built by `lib/agent/roadmap/project_fingerprint.py` from repo files (cached with
-mtime invalidation). Signals include:
+Built by `lib/agent/roadmap/project_fingerprint.py`. Results are **cached** and
+invalidated when tracked files change (README, Makefile, CI workflows, biome.json,
+etc.) — call `invalidate_fingerprint_cache(workspace)` after tests mutate fixtures.
 
 | Category | Fields | Sources |
 | --- | --- | --- |
@@ -86,90 +203,130 @@ mtime invalidation). Signals include:
 | **Origin** | `git_remote`, `docs_roots`, `license` | `git remote`, docs/ tree |
 | **Backstage** | `has_backstage_catalog`, `catalog_name`, `catalog_description` | `catalog-info.yaml` |
 
-Archetypes: `project`, `library`, `application`, `web-app`, `cli-tool`,
-`hermes-plugin`, `monorepo`.
+**Archetypes** (influence autofill anti-goals and runtime hints):
+
+`project` · `library` · `application` · `web-app` · `cli-tool` · `hermes-plugin` · `monorepo`
+
+**Verification command inference** (`verification_commands`): prefers Makefile
+`verify`/`test`/`lint`/`check`/`ci`, then npm scripts, then pytest/Jest/go test/cargo test.
 
 ### Layer 2 — evidence bundle
 
-`gather_evidence()` / `extend_evidence()` (`lib/agent/roadmap/evidence.py`) attach:
-
-- README / architecture / config excerpts (tier `standard`+)
-- Git history, parsed ROADMAP.md, TODO markers, `code_soup_audit` (tier `full`)
-- **`project_steering_digest`** and **`project_identity_line`** on every bundle
-
-Evidence tiers:
+`gather_evidence()` / `extend_evidence()` (`lib/agent/roadmap/evidence.py`).
 
 | Tier | Includes |
 | --- | --- |
-| `light` | Workspace path, git summary, roadmap parse, fingerprint + steering profile |
+| `light` | Workspace, git summary, roadmap parse, fingerprint, **steering profile on bundle** |
 | `standard` | + README/arch/config excerpts, uncertainty notes |
-| `full` | + TODO scan, code soup audit (checkpoint default) |
+| `full` | + TODO markers, `code_soup_audit` (checkpoint default) |
+
+Key evidence keys:
+
+| Key | Content |
+| --- | --- |
+| `readmes` | Title + excerpt chunks |
+| `architecture_docs` | ARCHITECTURE.md excerpts |
+| `configs` | Selected config file snippets |
+| `git` | Recent commits, changed files |
+| `roadmap` | Parsed sections, health, Now count, placeholder count |
+| `todo_markers` | Workspace TODO/FIXME scan (cap 40) |
+| `code_soup_audit` | Duplication and authority fragmentation signals |
+| `uncertainty` | Explicit gaps when evidence is thin |
+| `project_fingerprint` | Full fingerprint dict |
+| `project_steering_digest` | Embedded entity card |
+| `project_identity_line` | Embedded one-liner |
 
 ### Layer 3 — `project_steering_digest`
 
-Compact entity card from `build_project_steering_digest()` in
-`lib/agent/roadmap/bootstrap_fill.py`. Always present when a workspace resolves.
-Includes stack, verify commands, CI, quality tools, governance, bootstrap status,
-and **`identity_line`** (same content as top-level `project_identity_line`).
+From `build_project_steering_digest()` in `lib/agent/roadmap/bootstrap_fill.py`.
+Always attached when workspace resolves.
 
-When bootstrap placeholders remain, the digest also carries:
+Always includes: `steering_brief`, `stack_summary`, `verification_commands`,
+`ci_systems`, `quality_tools`, `governance_files`, `agent_rules_files`,
+`identity_line`, and related fingerprint fields.
 
-- `bootstrap_remaining`, `sample_fill_task`, `agent_next_call`
+When bootstrap incomplete, also includes:
+
+- `bootstrap_remaining` — count of unresolved template phrases
+- `sample_fill_task` — first `{template_phrase, suggested_replacement, evidence_source}`
+- `agent_next_call` — recommended tool invocation
 
 ### Layer 4 — `project_identity_line`
 
-One-line steering header for watch lines, cockpit headers, health output, and
-agent skimming:
+One-line header for watch lines, cockpit, health, and agent skimming:
 
 ```text
-Audit Project — Purpose line. · Python, make · verify `make verify`
+My App — Ship fast, stay coherent. · TypeScript, Vite · verify `npm run test`
 ```
 
-Built by `format_steering_identity_line()` from brief, stack, primary verify
-command, and optional runtime pin (e.g. `node 20`).
+Built by `format_steering_identity_line()`: brief → stack → verify command →
+optional runtime pin (`node 20`) when the line is still short.
 
-**Contract:** every roadmap JSON response exposed through `clarity_envelope()`
-includes top-level `project_identity_line` plus nested
-`project_steering_digest.identity_line`.
+**Contract:** every response through `clarity_envelope()` exposes:
+
+- top-level `project_identity_line`
+- `project_steering_digest.identity_line` (same value)
 
 ---
 
 ## Bootstrap fill (evidence autofill)
 
-New projects receive a schema-complete skeleton from `bootstrap_skeleton_from_evidence()`.
+New projects receive a schema-complete skeleton from
+`bootstrap_skeleton_from_evidence()` / `bootstrap_skeleton_from_evidence_autofilled()`.
 Template guidance phrases remain until replaced with project-specific facts.
 
 ### Placeholder detection
 
-`BOOTSTRAP_PLACEHOLDER_PHRASES` in `lib/agent/roadmap/schema.py` lists boilerplate
-lines agents must replace (e.g. "Describe from README and project evidence").
-`find_bootstrap_placeholders()` counts unresolved phrases; gates treat
-`bootstrap_complete: false` as closed until resolved.
+`BOOTSTRAP_PLACEHOLDER_PHRASES` in `schema.py` (~30+ phrases) includes skeleton
+boilerplate such as:
 
-### Fill plan
+- "Describe from README and project evidence"
+- "Evidence-backed initial audit — see code_soup_pre_audit in checkpoint payload."
+- "Insufficient evidence during first pass."
+- "Populate Now with 1–3 evidence-backed items connected to center of gravity."
 
-`build_bootstrap_fill_plan()` maps each placeholder →:
+`find_bootstrap_placeholders()` returns `ValidationIssue` entries; count drives
+`bootstrap_placeholder_count` and `bootstrap_complete`.
 
-| Field | Meaning |
-| --- | --- |
-| `template_phrase` | Exact skeleton line |
-| `suggested_replacement` | Evidence-backed text (never identical to template) |
-| `evidence_source` | Which signal produced it (README, fingerprint, git, code_soup, …) |
+### Fill plan structure
 
-No `manual —` dead-ends: `_fallback_replacement()` chains purpose → operators →
-runtime → stack → entry points → git remote → archetype.
+`build_bootstrap_fill_plan()` returns:
+
+```json
+{
+  "remaining_count": 12,
+  "bootstrap_complete": false,
+  "project_brief": "Audit Project — Purpose line.",
+  "agent_next_call": "roadmap(action='apply_bootstrap_fill', context='write')",
+  "operator_summary": "12 template phrase(s) — evidence replacements available.",
+  "now_suggestions": [{ "title": "...", "goal": "...", "evidence": "...", "impact": "Strengthens" }],
+  "tasks": [
+    {
+      "template_phrase": "Describe from README and project evidence",
+      "suggested_replacement": "Purpose line from README tagline.",
+      "evidence_source": "fingerprint.purpose_hint",
+      "section_hint": "3. Strategic Narrative"
+    }
+  ]
+}
+```
+
+**Evidence source chain** (`_fallback_replacement`): never returns the exact
+template phrase or a `manual —` dead-end. Falls through purpose → operators →
+runtime → stack → entry points → git remote → archetype-specific anti-goals.
 
 ### Apply autofill
 
 | Call | Behavior |
 | --- | --- |
-| `roadmap(action='apply_bootstrap_fill')` | Preview replacements |
+| `roadmap(action='apply_bootstrap_fill')` | Preview only |
 | `roadmap(action='apply_bootstrap_fill', context='preview')` | Same — no disk write |
-| `roadmap(action='apply_bootstrap_fill', context='write')` | Write ROADMAP.md, mark `validation_pending` |
-| `roadmap(action='checkpoint', context='apply autofill preview')` | Checkpoint + fill plan + preview (no write) |
-| `roadmap(action='checkpoint', context='apply autofill write')` | Checkpoint + apply + autofill result |
+| `roadmap(action='apply_bootstrap_fill', context='write')` | Write ROADMAP.md; `record_file_mutation` → `validation_pending` |
+| `roadmap(action='checkpoint', context='apply autofill preview')` | Checkpoint + plan + preview (**no write** — `preview` excludes write trigger) |
+| `roadmap(action='checkpoint', context='apply autofill write')` | Checkpoint + apply + `bootstrap_autofill_applied` |
 
-After write: `roadmap(action='validate')` to persist schema gate.
+After any write: `roadmap(action='validate')` to persist schema gate and clear
+`validation_pending` when valid.
 
 ---
 
@@ -177,25 +334,28 @@ After write: `roadmap(action='validate')` to persist schema gate.
 
 Native Hermes toolset: **`roadmap`** (alias **`roadmap_checkpoint`**).
 
-| Action | Purpose |
-| --- | --- |
-| `guide` | Phase, health, `steering_line`, `project_identity_line`, `_roadmap_operator_hints` |
-| `checkpoint` | Full evidence + algorithm + optional autofill; primary pre-edit briefing |
-| `validate` | Schema validation; persists `.dietcode/roadmap-state.json` |
-| `template` | Bootstrap skeleton when ROADMAP.md missing |
-| `apply_bootstrap_fill` | Evidence autofill preview/write |
-| `cockpit` | One-screen operator summary |
-| `doctor` | Skill install + production health checks |
-| `status` | Read-only ROADMAP.md parse |
-| `evidence` | Read-only project signals |
-| `progress` | Activity summary; `context='--current'` for full JSON |
-| `watch` | Compact last-action line |
-| `explain_gate` | Closed gates, fixes, kanban policy |
-| `explain_stale` | Checkpoint freshness vs git activity |
-| `last_error` | Last failure envelope |
+| Action | Purpose | Typical caller |
+| --- | --- | --- |
+| `guide` | Phase, health, steering, identity, operator hints | Session start, orientation |
+| `checkpoint` | Full evidence + algorithm + optional autofill | Before editing ROADMAP.md |
+| `validate` | Schema validation; persists workspace state | After edits |
+| `template` | Bootstrap skeleton when file missing | First-time bootstrap |
+| `apply_bootstrap_fill` | Evidence autofill preview/write | Placeholder resolution |
+| `cockpit` | One-screen operator summary | Operators |
+| `doctor` | Skill install + production checks | CI / onboarding |
+| `status` | Read-only parse | Quick health read |
+| `evidence` | Read-only project signals | Debugging fingerprint |
+| `progress` | Activity summary | `context='--current'` for full JSON |
+| `watch` | Compact last-action line | Live monitoring |
+| `explain_gate` | Closed gates + fixes | kanban_complete blocked |
+| `explain_stale` | Freshness vs git | Stale section 11 |
+| `last_error` | Last failure envelope | Recovery |
 
-Slash commands: `/roadmap cockpit`, `/roadmap doctor`, `/roadmap explain-gate`,
+**Slash commands:** `/roadmap cockpit`, `/roadmap doctor`, `/roadmap explain-gate`,
 `/rm validate`, `/dietcode roadmap`, `/dietcode roadmap cockpit`.
+
+**Context parameter:** pass free-text `context` on checkpoint/autofill to trigger
+specialized behavior (autofill preview/write, schema repair, stale refresh, etc.).
 
 ---
 
@@ -205,63 +365,243 @@ Every `clarity_envelope()` response includes:
 
 | Field | Always | When bootstrap incomplete |
 | --- | --- | --- |
+| `success` / `ok` | ✓ | ✓ |
+| `action` | ✓ | ✓ |
+| `workspace` | ✓ | ✓ |
+| `roadmap_path` | when resolved | ✓ |
+| `phase` | when computed | often `bootstrap_fill` |
 | `project_identity_line` | ✓ | ✓ |
-| `project_steering_digest` | ✓ | ✓ + `bootstrap_remaining`, `sample_fill_task` |
+| `project_steering_digest` | ✓ | ✓ + bootstrap fields |
 | `steering_line` | ✓ | ✓ |
-| `_roadmap_operator_hints` | ✓ | ✓ + autofill next step |
+| `_roadmap_operator_hints` | ✓ | ✓ + autofill command |
+| `agent_playbook` / `operator_playbook` | ✓ | ✓ |
+| `recommended_next_action` | when computed | prioritizes `apply_bootstrap_fill` |
 | `bootstrap_fill_plan` | — | ✓ |
 | `bootstrap_autofill_preview` | — | preview contexts |
-| `recommended_next_action` | when computed | prioritizes `apply_bootstrap_fill` |
+| `evidence` | checkpoint | ✓ |
 
-Operator hints include: `write_guard`, `roadmap_path`, `verification_commands`,
-`next_action`, `recovery_suggestion`, `suggested_slash_command`.
+### `_roadmap_operator_hints` keys
 
-Native `write_file` / `patch` on `ROADMAP.md` receive `_roadmap_write_hint` with
-digest, identity line, and validate follow-up via
-`merge_roadmap_hint_into_result()`.
+| Key | Meaning |
+| --- | --- |
+| `write_guard` | ROADMAP.md must live in project workspace root |
+| `roadmap_path` | Absolute path to expected ROADMAP.md |
+| `verification_commands` | Inferred verify commands from fingerprint |
+| `project_identity_line` | Same as top-level identity |
+| `next_action` | Single recommended command string |
+| `recovery_suggestion` | Plain-language operator guidance |
+| `suggested_slash_command` | e.g. `/roadmap validate` |
+| `preferred_tool` | Always `roadmap` for follow-ups |
 
 ---
 
-## Phases
+## Example payloads
 
-Determined by `determine_phase()` in `lib/agent/roadmap/phase_guide.py`:
+Truncated examples — real responses include additional fields.
 
-| Phase | Meaning | Typical next call |
+### `roadmap(action='guide')`
+
+```json
+{
+  "action": "guide",
+  "success": true,
+  "phase": "checkpoint",
+  "workspace": "/Users/me/my-app",
+  "roadmap_path": "/Users/me/my-app/ROADMAP.md",
+  "project_identity_line": "My App — Tagline. · Python · verify `make verify`",
+  "project_steering_digest": {
+    "steering_brief": "My App — Tagline.",
+    "stack_summary": "Python",
+    "verification_commands": ["make verify"],
+    "quality_tools": ["Ruff"],
+    "identity_line": "My App — Tagline. · Python · verify `make verify`"
+  },
+  "steering_line": "ROADMAP live steering\nProject: My App — Tagline.\nVerify: make verify",
+  "_roadmap_operator_hints": {
+    "write_guard": "ROADMAP.md only at workspace root",
+    "roadmap_path": "/Users/me/my-app/ROADMAP.md",
+    "next_action": "roadmap(action='checkpoint')",
+    "verification_commands": ["make verify"]
+  },
+  "recommended_next_action": {
+    "action": "run_checkpoint",
+    "command": "roadmap(action='checkpoint')",
+    "detail": "Ready for rolling checkpoint pass."
+  }
+}
+```
+
+### `roadmap(action='checkpoint')` (bootstrap incomplete)
+
+```json
+{
+  "action": "checkpoint",
+  "phase": "bootstrap_fill",
+  "project_identity_line": "My App — … · verify `make verify`",
+  "evidence": {
+    "evidence_tier": "full",
+    "project_fingerprint": { "steering_brief": "My App — …", "project_archetype": "library" },
+    "project_identity_line": "My App — … · verify `make verify`",
+    "code_soup_audit": { "overall_risk": "Low", "signals": [] },
+    "open_todo_marker_count": 3
+  },
+  "bootstrap_fill_plan": {
+    "remaining_count": 8,
+    "tasks": [{ "template_phrase": "…", "suggested_replacement": "…", "evidence_source": "fingerprint.purpose_hint" }]
+  },
+  "agent_next_call": "roadmap(action='apply_bootstrap_fill', context='write')",
+  "recommended_next_action": {
+    "action": "apply_bootstrap_fill",
+    "command": "roadmap(action='apply_bootstrap_fill', context='write')"
+  }
+}
+```
+
+### `roadmap(action='validate')` success
+
+```json
+{
+  "action": "validate",
+  "validation": {
+    "valid": true,
+    "schema_complete": true,
+    "bootstrap_complete": true,
+    "now_item_count": 2,
+    "health_status": "Coherent"
+  },
+  "project_identity_line": "My App — … · verify `make verify`",
+  "roadmap_gate": {
+    "kanban_complete_allowed": true,
+    "open_gates": ["workspace_safe", "roadmap_present", "schema_valid", "bootstrap_complete", "checkpoint_fresh", "validation_current"]
+  }
+}
+```
+
+---
+
+## Phases and next-action logic
+
+### Phase enum
+
+From `determine_phase()` in `phase_guide.py`:
+
+| Phase | Enter when | Typical next call |
 | --- | --- | --- |
 | `bootstrap` | ROADMAP.md missing | `roadmap(action='checkpoint')` |
 | `bootstrap_fill` | Placeholders remain | `roadmap(action='apply_bootstrap_fill', context='write')` |
-| `structure_repair` | Missing required sections | Edit ROADMAP.md, then validate |
-| `coherence_recovery` | Health not Coherent | Checkpoint + section 9 audit |
-| `validate_pending` | File mutated since last validate | `roadmap(action='validate')` |
-| `checkpoint` | Ready for rolling update | checkpoint → edit → validate |
+| `structure_repair` | Required sections missing | Edit + validate |
+| `coherence_recovery` | Health not Coherent / overloaded Now | Checkpoint + §9 audit |
+| `validate_pending` | `validation_pending` in workspace state | `roadmap(action='validate')` |
+| `checkpoint` | Healthy, ready for rolling update | checkpoint → edit → validate |
+
+### `recommend_next_action()` priority
+
+Evaluated top-to-bottom in `operator.py`:
+
+1. **Last error** → `/roadmap last-error`
+2. **validation_pending** → `roadmap(action='validate')`
+3. **bootstrap_incomplete** or phase `bootstrap_fill` → `apply_bootstrap_fill` write
+4. **No ROADMAP.md** → `roadmap(action='checkpoint')`
+5. **schema_valid false** → `/roadmap explain-gate`
+6. **stale checkpoint** → `/roadmap explain-gate`
+7. **structure_repair** → checkpoint with repair context
+8. **coherence_recovery** → checkpoint with coherence context
+9. **validate_pending phase** → validate
+10. **Default** → checkpoint or guide depending on freshness
+
+Exactly **one** next action is returned — same pattern as kernel cockpit.
 
 ---
 
 ## Steering gates
 
-`lib/agent/roadmap/gate.py` evaluates gates before `kanban_complete`:
+`lib/agent/roadmap/gate.py` evaluates gates before `kanban_complete`. Closed
+gate messages include the project **`steering_brief`** from fingerprint.
 
-| Gate | Closes when |
-| --- | --- |
-| `workspace_safe` | Workspace is plugin/kernel/quarantine root |
-| `roadmap_present` | ROADMAP.md missing |
-| `schema_valid` | Validation errors or incomplete sections |
-| `bootstrap_complete` | Bootstrap placeholder phrases remain |
-| `checkpoint_fresh` | Section 11 stale vs git activity |
-| `validation_pending` | ROADMAP.md edited since last validate |
+| Gate ID | Closes when | Blocks kanban_complete (default) |
+| --- | --- | --- |
+| `roadmap_enabled` | Feature disabled in config | Yes |
+| `workspace_safe` | Workspace is plugin/kernel/quarantine root | Yes |
+| `roadmap_present` | ROADMAP.md missing | Yes |
+| `schema_valid` | Validation errors or incomplete sections | Configurable (`block_kanban_on_invalid_schema`, default false) |
+| `validation_current` | ROADMAP.md edited since last validate | Yes (`block_kanban_on_validation_pending`) |
+| `checkpoint_fresh` | Section 11 stale vs git (`stale_checkpoint_days`, default 7) | Yes (`warn_on_stale_before_complete`) |
+| `bootstrap_complete` | Template placeholder phrases remain | Configurable (`block_kanban_on_bootstrap_incomplete`, default false) |
 
-Gate messages include **project steering brief** from fingerprint (not generic text).
-When bootstrap is incomplete, schema gate fix prioritizes `apply_bootstrap_fill`.
+When bootstrap is incomplete, **`schema_valid` fix text** is overridden to
+prioritize `apply_bootstrap_fill` before validate.
 
-Config (`dietcode.roadmap` in Hermes config):
+Use `roadmap(action='explain_gate')` or `/roadmap explain-gate` for kernel-style
+`closed_gates` / `open_gates` arrays with `why`, `fix`, and `safe` flags.
+
+---
+
+## Workspace resolution
+
+ROADMAP.md always belongs in the **user project workspace**, never in
+`~/.hermes/plugins/dietcode` or the kernel tree.
+
+Resolution order (`resolve_workspace()` in `config.py`):
+
+1. **Explicit** argument to tool/action
+2. **Kernel workspace report** (`resolve_workspace_root`) when not quarantined
+3. **Environment:** `HERMES_KANBAN_WORKSPACE` → `JOYZONING_WORKSPACE_ROOT` → `DIETCODE_WORKSPACE_ROOT`
+4. **Hermes config:** `kanban.workspace` / `kanban.workspace_root`
+5. **Fallback:** current working directory (if not quarantined)
+
+Quarantined roots raise `RoadmapWorkspaceError` with guidance to set
+`HERMES_KANBAN_WORKSPACE`.
+
+Expected file location: `{workspace}/ROADMAP.md` — writes to any other path are
+blocked at `pre_tool_call` when `block_writes_outside_workspace` is true (default).
+
+---
+
+## Configuration reference
+
+Hermes config path: `dietcode.roadmap` in `~/.hermes/config.yaml`.
+
+```yaml
+dietcode:
+  roadmap:
+    enabled: true
+    auto_install_skills: true
+    nudge_on_roadmap_write: true
+    progress_enabled: true
+    stale_checkpoint_days: 7
+    warn_on_stale_before_complete: true
+    block_kanban_on_invalid_schema: false
+    block_kanban_on_validation_pending: true
+    block_kanban_on_bootstrap_incomplete: false
+    block_writes_outside_workspace: true
+    evidence_cache_ttl_seconds: 15
+    git_timeout_seconds: 5
+    heavy_scan_cache_ttl_seconds: 60
+```
 
 | Key | Default | Effect |
 | --- | --- | --- |
-| `enabled` | `true` | Master switch |
-| `auto_install_skills` | `true` | Copy skill to workspace on session/doctor |
-| `warn_on_stale_before_complete` | `true` | Block kanban_complete on stale checkpoint |
-| `block_kanban_on_validation_pending` | `true` | Block kanban_complete until validate |
-| `progress_enabled` | `true` | JSONL telemetry |
+| `enabled` | `true` | Master switch; disables gates and tool steering when false |
+| `auto_install_skills` | `true` | Copy skill to `{workspace}/optional-skills/dietcode/…` on doctor/session |
+| `nudge_on_roadmap_write` | `true` | Attach `_roadmap_write_hint` after native ROADMAP.md mutations |
+| `progress_enabled` | `true` | Emit roadmap progress JSONL telemetry |
+| `stale_checkpoint_days` | `7` | Section 11 older than this + git activity → stale |
+| `warn_on_stale_before_complete` | `true` | Close freshness gate; block kanban_complete when stale |
+| `block_kanban_on_invalid_schema` | `false` | When true, schema errors block kanban_complete |
+| `block_kanban_on_validation_pending` | `true` | Block kanban_complete until validate after edits |
+| `block_kanban_on_bootstrap_incomplete` | `false` | When true, placeholder phrases block kanban_complete |
+| `block_writes_outside_workspace` | `true` | pre_tool_call blocks out-of-tree ROADMAP writes |
+| `evidence_cache_ttl_seconds` | `15` | Snapshot/evidence cache TTL |
+| `git_timeout_seconds` | `5` | Subprocess timeout for git evidence |
+| `heavy_scan_cache_ttl_seconds` | `60` | TODO/code soup scan cache |
+
+Environment variables (workspace resolution):
+
+| Variable | Purpose |
+| --- | --- |
+| `HERMES_KANBAN_WORKSPACE` | Primary project root (recommended) |
+| `JOYZONING_WORKSPACE_ROOT` | JoyZoning scope root fallback |
+| `DIETCODE_WORKSPACE_ROOT` | Explicit DietCode workspace override |
 
 ---
 
@@ -269,41 +609,120 @@ Config (`dietcode.roadmap` in Hermes config):
 
 ### JoyZoning
 
-- `joyzoning(action='context')` → `roadmap_checkpoint` brief, `project_steering_digest`,
-  `project_identity_line`, merged `next_actions` (path hint, identity, verify, autofill)
-- `joyzoning(action='roadmap')` → full cockpit payload
+| Call | Roadmap fields |
+| --- | --- |
+| `joyzoning(action='context')` | `roadmap_checkpoint`, `roadmap_steering_line`, `project_steering_digest`, `project_identity_line`, merged `next_actions` |
+| `joyzoning(action='roadmap')` | Full cockpit payload + `recommended_next_action` |
 
-### Hooks
+Merged `next_actions` include: ROADMAP path hint, project steering, stack, CI,
+origin, identity line, verify command, bootstrap fill when incomplete.
+
+### Hooks (`lib/runtime/roadmap_hooks.py`)
 
 | Hook | Roadmap behavior |
 | --- | --- |
-| `session.start` | Session brief with steering digest |
-| `pre_tool_call` | Block ROADMAP writes outside workspace; stale/validation gates on kanban_complete |
-| `post_tool_call` | `roadmap.*` events; progress telemetry with `project_identity_line` |
-| `on_write_transform` | `_roadmap_write_hint` on ROADMAP.md paths |
+| `session.start` | `session_brief()` with digest and identity |
+| `pre_tool_call` | Block out-of-workspace ROADMAP writes; enforce stale/validation gates on `kanban_complete` |
+| `post_tool_call` | `roadmap.*` journal events; progress with `project_identity_line` |
+| `on_write_transform` | `_roadmap_write_hint` merged into write/patch results |
 
 ### Kernel cockpit
 
-`/dietcode kernel cockpit` merges `session_brief()` into `roadmap_steering`:
-Project, Identity, Verify, bootstrap fill guidance when incomplete.
+`/dietcode kernel cockpit` → `roadmap_steering` from `session_brief()`:
+
+```text
+Project: My App — Tagline.
+Identity: My App — Tagline. · Python · verify `make verify`
+Verify: make verify
+Roadmap bootstrap: 3 template phrase(s) — roadmap(action='apply_bootstrap_fill', context='write')
+```
 
 ### Health
 
-`/dietcode doctor` and `/dietcode roadmap` JSON include `project_identity_line`,
-`project_steering_digest`, and recommended next action.
+`/dietcode doctor` roadmap section and `/dietcode roadmap` JSON include
+`project_identity_line`, digest, verify commands, bootstrap remaining count,
+and `recommended_next_action`.
 
 ---
 
-## Progress and state
+## Write guard and native hints
+
+When agents use native `write_file` or `patch` on `ROADMAP.md`:
+
+1. **`pre_tool_call`** validates path ∈ workspace root (when blocking enabled)
+2. **`on_write_transform`** attaches `_roadmap_write_hint`
+3. **`post_tool_call`** records mutation → `validation_pending`
+4. Hint merged into tool JSON via `merge_roadmap_hint_into_result()`
+
+### Successful write hint (`roadmap_write_followup`)
+
+| Field | Value |
+| --- | --- |
+| `preferred_command` | `roadmap(action='validate')` or apply_bootstrap_fill when incomplete |
+| `recovery_suggestion` | Validate before closing pass; bootstrap count if applicable |
+| `project_steering_digest` | Full digest attached |
+| `project_identity_line` | Top-level on merged result |
+| `agent_next_call` | Validate or autofill+validate chain |
+
+### Rejected write (`roadmap_write_rejected`)
+
+Returned when path targets plugin install tree or wrong location:
+
+| Field | Value |
+| --- | --- |
+| `write_rejected` | `true` |
+| `expected_path` | `{workspace}/ROADMAP.md` |
+| `recovery_suggestion` | Set `HERMES_KANBAN_WORKSPACE` |
+
+---
+
+## Progress, state, and telemetry
+
+### Session progress (global)
 
 | Path | Purpose |
 | --- | --- |
 | `~/.dietcode/session/roadmap-progress.jsonl` | Append-only tool activity |
 | `~/.dietcode/session/roadmap-progress-current.json` | Latest action snapshot |
-| `.dietcode/roadmap-state.json` | Workspace validate/checkpoint memory |
 
-Workspace state tracks: `phase`, `schema_valid`, `validation_pending`,
-`last_validated_at`, `last_mutated_at`, `bootstrap_placeholder_count`.
+Progress events include: `action`, `phase`, `steering_brief`, `project_identity_line`,
+`verification_commands`, `valid`, `stale`.
+
+### Workspace state (per project)
+
+Path: `{workspace}/.dietcode/roadmap-state.json`
+
+| Field | Set when |
+| --- | --- |
+| `phase` | validate, checkpoint, autofill |
+| `schema_valid` | validate success/failure |
+| `validation_pending` | native write or autofill write |
+| `bootstrap_complete` | validate sees zero placeholders |
+| `bootstrap_placeholder_count` | validate / gate evaluation |
+| `last_validated_at` | successful validate |
+| `last_mutated_at` | ROADMAP.md write |
+| `recent_checkpoint_date` | parsed from section 11 |
+| `health_status` | parsed from section 2 |
+| `updated_at` | any state write |
+
+---
+
+## Code soup audit
+
+Section **9** is mandatory every checkpoint pass. Programmatic pre-audit runs at
+tier `full` evidence via `code_soup_audit.py`:
+
+| Signal | Meaning |
+| --- | --- |
+| Duplicate basenames | Same filename in many dirs — authority fragmentation |
+| Multiple hook registrars | Competing lifecycle entry points |
+| Config source sprawl | Many env/config loaders |
+| `overall_risk` | Low / Medium / High |
+| `centralization_recommendation` | Suggested Now item for bootstrap fill |
+
+Checkpoint payload exposes this as `code_soup_pre_audit` (checkpoint) and inside
+`evidence.code_soup_audit`. Agents should translate signals into section 9 prose,
+not ignore the pre-audit.
 
 ---
 
@@ -311,32 +730,36 @@ Workspace state tracks: `phase`, `schema_valid`, `validation_pending`,
 
 ```text
 lib/agent/roadmap/
-  project_fingerprint.py   Per-repo identity signals (cached)
+  project_fingerprint.py   Per-repo identity (cached, mtime invalidation)
   evidence.py              gather_evidence, extend_evidence, steering on bundle
-  bootstrap_fill.py        fill plan, digest, identity_line, autofill write
-  steering_context.py      Unified steering + enrich_payload_with_steering
+  bootstrap_fill.py        Fill plan, digest, identity_line, autofill write
+  steering_context.py      build_steering_context, enrich_payload_with_steering
   roadmap_checkpoint.py    checkpoint, validate, template orchestration
   phase_guide.py           clarity_envelope, phases, playbooks
   operator.py              recommend_next_action, operator hints
-  agent_steering.py        Live steering_line for prompts and session
+  agent_steering.py        steering_line for prompts and session
   gate.py                  Gate evaluation + personalized messages
-  session.py               session_brief for session.start / cockpit
-  cockpit.py               One-screen operator payload + report
+  session.py               session_brief for session.start / kernel cockpit
+  cockpit.py               Operator payload + format_cockpit_report
   doctor.py                Production health checks
   explain_gate.py          Gate diagnostics
   progress.py              Watch/progress telemetry
   native_bridge.py         Write hints, merge into tool results
   schema.py                12-section contract, placeholders, skeleton
+  freshness.py             Section 11 vs git staleness
   workspace_scan.py        TODO markers, source walk
-  code_soup_audit.py       Duplication / authority fragmentation signals
+  code_soup_audit.py       Duplication / authority signals
+  workspace_state.py       .dietcode/roadmap-state.json
+  snapshot.py              Cached workspace snapshot for gates
+  config.py                Feature config + workspace resolution
 
 lib/runtime/roadmap_hooks.py   Hermes hook wiring
 lib/tools/roadmap_tools.py     Tool dispatch
 scripts/roadmap_audit.py       Production hardening audit
 scripts/roadmap_operator_smoke.py
 scripts/roadmap_smoke.py
-tests/test_roadmap_checkpoint.py
-tests/test_kernel_cockpit.py   Kernel + roadmap steering merge
+tests/test_roadmap_checkpoint.py   (111 tests)
+tests/test_kernel_cockpit.py       Kernel + roadmap steering merge
 ```
 
 ---
@@ -349,13 +772,20 @@ Production gate for roadmap changes:
 make verify
 ```
 
-Runs:
+| Step | Script / test | Validates |
+| --- | --- | --- |
+| 1 | `scripts/roadmap_smoke.py` | Basic tool wiring |
+| 2 | `scripts/roadmap_audit.py` | Fingerprint, autofill, identity on all surfaces, joyzoning merge, kernel cockpit, gate personalization, placeholder coverage |
+| 3 | `scripts/roadmap_operator_smoke.py` | Operator ergonomics end-to-end |
+| 4 | `tests/test_roadmap_checkpoint.py` | Unit tests for fingerprint, fill plan, gates, native bridge |
+| 5 | `tests/test_kernel_cockpit.py` | Roadmap steering in kernel cockpit report |
 
-1. `scripts/roadmap_smoke.py`
-2. `scripts/roadmap_audit.py` — fingerprint, autofill, identity on all surfaces,
-   joyzoning merge, kernel cockpit, gate personalization
-3. `scripts/roadmap_operator_smoke.py`
-4. `tests/test_roadmap_checkpoint.py` + `tests/test_kernel_cockpit.py`
+Individual runs:
+
+```bash
+python3 scripts/roadmap_audit.py
+python3 -m unittest tests.test_roadmap_checkpoint -q
+```
 
 ---
 
@@ -364,17 +794,44 @@ Runs:
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | Generic steering / wrong project | Workspace resolves to plugin root | `export HERMES_KANBAN_WORKSPACE=/path/to/project` |
+| `RoadmapWorkspaceError` | Quarantined root | Point workspace at user project, not plugin tree |
 | `bootstrap_complete: false` | Template phrases remain | `roadmap(action='apply_bootstrap_fill', context='write')` then validate |
-| kanban_complete blocked | Stale checkpoint or validation pending | `/roadmap explain-gate` |
-| ROADMAP write blocked | Path outside workspace | Write only at project root `ROADMAP.md` |
-| Missing skill | Auto-install disabled | `roadmap(action='doctor')` or copy skill manually |
-| No `project_identity_line` | Roadmap disabled or unresolved workspace | `/dietcode roadmap` doctor output |
+| kanban_complete blocked | Stale checkpoint | `roadmap(action='checkpoint', context='stale refresh')` |
+| kanban_complete blocked | validation_pending | `roadmap(action='validate')` |
+| ROADMAP write blocked | Path outside workspace | Write only `{workspace}/ROADMAP.md` |
+| Now overloaded (>5) | Too many Now items | Demote to Next; doctor recommends demotion |
+| Missing skill | auto_install_skills false | `roadmap(action='doctor')` |
+| No `project_identity_line` | Feature disabled or unresolved workspace | `/dietcode roadmap` |
+| Stale fingerprint in tests | Cache not invalidated | `invalidate_fingerprint_cache(root)` |
+
+---
+
+## Anti-patterns
+
+**Do not**
+
+- Treat ROADMAP.md as a task backlog or infinite append log
+- Edit ROADMAP.md in the plugin install directory
+- Skip section 9 code soup audit on checkpoint passes
+- Return the full ROADMAP.md file when a checkpoint summary suffices
+- Leave bootstrap template phrases in place indefinitely
+- Claim kanban complete while `explain_gate` shows closed gates
+- Invent project purpose when `bootstrap_fill_plan.tasks` provides evidence replacements
+
+**Do**
+
+- Read `project_identity_line` and `project_steering_digest` before steering
+- Run checkpoint before major direction changes
+- Validate after every ROADMAP.md mutation
+- Use evidence autofill preview before write when placeholders remain
+- Keep Now ≤ 5 items connected to center of gravity
+- Mark uncertainty explicitly when evidence is thin
 
 ---
 
 ## Related
 
-- [agent-ergonomics.md](agent-ergonomics.md) — kernel + roadmap operator UX
+- [agent-ergonomics.md](agent-ergonomics.md) — kernel + roadmap operator UX summary
 - [tools-reference.md](tools-reference.md) — slash command catalog
 - [architecture.md](architecture.md) — hook wiring and gate integration
 - [../optional-skills/dietcode/auto-rolling-roadmap/SKILL.md](../optional-skills/dietcode/auto-rolling-roadmap/SKILL.md) — agent skill contract

@@ -147,6 +147,14 @@ call `roadmap(action='apply_bootstrap_fill')` before manual edits.
 
 Operator reference: `docs/roadmap.md` in the DietCode plugin tree.
 
+Key doc sections for agents:
+
+- **12-section schema** — required headings and enumerated health/soup values
+- **Example payloads** — shape of `guide`, `checkpoint`, and `validate` responses
+- **Bootstrap fill** — `bootstrap_fill_plan.tasks[].suggested_replacement`
+- **Write guard** — ROADMAP.md only at `{workspace}/ROADMAP.md`
+- **Anti-patterns** — backlog dumping, skipping §9 audit, plugin-tree writes
+
 ## Required Update Algorithm
 
 Follow this sequence on every roadmap pass:

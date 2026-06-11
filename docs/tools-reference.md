@@ -154,7 +154,11 @@ for physical mutation — JoyZoning hooks journal kernel receipts automatically.
 
 ### Auto-rolling roadmap checkpoint (native toolset: `roadmap`)
 
-**Deep reference:** [roadmap.md](roadmap.md)
+**Deep reference:** [roadmap.md](roadmap.md) — see also
+[12-section schema](roadmap.md#roadmapmd-document-contract),
+[example payloads](roadmap.md#example-payloads),
+[config keys](roadmap.md#configuration-reference),
+[gates](roadmap.md#steering-gates).
 
 | Tool | Actions | Purpose |
 | --- | --- | --- |

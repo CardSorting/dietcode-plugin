@@ -243,7 +243,17 @@ Long-horizon steering surface for product and architecture coherence. Every
 response is **scoped to the resolved Hermes project workspace** via
 `project_fingerprint` → `project_steering_digest` → `project_identity_line`.
 
-**Full reference:** [roadmap.md](roadmap.md)
+**Full reference:** [roadmap.md](roadmap.md) — schema contract, config, example JSON,
+gates, workspace resolution, write guard, code soup audit, anti-patterns.
+
+| Topic in roadmap.md | Section |
+| --- | --- |
+| 12-section ROADMAP.md contract | [Document contract](roadmap.md#roadmapmd-document-contract) |
+| Example `guide` / `checkpoint` / `validate` JSON | [Example payloads](roadmap.md#example-payloads) |
+| All `dietcode.roadmap` config keys | [Configuration reference](roadmap.md#configuration-reference) |
+| Gate IDs and kanban blocking | [Steering gates](roadmap.md#steering-gates) |
+| Workspace resolution order | [Workspace resolution](roadmap.md#workspace-resolution) |
+| Native write hints | [Write guard](roadmap.md#write-guard-and-native-hints) |
 
 ### Per-project identity (read this first)
 

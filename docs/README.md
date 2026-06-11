@@ -39,7 +39,7 @@ intent → patch → receipt → journal → verify → verification journal →
 | [broccolidb.md](broccolidb.md) | Bundled BroccoliDB package, RPC worker, database location, smoke tests. |
 | [broccolidb-native-execution-throughput.md](broccolidb-native-execution-throughput.md) | Native RPC execution model and throughput notes. |
 | [agent-ergonomics.md](agent-ergonomics.md) | Kernel progress telemetry, stuck-operator runbook, roadmap loop summary. |
-| [roadmap.md](roadmap.md) | Per-project ROADMAP.md steering, fingerprint, bootstrap autofill, gates. |
+| [roadmap.md](roadmap.md) | Per-project ROADMAP steering: fingerprint, 12-section schema, bootstrap autofill, gates, config, example JSON. |
 | [releases/v1.9.4.md](releases/v1.9.4.md) | v1.9.4 sonic kernel UX release notes. |
 | [releases/v1.9.3.md](releases/v1.9.3.md) | v1.9.3 cockpit responsiveness release notes. |
 | [releases/v1.9.2.md](releases/v1.9.2.md) | v1.9.2 performance pass release notes. |

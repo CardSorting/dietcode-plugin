@@ -61,9 +61,11 @@ ROADMAP_GUIDANCE = (
     "\n"
     "When bootstrap template phrases remain:\n"
     "- `bootstrap_fill_plan` with `tasks[].suggested_replacement` from evidence\n"
-    "- `roadmap(action='apply_bootstrap_fill')` preview or `context='write'` to apply\n"
+    "- Preview: `roadmap(action='apply_bootstrap_fill')` · Write: `context='write'`\n"
     "\n"
-    "Full operator reference: docs/roadmap.md in the plugin tree.\n"
+    "ROADMAP.md has 12 required sections (see docs/roadmap.md). Schema-complete ≠ bootstrap-complete.\n"
+    "Workspace: set HERMES_KANBAN_WORKSPACE — never write ROADMAP.md in the plugin install tree.\n"
+    "Full reference: docs/roadmap.md (config, gates, example JSON, anti-patterns).\n"
 )
 
 JOYZONING_GUIDANCE = (

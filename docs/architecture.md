@@ -158,6 +158,9 @@ Per-project identity flows: `project_fingerprint` → evidence bundle →
 `project_steering_digest` → top-level `project_identity_line` on every tool
 response, JoyZoning context, kernel cockpit, doctor, and progress telemetry.
 
+See [roadmap.md](roadmap.md) for the 12-section document contract, full config
+reference, example JSON payloads, gate catalog, and write-guard behavior.
+
 `tools_loader.py` reports missing modules via `/dietcode tools`.
 
 ## BroccoliDB boundary
