@@ -1,4 +1,4 @@
-"""Kanban ↔ BroccoliQ first-class orchestration tools."""
+"""Kanban ↔ BroccoliDB first-class orchestration tools."""
 from __future__ import annotations
 
 import json
@@ -197,11 +197,10 @@ def kanban_broccolidb_board_intel(board: str = None, limit: int = 25) -> str:
     cfg = get_config()
     intel_params = {
         "shard_id": cfg.shard_id,
-        "queue_limit": max(lim * 10, 100),
         "hive_limit": max(lim * 10, 100),
     }
 
-    # One RPC round-trip for BroccoliQ metrics + hive drift probe
+    # One RPC round-trip for hive metrics + drift probe
     task_ids = [t["id"] for t in board_summary.get("tasks", []) if isinstance(t, dict) and t.get("id")]
     batch_calls: list[tuple[str, dict]] = [("hive_board_intel", intel_params)]
     if task_ids:
@@ -240,7 +239,7 @@ def kanban_broccolidb_board_intel(board: str = None, limit: int = 25) -> str:
     return json.dumps({
         "success": True,
         "board": board_summary,
-        "broccoliq": hive_metrics,
+        "hive": hive_metrics,
         "drift": drift,
     })
 
@@ -284,7 +283,7 @@ registry.register(
     toolset="dietcode",
     schema={
         "name": "kanban_broccolidb_sync",
-        "description": "Force-sync a kanban task into BroccoliQ hive_tasks (bypasses debounce).",
+        "description": "Force-sync a kanban task into BroccoliDB hive_tasks (bypasses debounce).",
         "parameters": {
             "type": "object",
             "properties": {
@@ -340,7 +339,7 @@ registry.register(
     schema={
         "name": "kanban_broccolidb_board_intel",
         "description": (
-            "Orchestrator-only: kanban board snapshot + BroccoliQ metrics + drift report."
+            "Orchestrator-only: kanban board snapshot + BroccoliDB hive metrics + drift report."
         ),
         "parameters": {
             "type": "object",

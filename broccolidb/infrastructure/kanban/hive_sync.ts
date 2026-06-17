@@ -1,5 +1,5 @@
 /**
- * Kanban → BroccoliQ hive sync (CLI wrapper — logic in hermes/rpc_handlers.ts).
+ * Kanban → BroccoliDB hive sync (CLI wrapper — logic in hermes/rpc_handlers.ts).
  */
 import { setDbPath } from "../db/Config.js";
 import {

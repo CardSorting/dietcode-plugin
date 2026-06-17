@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Kanban ↔ BroccoliQ lifecycle hooks."""
+"""Kanban ↔ BroccoliDB lifecycle hooks."""
 from __future__ import annotations
 
 import json

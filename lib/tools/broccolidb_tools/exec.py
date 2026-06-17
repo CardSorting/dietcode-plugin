@@ -1,5 +1,5 @@
 """
-BroccoliDB/BroccoliQ execution facade — single import surface for tools and CLI.
+BroccoliDB execution facade — single import surface for tools and CLI.
 
     from plugins.dietcode.lib.tools.broccolidb_tools.exec import run_db_rpc, run_agent_rpc, warm_db_rpc
 """

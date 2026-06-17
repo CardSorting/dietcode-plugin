@@ -42,16 +42,6 @@ Knowledge graph and audit console.
 | `audit` | Run skeptical sovereignty checks on knowledge nodes. |
 | `heal` | Prune unreliable knowledge items. |
 
-### `/broccoliq`
-
-Sharded queue console.
-
-| Subcommand | Purpose |
-| --- | --- |
-| `queue` | Job counts by status across shards. |
-| `shards` | Active shard list and health. |
-| `integrity` | One-shot IntegrityWorker audit. |
-
 ### `/joyzoning`
 
 Layering and governance console.
@@ -102,9 +92,6 @@ Implementation: `lib/tools/kernel_bridge_tools.py`, `lib/agent/kernel_bridge_cli
 | `broccolidb_get_task_context` | Retrieve context for a task. |
 | `broccolidb_append_shared_memory` | Add a global shared rule. |
 | `broccolidb_verify_sovereignty` | Audit a knowledge node's confidence. |
-| `broccolidb_queue_status` | Report queue jobs grouped by status. |
-| `broccolidb_shard_status` | Report shard health. |
-| `broccolidb_hive_integrity` | Run a sharded integrity audit. |
 
 Additional tools: `lib/tools/broccolidb_tools/structural_tools.py`,
 `lib/tools/broccolidb_tools/joyzoning_tools.py`.
@@ -203,7 +190,7 @@ Verification: `make verify` (smoke + audit + operator smoke + unit tests)
 
 Registered from `lib/tools/kanban_broccolidb_tools.py` and
 `lib/tools/kanban_broccolidb_bridge.py`. Mirror kanban state into
-BroccoliDB/BroccoliQ and enforce JoyZoning completion gates when kanban task
+BroccoliDB and enforce JoyZoning completion gates when kanban task
 environment is available.
 
 ## Raw Hermes write tools

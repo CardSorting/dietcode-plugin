@@ -2,7 +2,7 @@
 
 #import <Foundation/Foundation.h>
 
-// INVARIANT: BroccoliQ-backed durable memory — records history; never decides mutation validity.
+// INVARIANT: BroccoliDB-backed durable memory — records history; never decides mutation validity.
 @interface MacControlMemoryService : NSObject
 
 @property (nonatomic, readonly, copy) NSString* workspacePath;

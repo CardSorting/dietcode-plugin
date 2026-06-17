@@ -1,20 +1,17 @@
 """
-BroccoliDB/BroccoliQ native execution surface — canonical method registry.
+BroccoliDB native execution surface — canonical method registry.
 
 Keep in sync with ``broccolidb/infrastructure/hermes/rpc_handlers.ts`` (RPC_VERSION).
 """
 from __future__ import annotations
 
 # Mirror rpc_handlers.RPC_VERSION
-RPC_VERSION = 4
+RPC_VERSION = 5
 
 RPC_METHODS = frozenset({
     "ping",
     "rpc_health",
     "dashboard_snapshot",
-    "queue_status",
-    "shard_status",
-    "hive_integrity",
     "proposal_action",
     "hive_sync",
     "hive_drift",

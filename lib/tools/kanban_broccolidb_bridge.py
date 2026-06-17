@@ -1,4 +1,4 @@
-"""Bridge between Hermes Kanban (``kanban.db``) and BroccoliQ/BroccoliDB hive tables.
+"""Bridge between Hermes Kanban (``kanban.db``) and BroccoliDB hive tables.
 
 Production responsibilities:
   - Workspace-aware broccolidb root/db resolution (via runner helpers)
@@ -181,7 +181,7 @@ def validate_task_id(task_id: Optional[str]) -> Optional[str]:
 
 
 def _joyzoning_forensic_fields() -> dict[str, Any]:
-    """Scope linkage for BroccoliQ hive rows (kanban task + convergence state)."""
+    """Scope linkage for BroccoliDB hive rows (kanban task + convergence state)."""
     fields: dict[str, Any] = {}
     scope = _scope_env("JOYZONING_SCOPE_ID")
     if scope:

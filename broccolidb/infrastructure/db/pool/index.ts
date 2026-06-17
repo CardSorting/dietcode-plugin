@@ -1,6 +1,6 @@
 /**
- * BroccoliQ pool module — re-exports the canonical BufferedDbPool singleton
- * used throughout broccolidb. Keeps @noorm/broccoliq import paths stable.
+ * Broccolidb pool module — re-exports the canonical BufferedDbPool singleton
+ * used throughout broccolidb.
  */
 export {
   BufferedDbPool,

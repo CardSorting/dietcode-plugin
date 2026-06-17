@@ -74,8 +74,7 @@ progress telemetry (`/dietcode kernel cockpit`, watch, explain-gate).
 | Component | Role |
 | --- | --- |
 | **Roadmap** | Native `roadmap` toolset — checkpoint, validate, autofill, cockpit, gates |
-| **BroccoliDB** | Knowledge graph, audit, refactor, structural analysis |
-| **BroccoliQ** | Queue status, shard health, integrity |
+| **BroccoliDB** | Knowledge graph, audit, refactor, structural analysis, hive sync |
 | **JoyZoning** | Mutation lifecycle, convergence, runtime journal |
 | **JSDP** | Rolling-horizon autonomous delivery helpers |
 | **Kernel bridge** | Optional macOS `dietcode_kernel` patch/verify + raw-write policy |
@@ -168,7 +167,6 @@ Decision tree when stuck: [docs/roadmap.md#decision-tree](docs/roadmap.md#decisi
 /dietcode tools
 /dietcode broccolidb
 /broccolidb status
-/broccoliq queue
 /joyzoning status
 ```
 

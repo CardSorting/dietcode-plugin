@@ -20,7 +20,7 @@ through the **kernel authority bridge**.
              │
              ▼
 ┌────────────────────────┐
-│  BroccoliDB / BroccoliQ │  (graph, queue — independent layer)
+│  BroccoliDB             │  (graph + hive — independent layer)
 └────────────────────────┘
 ```
 

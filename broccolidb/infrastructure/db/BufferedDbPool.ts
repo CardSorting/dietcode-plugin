@@ -112,7 +112,7 @@ export type WriteOp = {
   where?: WhereCondition | WhereCondition[];
   conflictTarget?: string | string[]; // For upserts
   agentId?: string;
-  shardId?: string; // Level 8: BroccoliQ shard partitioning
+  shardId?: string; // Level 8: shard partitioning
   layer?: DbLayer;
   // Level 6: Pre-calculated Metadata
   hasIncrements?: boolean;
@@ -976,12 +976,12 @@ export class BufferedDbPool {
     return results.length > 0 ? (results[results.length - 1] as Schema[T]) : null;
   }
 
-  /** BroccoliQ Level 8: resolve a sharded database handle. */
+  /** Level 8: resolve a sharded database handle. */
   public async getDb(shardId: string = 'main'): Promise<Kysely<Schema>> {
     return getDb(shardId);
   }
 
-  /** BroccoliQ Level 5: distributed lock via claims table. */
+  /** Level 5: distributed lock via claims table. */
   public async acquireLock(
     resource: string,
     author: string,

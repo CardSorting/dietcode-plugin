@@ -1,6 +1,6 @@
 # BroccoliDB Native Execution Throughput
 
-DietCode routes high-frequency BroccoliDB and BroccoliQ operations through the
+DietCode routes high-frequency BroccoliDB operations through the
 native TypeScript runtime instead of reimplementing database behavior in Python.
 The preferred path is the persistent Hermes JSON-RPC worker.
 

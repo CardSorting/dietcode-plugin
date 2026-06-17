@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import AbstractSet
 
-KANBAN_BROCCOLIQ_GUIDANCE = (
-    "## BroccoliQ orchestration (when available)\n"
+KANBAN_BROCCOLIDB_GUIDANCE = (
+    "## BroccoliDB orchestration (when available)\n"
     "\n"
     "When `broccolidb/` is present in the workspace, you also have "
-    "`kanban_broccolidb_*` tools that mirror board state into the BroccoliQ "
+    "`kanban_broccolidb_*` tools that mirror board state into the BroccoliDB "
     "hive layer for durable cross-agent intelligence:\n"
     "\n"
     "1. After `kanban_show()`, call `kanban_broccolidb_context()` to load "
@@ -16,7 +16,7 @@ KANBAN_BROCCOLIQ_GUIDANCE = (
     "2. Before `kanban_complete()`, call `kanban_broccolidb_record(summary=...)` "
     "for architectural decisions downstream workers should retrieve.\n"
     "3. Orchestrators: call `kanban_broccolidb_board_intel()` before fan-out "
-    "to see board status plus BroccoliQ queue/shard health.\n"
+    "to see board status plus BroccoliDB metrics.\n"
     "4. Use `kanban_broccolidb_sync(event=...)` after material lifecycle "
     "changes if auto-sync is disabled.\n"
     "5. Orchestrators: run `kanban_broccolidb_drift()` periodically to "
@@ -94,7 +94,7 @@ JOYZONING_GUIDANCE = (
     "5. After operator approval: `convergence_mark_converged(...)`.\n"
     "6. Only then `kanban_complete(...)` — pre_tool_call gate blocks early complete.\n"
     "\n"
-    "## Kanban + BroccoliQ linkage\n"
+    "## Kanban + BroccoliDB linkage\n"
     "\n"
     "When spawned as a kanban worker, env carries `HERMES_KANBAN_TASK` and "
     "`JOYZONING_SCOPE_ID`. Call `kanban_broccolidb_context()` after `kanban_show()` "
@@ -149,7 +149,7 @@ def build_dietcode_guidance(valid_tool_names: AbstractSet[str]) -> str:
     parts: list[str] = []
     has_joyzoning = "joyzoning" in valid_tool_names
     has_roadmap = "roadmap" in valid_tool_names or "roadmap_checkpoint" in valid_tool_names
-    has_broccoliq_bridge = any(n.startswith("kanban_broccolidb_") for n in valid_tool_names)
+    has_broccolidb_bridge = any(n.startswith("kanban_broccolidb_") for n in valid_tool_names)
     has_kanban_worker = "kanban_show" in valid_tool_names
 
     if has_roadmap:
@@ -164,7 +164,7 @@ def build_dietcode_guidance(valid_tool_names: AbstractSet[str]) -> str:
         parts.append(ROADMAP_GUIDANCE)
     if has_joyzoning:
         parts.append(JOYZONING_GUIDANCE)
-    elif has_kanban_worker and has_broccoliq_bridge:
-        parts.append(KANBAN_BROCCOLIQ_GUIDANCE)
+    elif has_kanban_worker and has_broccolidb_bridge:
+        parts.append(KANBAN_BROCCOLIDB_GUIDANCE)
 
     return "\n\n".join(parts)

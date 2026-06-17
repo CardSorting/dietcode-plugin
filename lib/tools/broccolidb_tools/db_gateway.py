@@ -1,7 +1,7 @@
 """
 BroccoliDB native RPC gateway — persistent tsx worker for hot read/write paths.
 
-Centralizes BroccoliDB/BroccoliQ operations that previously spawned a fresh
+Centralizes BroccoliDB operations that previously spawned a fresh
 ``npx tsx`` subprocess per call. Falls back to ``hermes_oneshot.ts`` when the
 worker is unavailable or ``HERMES_BROCCOLIDB_RPC=0``.
 """

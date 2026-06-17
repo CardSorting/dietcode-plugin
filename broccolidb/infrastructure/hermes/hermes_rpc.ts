@@ -1,5 +1,5 @@
 /**
- * Hermes ↔ BroccoliDB/BroccoliQ native RPC — persistent stdin/stdout worker.
+ * Hermes ↔ BroccoliDB native RPC — persistent stdin/stdout worker.
  *
  * Emits {"ready":true} immediately so Python never blocks on schema migration.
  * DB / AgentContext warmup runs lazily on the first request.

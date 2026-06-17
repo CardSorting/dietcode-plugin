@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 # pass-viii-native
-# broccoliq-memory-test
+# broccolidb-memory-test
 # pass-viii-native
-# broccoliq-memory-test
+# broccolidb-memory-test
 # pass-viii-native
-# broccoliq-memory-test
-# broccoliq-memory-test
-# broccoliq-memory-test
+# broccolidb-memory-test
+# broccolidb-memory-test
+# broccolidb-memory-test
 # pass-viii-native
-# broccoliq-memory-test
-# broccoliq-memory-test
-# broccoliq-memory-test
-# broccoliq-memory-test
+# broccolidb-memory-test
+# broccolidb-memory-test
+# broccolidb-memory-test
+# broccolidb-memory-test
 """CONTRACT: Frozen runtime contract constants — grep with `rg 'CONTRACT:' scripts/agent_contracts.py`."""
 
 from __future__ import annotations
@@ -606,7 +606,7 @@ SAFE_PATCH_HASH_AUTHORITY = frozenset({
     "live_stat",
 })
 
-# CONTRACT: BroccoliQ memory safety boundary — memory layer must never expose mutation authority.
+# CONTRACT: BroccoliDB memory safety boundary — memory layer must never expose mutation authority.
 MEMORY_SAFETY_BOUNDARY_FORBIDDEN_AUTHORITY = frozenset({
     "patch_validity",
     "stale_content_decision",

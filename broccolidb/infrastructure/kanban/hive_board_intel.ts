@@ -1,5 +1,5 @@
 /**
- * BroccoliQ board metrics (CLI wrapper — logic in hermes/rpc_handlers.ts).
+ * BroccoliDB hive board metrics (CLI wrapper — logic in hermes/rpc_handlers.ts).
  */
 import { setDbPath } from "../db/Config.js";
 import {

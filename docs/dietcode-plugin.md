@@ -1,7 +1,7 @@
 # DietCode Plugin
 
 DietCode is a Hermes plugin that installs a governed agent execution substrate:
-BroccoliDB for repository context, BroccoliQ for queue coordination, JoyZoning
+BroccoliDB for repository context, JoyZoning
 for mutation lifecycle governance, JSDP for rolling-horizon planning, and an
 **optional macOS kernel authority bridge** for coherent physical mutation.
 
@@ -285,7 +285,7 @@ Rollback to raw writes: [kernel-bridge-operations.md](kernel-bridge-operations.m
 | **macOS** | Full bridge when binary built and socket running |
 | **Linux** | `platform_supported: false` — plugin degrades gracefully; no blocking |
 
-BroccoliDB, BroccoliQ, JoyZoning, and JSDP are fully usable on all platforms.
+BroccoliDB, JoyZoning, and JSDP are fully usable on all platforms.
 
 ## Development
 

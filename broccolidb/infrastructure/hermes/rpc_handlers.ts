@@ -1,25 +1,20 @@
 /**
- * Canonical BroccoliDB/BroccoliQ RPC handlers — single implementation for
+ * Canonical BroccoliDB RPC handlers — single implementation for
  * hermes_rpc.ts (persistent worker) and thin CLI wrappers (hive_*.ts).
  */
 import * as crypto from "node:crypto";
 import { sql } from "kysely";
 import { buildDashboardSnapshot } from "../dashboard/snapshot_core.js";
 import { getActiveShards, getDb } from "../db/Config.js";
-import { IntegrityWorker } from "../db/IntegrityWorker.js";
 import { runAgentInvoke } from "./agent_invoke.js";
 import { flushDbPool } from "./agent_session.js";
-import { aggregateQueueByStatus } from "./queue_metrics.js";
 
-export const RPC_VERSION = 4;
+export const RPC_VERSION = 5;
 
 export const RPC_METHODS = [
 	"ping",
 	"rpc_health",
 	"dashboard_snapshot",
-	"queue_status",
-	"shard_status",
-	"hive_integrity",
 	"proposal_action",
 	"hive_sync",
 	"hive_drift",
@@ -82,7 +77,6 @@ export interface HiveDriftPayload {
 
 export interface HiveBoardIntelPayload {
 	shard_id?: string;
-	queue_limit?: number;
 	hive_limit?: number;
 }
 
@@ -114,56 +108,6 @@ export async function runRpcHealth(): Promise<Record<string, unknown>> {
 		shard_id: shardId,
 		shards,
 		healthy: true,
-	};
-}
-
-export async function runQueueStatus(): Promise<Record<string, unknown>> {
-	const shards = getActiveShards().length ? getActiveShards() : ["main"];
-	const byStatus: Record<string, number> = {};
-	let total = 0;
-	for (const shardId of shards) {
-		const db = await getDb(shardId);
-		const agg = await aggregateQueueByStatus(db);
-		for (const [status, count] of Object.entries(agg.byStatus)) {
-			byStatus[status] = (byStatus[status] ?? 0) + count;
-		}
-		total += agg.total;
-	}
-	return { success: true, total, byStatus, shards };
-}
-
-export async function runShardStatus(): Promise<Record<string, unknown>> {
-	const shards = getActiveShards();
-	const listed = shards.length ? shards : ["main"];
-	const detail: Array<Record<string, unknown>> = [];
-	for (const shardId of listed) {
-		try {
-			const db = await getDb(shardId);
-			const probe = await db
-				.selectFrom("queue_settings" as never)
-				.selectAll()
-				.limit(1)
-				.execute();
-			detail.push({ shardId, healthy: true, probeRows: probe.length });
-		} catch (e) {
-			detail.push({
-				shardId,
-				healthy: false,
-				error: e instanceof Error ? e.message : String(e),
-			});
-		}
-	}
-	return { success: true, shardCount: detail.length, shards: detail };
-}
-
-export async function runHiveIntegrity(): Promise<Record<string, unknown>> {
-	const worker = new IntegrityWorker(600_000);
-	await worker.runAudit();
-	const shards = getActiveShards();
-	return {
-		success: true,
-		message: "Integrity audit complete",
-		shards: shards.length ? shards : ["main"],
 	};
 }
 
@@ -376,8 +320,6 @@ export async function runHiveBoardIntel(
 
 	const db = await getDb(shardId);
 
-	const queueAgg = await aggregateQueueByStatus(db);
-
 	const hiveRows = await db
 		.selectFrom("hive_tasks")
 		.select(["status", sql<number>`count(*)`.as("count")])
@@ -395,10 +337,6 @@ export async function runHiveBoardIntel(
 	return {
 		success: true,
 		shard_id: shardId,
-		queue: {
-			total: queueAgg.total,
-			byStatus: queueAgg.byStatus,
-		},
 		hive: {
 			total: hiveTotal,
 			byStatus: hiveByStatus,
@@ -418,9 +356,6 @@ export const rpcHandlers: Record<string, HandlerFn> = {
 	ping: async () => runPing(),
 	rpc_health: async () => runRpcHealth(),
 	dashboard_snapshot: async () => buildDashboardSnapshot(),
-	queue_status: async () => runQueueStatus(),
-	shard_status: async () => runShardStatus(),
-	hive_integrity: async () => runHiveIntegrity(),
 	proposal_action: async (p) => runProposalAction(p),
 	hive_sync: async (p) => runHiveSync(p as unknown as KanbanHiveSyncPayload),
 	hive_drift: async (p) => runHiveDrift(p as unknown as HiveDriftPayload),

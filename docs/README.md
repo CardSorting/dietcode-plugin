@@ -3,7 +3,7 @@
 Operator and developer documentation for the DietCode Hermes plugin
 (**v1.9.4 — Sonic Kernel UX**).
 
-DietCode bundles BroccoliDB, BroccoliQ, JoyZoning, JSDP, and an **optional macOS
+DietCode bundles BroccoliDB, JoyZoning, JSDP, and an **optional macOS
 kernel authority bridge**. The kernel handles physical mutation and verification;
 JoyZoning owns the lifecycle journal and convergence gates; raw Hermes writes
 remain allowed by default with opt-in warn/block policies.

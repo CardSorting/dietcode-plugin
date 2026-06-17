@@ -25,7 +25,6 @@ from plugins.dietcode.lib.agent.roadmap.gate import (
 from plugins.dietcode.lib.agent.roadmap.operator import build_agent_operator_hints
 from plugins.dietcode.slash_commands import (
     _handle_broccolidb,
-    _handle_broccoliq,
     _handle_joyzoning,
     _handle_roadmap,
     run_joyzoning_gate,
@@ -43,7 +42,6 @@ __all__ = [
     "require_fresh_checkpoint_before_complete",
     "_handle_joyzoning",
     "_handle_broccolidb",
-    "_handle_broccoliq",
     "_handle_roadmap",
     "_on_session_start",
     "_on_session_end",

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""DietCode unified plugin — BroccoliDB, BroccoliQ, JoyZoning, and JSDP for upstream Hermes."""
+"""DietCode unified plugin — BroccoliDB, JoyZoning, and JSDP for upstream Hermes."""
 from __future__ import annotations
 
 import importlib.util
@@ -41,7 +41,6 @@ def _mark_registered(ctx) -> None:
 def _register_commands(ctx) -> None:
     from plugins.dietcode.slash_commands import (
         _handle_broccolidb,
-        _handle_broccoliq,
         _handle_joyzoning,
         _handle_roadmap,
     )
@@ -49,7 +48,7 @@ def _register_commands(ctx) -> None:
     ctx.register_command(
         "dietcode",
         handler=handle_dietcode_command,
-        description="DietCode integration health — BroccoliDB, BroccoliQ, JoyZoning, JSDP.",
+        description="DietCode integration health — BroccoliDB, JoyZoning, JSDP.",
         args_hint="[status|doctor|tools|broccolidb]",
     )
     ctx.register_command(
@@ -63,8 +62,6 @@ def _register_commands(ctx) -> None:
         ("jz", _handle_joyzoning, "JoyZoning layering audit (alias).", "[status|check <file>|…]"),
         ("broccolidb", _handle_broccolidb, "BroccoliDB epistemic database console.", "[status|query|audit|heal]"),
         ("bdb", _handle_broccolidb, "BroccoliDB console (alias).", "[status|query|audit|heal]"),
-        ("broccoliq", _handle_broccoliq, "BroccoliQ sharded queue and hive infrastructure.", "[queue|shards|integrity]"),
-        ("bq", _handle_broccoliq, "BroccoliQ console (alias).", "[queue|shards|integrity]"),
         ("roadmap", _handle_roadmap, "Native roadmap checkpoint console.", "[cockpit|doctor|checkpoint|validate|guide]"),
         ("rm", _handle_roadmap, "Roadmap checkpoint console (alias).", "[cockpit|doctor|checkpoint|validate|guide]"),
     ):

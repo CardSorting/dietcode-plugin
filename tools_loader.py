@@ -39,8 +39,6 @@ DEFERRED_TOOL_MODULE_STEMS: frozenset[str] = frozenset({
 # Minimum surface the dietcode toolset must resolve (behavioral contract).
 EXPECTED_DIETCODE_TOOLS: FrozenSet[str] = frozenset({
     "broccolidb_init",
-    "broccolidb_queue_status",
-    "broccolidb_hive_integrity",
     "joyzoning",
     "mutation_record_patch",
     "convergence_status",
@@ -189,7 +187,7 @@ def register_dietcode_toolset() -> None:
     if "dietcode" not in TOOLSETS:
         create_custom_toolset(
             "dietcode",
-            "BroccoliDB, BroccoliQ, JoyZoning, JSDP, kernel bridge, and native roadmap checkpoints",
+            "BroccoliDB, JoyZoning, JSDP, kernel bridge, and native roadmap checkpoints",
             tools=[
                 "kanban_broccolidb_context",
                 "kanban_broccolidb_sync",

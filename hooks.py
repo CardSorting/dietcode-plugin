@@ -9,7 +9,7 @@ from typing import Any, Callable
 logger = logging.getLogger(__name__)
 
 # Session start order matters:
-#   1. Kanban ↔ BroccoliQ hive sync (worker scope + debounced queue)
+#   1. Kanban ↔ BroccoliDB hive sync (worker scope + debounced queue)
 #   2. JoyZoning runtime (scope registry + session.start journal event)
 #   3. JSDP role_started (when jsdp_role env is set)
 #   4. Roadmap optional-skills install (when auto_install_skills enabled)

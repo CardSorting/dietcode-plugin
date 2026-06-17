@@ -236,7 +236,7 @@ static NSString* ReadHashForPath(NSString* absPath, DietCodeControlWindowBridge*
                 }
             }
             payload[@"durableReplay"] = @YES;
-            payload[@"source"] = @"broccoliq_memory";
+            payload[@"source"] = @"broccolidb_memory";
             return payload;
         }
         NSDictionary* replay = [self.memoryService replayCacheForKey:idempotencyKey];
@@ -246,7 +246,7 @@ static NSString* ReadHashForPath(NSString* absPath, DietCodeControlWindowBridge*
             payload[@"status"] = @"completed";
             payload[@"idempotencyKey"] = idempotencyKey;
             payload[@"durableReplay"] = @YES;
-            payload[@"source"] = @"broccoliq_replay_cache";
+            payload[@"source"] = @"broccolidb_replay_cache";
             if ([result[@"mutationReceipt"] isKindOfClass:[NSDictionary class]]) {
                 payload[@"mutationReceipt"] = result[@"mutationReceipt"];
             }

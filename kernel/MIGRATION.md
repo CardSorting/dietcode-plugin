@@ -64,7 +64,7 @@ Scripts use `REPO_ROOT = Path(__file__).resolve().parents[1]`, which resolves to
 | `~/.dietcode/control.sock` | Kernel control socket (not plugin-local) |
 | `~/.dietcode/session.token` | RPC auth token |
 | `~/.dietcode/session/` | Approval / recovery state |
-| `~/.dietcode/runtime-memory/` | BroccoliQ memory layer (kernel C++) |
+| `~/.dietcode/runtime-memory/` | BroccoliDB memory layer (kernel C++) |
 
 ### Broken or stale until Phase 2
 

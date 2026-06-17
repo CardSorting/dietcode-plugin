@@ -1,8 +1,7 @@
 /**
- * BroccoliQ - Queue and Database Processing Infrastructure
+ * BroccoliDB infrastructure — queue and database processing.
  *
- * Re-exports the main public API for easy import from '@broccoliq/queue'.
- * Use direct imports from 'broccoliq' for the primary entry points.
+ * Re-exports the main public API for broccolidb consumers.
  */
 
 // Core database and pool functionality

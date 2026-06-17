@@ -1,6 +1,6 @@
 # Hermes native RPC (`infrastructure/hermes/`)
 
-Persistent BroccoliDB/BroccoliQ worker used by DietCode / Hermes Python tools.
+Persistent BroccoliDB worker used by DietCode / Hermes Python tools.
 
 ## Documentation
 
@@ -17,7 +17,7 @@ Persistent BroccoliDB/BroccoliQ worker used by DietCode / Hermes Python tools.
 |------|------|
 | `hermes_rpc.ts` | Persistent stdin/stdout worker (`ready` first, lazy DB warm) |
 | `hermes_oneshot.ts` | Cold fallback: one JSON line on stdout, then `process.exit(0)` |
-| `rpc_handlers.ts` | Canonical handlers (`dispatchRpc`, `RPC_VERSION = 4`) |
+| `rpc_handlers.ts` | Canonical handlers (`dispatchRpc`, `RPC_VERSION = 5`) |
 | `agent_session.ts` | Warm `AgentContext` singleton |
 | `agent_invoke.ts` | Graph / kanban cognitive ops |
 | `queue_metrics.ts` | SQL `GROUP BY` queue status (no full-table scan) |
@@ -44,7 +44,7 @@ Expect: one `{"ready":true,…}` line, then one `{"id":1,"ok":true,…}` line. L
 from plugins.dietcode.lib.tools.broccolidb_tools.exec import run_db_rpc, run_agent_rpc, warm_db_rpc
 
 warm_db_rpc(block=True)
-raw = run_db_rpc("queue_status")
+raw = run_db_rpc("hive_board_intel", {"shard_id": "kanban"})
 ```
 
 ## Node native modules

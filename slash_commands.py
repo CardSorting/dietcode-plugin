@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""DietCode slash commands — JoyZoning, BroccoliDB, and BroccoliQ consoles."""
+"""DietCode slash commands — JoyZoning and BroccoliDB consoles."""
 from __future__ import annotations
 
 import json
@@ -447,109 +447,6 @@ def _handle_broccolidb(raw_args: str) -> Optional[str]:
 
     return f"Unknown subcommand: {sub}\n\n{_BDB_HELP}"
 
-
-_BQ_HELP = """\
-/broccoliq — BroccoliQ sharded queue & hive infrastructure console
-
-Subcommands:
-  queue                      Job counts by status across all shards
-  shards                     List active database shards and health
-  integrity                  Run one-shot IntegrityWorker audit
-"""
-
-
-def _handle_broccoliq(raw_args: str) -> Optional[str]:
-    """Handle /broccoliq slash command for sharded queue infrastructure."""
-    argv = shlex.split(raw_args.strip())
-    if not argv or argv[0] in ("help", "-h", "--help"):
-        return _BQ_HELP
-
-    sub = argv[0].lower()
-
-    if sub == "queue":
-        body = """
-        import { getDb, getActiveShards } from './infrastructure/db/Config.js';
-        const shards = getActiveShards().length ? getActiveShards() : ['main'];
-        const byStatus = {};
-        let total = 0;
-        for (const shardId of shards) {
-          const db = await getDb(shardId);
-          const rows = await db.selectFrom('queue_jobs').select(['status']).execute();
-          for (const row of rows) {
-            byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
-            total += 1;
-          }
-        }
-        console.log(JSON.stringify({ total, byStatus, shards }));
-        """
-        try:
-            data = json.loads(run_standalone_script(body))
-            if "error" in data:
-                return f"❌ BroccoliQ queue error: {data['error']}"
-            lines = [
-                "==============================================================",
-                "📬 BROCCOLIQ SHARDED QUEUE STATUS",
-                "==============================================================",
-                f"🧩 Shards   : {', '.join(data.get('shards', ['main']))}",
-                f"📊 Total    : {data.get('total', 0)} jobs",
-            ]
-            for status, count in sorted((data.get("byStatus") or {}).items()):
-                lines.append(f"   • {status}: {count}")
-            lines.append("==============================================================")
-            return "\n".join(lines)
-        except Exception as e:
-            return f"❌ BroccoliQ queue failed: {e}"
-
-    if sub == "shards":
-        body = """
-        import { getActiveShards, getDb } from './infrastructure/db/Config.js';
-        const listed = getActiveShards().length ? getActiveShards() : ['main'];
-        const detail = [];
-        for (const shardId of listed) {
-          try {
-            const db = await getDb(shardId);
-            await db.selectFrom('queue_settings').selectAll().limit(1).execute();
-            detail.push({ shardId, healthy: true });
-          } catch (e) {
-            detail.push({ shardId, healthy: false, error: String(e) });
-          }
-        }
-        console.log(JSON.stringify({ shards: detail }));
-        """
-        try:
-            data = json.loads(run_standalone_script(body))
-            lines = ["🧩 BroccoliQ shards:"]
-            for s in data.get("shards", []):
-                icon = "🟢" if s.get("healthy") else "🔴"
-                err = f" — {s['error']}" if s.get("error") else ""
-                lines.append(f"  {icon} {s.get('shardId', '?')}{err}")
-            return "\n".join(lines)
-        except Exception as e:
-            return f"❌ BroccoliQ shard status failed: {e}"
-
-    if sub == "integrity":
-        body = """
-        import { IntegrityWorker } from './infrastructure/db/IntegrityWorker.js';
-        import { getActiveShards } from './infrastructure/db/Config.js';
-        const worker = new IntegrityWorker(600000);
-        await worker.runAudit();
-        console.log(JSON.stringify({
-          ok: true,
-          shards: getActiveShards().length ? getActiveShards() : ['main'],
-        }));
-        """
-        try:
-            data = json.loads(run_standalone_script(body, timeout=120))
-            if not data.get("ok"):
-                return f"❌ Integrity audit failed: {data.get('error', data)}"
-            return (
-                "🛡️ BroccoliQ IntegrityWorker audit complete.\n"
-                f"Shards checked: {', '.join(data.get('shards', ['main']))}"
-            )
-        except Exception as e:
-            return f"❌ Integrity audit failed: {e}"
-
-    return f"Unknown subcommand: {sub}\n\n{_BQ_HELP}"
 
 
 _ROADMAP_HELP = """\

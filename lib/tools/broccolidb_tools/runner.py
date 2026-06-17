@@ -601,7 +601,7 @@ def run_hive_drift(payload: dict[str, Any], timeout: int = _DEFAULT_TIMEOUT) -> 
 
 
 def run_hive_board_intel(payload: dict[str, Any], timeout: int = _DEFAULT_TIMEOUT) -> str:
-    """Fetch bounded BroccoliQ queue/hive metrics for orchestrator board intel."""
+    """Fetch bounded BroccoliDB hive metrics for orchestrator board intel."""
     from plugins.dietcode.lib.tools.broccolidb_tools.db_gateway import rpc_available, run_db_rpc
 
     if rpc_available():
@@ -641,7 +641,7 @@ def run_db_rpc(
     *,
     timeout: int = _DEFAULT_TIMEOUT,
 ) -> str:
-    """Native BroccoliDB/BroccoliQ RPC (persistent worker when available).
+    """Native BroccoliDB RPC (persistent worker when available).
 
     Prefer this over inline ``run_ts_script`` for hot read/write paths — see
     ``rpc_handlers.ts`` for the canonical method list.

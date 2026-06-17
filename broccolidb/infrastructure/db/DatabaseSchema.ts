@@ -4,11 +4,11 @@
  * Principle: Unified TypeScript type definitions for Kysely database schema
  * Hardening: Master Sovereign Hive Architecture (v2.0)
  * 
- * Provides bit-for-bit parity across DietCode and BroccoliQ/broccolidb.
+ * Provides bit-for-bit parity across DietCode and broccolidb.
  */
 
 export interface Schema {
-	// --- CORE BROCCOLIQ TABLES ---
+	// --- CORE HIVE / QUEUE TABLES ---
 	users: {
 		id: string;
 		createdAt: number;

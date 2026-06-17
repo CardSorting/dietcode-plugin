@@ -32,7 +32,7 @@ except ImportError:
         return ContractReport()
 
 _HELP = """\
-/dietcode — BroccoliDB, BroccoliQ, JoyZoning, and JSDP integration console
+/dietcode — BroccoliDB, JoyZoning, and JSDP integration console
 
 Subcommands:
   status / doctor          Full integration health report

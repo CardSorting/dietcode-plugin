@@ -91,8 +91,8 @@ KERNEL_OBJECTS := $(KERNEL_CPP_OBJECTS) $(KERNEL_MM_OBJECTS)
 	test-deterministic-retrieval test-agent-workflow-smoke test-agent-shell-tooling \
 	test-agent-shell-tooling-fast test-agent-shell-workflows test-agent-shell-workflows-fast \
 	test-authority-boundaries test-authority-boundaries-fast test-cli-agent-failures \
-	test-docs-code-drift test-partial-success-closure test-broccoliq-runtime-memory \
-	test-broccoliq-runtime-memory-fast test-runtime-native-integration \
+	test-docs-code-drift test-partial-success-closure test-broccolidb-runtime-memory \
+	test-broccolidb-runtime-memory-fast test-runtime-native-integration \
 	test-runtime-native-integration-fast test-coherence-tokens test-coherence-tokens-fast \
 	coherence-recovery-smoke coherence-recovery-smoke-fast coherence-core-v0.1 validate \
 	agent-integration test-agent-integration verify-agent-runtime verify-agent-runtime-fast \
@@ -238,12 +238,12 @@ test-partial-success-closure: restart-agent-server
 	python3 scripts/dietcode_agent_client.py --wait-ready --compact --error-json --quiet
 	python3 scripts/test_partial_success_closure.py --compact
 
-test-broccoliq-runtime-memory: restart-agent-server
+test-broccolidb-runtime-memory: restart-agent-server
 	DIETCODE_REPO_ROOT=$(CURDIR) python3 scripts/dietcode_agent_client.py --wait-ready --compact --error-json --quiet
-	DIETCODE_REPO_ROOT=$(CURDIR) python3 scripts/test_broccoliq_runtime_memory.py --compact
+	DIETCODE_REPO_ROOT=$(CURDIR) python3 scripts/test_broccolidb_runtime_memory.py --compact
 
-test-broccoliq-runtime-memory-fast:
-	DIETCODE_REPO_ROOT=$(CURDIR) python3 scripts/test_broccoliq_runtime_memory.py --compact
+test-broccolidb-runtime-memory-fast:
+	DIETCODE_REPO_ROOT=$(CURDIR) python3 scripts/test_broccolidb_runtime_memory.py --compact
 
 test-runtime-native-integration: restart-agent-server
 	DIETCODE_REPO_ROOT=$(CURDIR) python3 scripts/dietcode_agent_client.py --wait-ready --compact --error-json --quiet

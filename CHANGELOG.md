@@ -114,4 +114,4 @@ See [docs/releases/v1.9.0.md](docs/releases/v1.9.0.md) and [kernel/MIGRATION.md]
 
 ## v1.8.0 and earlier
 
-Prior releases: BroccoliDB, BroccoliQ, JoyZoning governance, and JSDP Hermes integration.
+Prior releases: BroccoliDB, JoyZoning governance, and JSDP Hermes integration.
