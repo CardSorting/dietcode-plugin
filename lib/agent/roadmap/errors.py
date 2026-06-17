@@ -1,4 +1,4 @@
-"""Normalized roadmap error envelopes — kernel-style operator recovery."""
+"""Normalized roadmap error envelopes — operator recovery."""
 from __future__ import annotations
 
 import json

@@ -6,6 +6,55 @@ export type { Schema };
 
 const isBun = !!(globalThis as { Bun?: unknown }).Bun;
 
+async function openRawSqliteAsync(shardPath: string): Promise<unknown> {
+	if (isBun) {
+		// @ts-ignore
+		const { Database } = await import("bun:sqlite");
+		try {
+			return new Database(shardPath);
+		} catch (error: unknown) {
+			const err = error as { message?: string };
+			console.warn(`[Config] Bun sqlite open failed: ${err.message || error}`);
+			return new Database(":memory:");
+		}
+	}
+	// biome-ignore lint/suspicious/noExplicitAny: dynamic import
+	const Database = (await import("better-sqlite3") as any).default;
+	try {
+		return new Database(shardPath);
+	} catch (error: unknown) {
+		const err = error as { code?: string; message?: string };
+		const corrupt =
+			err.code === "SQLITE_CORRUPT" ||
+			err.message?.includes("corrupt") ||
+			err.message?.includes("malformed");
+		if (!corrupt) {
+			console.warn(
+				`[Config] Failed to open database at ${shardPath}: ${err.message || error}. Falling back to :memory:`,
+			);
+			return new Database(":memory:");
+		}
+		const corruptBackupPath = `${shardPath}.corrupt.${Date.now()}`;
+		console.warn(
+			`[Config] Database appears corrupt. Renaming to ${corruptBackupPath} and initializing fresh DB.`,
+		);
+		try {
+			if (fs.existsSync(shardPath)) fs.renameSync(shardPath, corruptBackupPath);
+			if (fs.existsSync(`${shardPath}-wal`))
+				fs.renameSync(`${shardPath}-wal`, `${corruptBackupPath}-wal`);
+			if (fs.existsSync(`${shardPath}-shm`))
+				fs.renameSync(`${shardPath}-shm`, `${corruptBackupPath}-shm`);
+			return new Database(shardPath);
+		} catch (recoveryError: unknown) {
+			const rec = recoveryError as { message?: string };
+			console.error(
+				`[Config] Database recovery failed: ${rec.message || recoveryError}. Using :memory:`,
+			);
+			return new Database(":memory:");
+		}
+	}
+}
+
 
 const _dbs = new Map<string, Kysely<Schema>>();
 const _rawDbs = new Map<string, unknown>();
@@ -13,6 +62,7 @@ const _initPromises = new Map<string, Promise<Kysely<Schema>>>();
 let _dbPath: string | null = null;
 const _isInitialized = new Set<string>();
 let _onDbPathChanged: (() => void) | null = null;
+let _lifecyclePromise: Promise<void> = Promise.resolve();
 
 export function registerDbPathChangeListener(listener: () => void) {
 	_onDbPathChanged = listener;
@@ -29,12 +79,18 @@ export function setDbPath(dbPath: string) {
 	const resolved = path.resolve(dbPath);
 	if (_dbPath === resolved) return;
 	_dbPath = resolved;
-	void destroyDb().then(() => {
-		if (_onDbPathChanged) _onDbPathChanged();
-	});
+	_lifecyclePromise = _lifecyclePromise
+		.then(async () => {
+			await destroyDb();
+			if (_onDbPathChanged) _onDbPathChanged();
+		})
+		.catch((err) => {
+			console.error("[Config] Error in database path change transition:", err);
+		});
 }
 
 export async function getDb(shardId: string = "main"): Promise<Kysely<Schema>> {
+	await _lifecyclePromise;
 	const existing = _dbs.get(shardId);
 	if (existing) return existing;
 
@@ -58,20 +114,14 @@ export async function getDb(shardId: string = "main"): Promise<Kysely<Schema>> {
 			let rawDb: unknown;
 
 			if (isBun) {
-				// Native Bun Support: O(1) N-API Overhead reduction
-				// @ts-ignore
-				const { Database } = await import("bun:sqlite");
 				// @ts-ignore
 				const { BunSqliteDialect } = await import("kysely-bun-sqlite");
-				rawDb = new Database(shardPath);
+				rawDb = await openRawSqliteAsync(shardPath);
 				dialect = new BunSqliteDialect({
 					database: rawDb,
 				});
 			} else {
-				// Production-grade Node Support
-				// biome-ignore lint/suspicious/noExplicitAny: Dynamic import requires any
-				const Database = (await import("better-sqlite3") as any).default;
-				rawDb = new Database(shardPath);
+				rawDb = await openRawSqliteAsync(shardPath);
 				dialect = new SqliteDialect({
 					// biome-ignore lint/suspicious/noExplicitAny: Kysely database type mismatch
 					database: rawDb as any,
@@ -126,14 +176,14 @@ export async function closeAllShards() {
 			// Ensure WAL checkpointing before hard closure if possible
 			// (Though BufferedDbPool should have done it already)
 			await db.destroy();
-			_dbs.delete(shardId);
-			_rawDbs.delete(shardId);
-			_initPromises.delete(shardId);
-			_isInitialized.delete(shardId);
 		} catch (e) {
 			console.error(`[Config] Failed to close shard ${shardId}:`, e);
 		}
 	}
+	_dbs.clear();
+	_rawDbs.clear();
+	_initPromises.clear();
+	_isInitialized.clear();
 }
 
 /** Close all shard handles (v30 BufferedDbPool lifecycle compat). */

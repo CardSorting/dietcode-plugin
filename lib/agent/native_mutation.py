@@ -579,20 +579,20 @@ class NativeMutationManager:
             state_before = self.read_mutation_state(workspace)
             revision_before = state_before.workspace_revision
             revision_after = revision_before + 1
-            kernel_result = {
+            mutation_result = {
                 "mutationReceipt": receipt,
                 "operationId": str(uuid.uuid4()),
                 "patched": True,
                 "revisionBefore": revision_before,
                 "revisionAfter": revision_after,
             }
-            self._record_mutation_receipt(workspace, receipt, kernel_result, task_id)
+            self._record_mutation_receipt(workspace, receipt, mutation_result, task_id)
             return {
                 "ok": True,
                 "workspace_root": str(workspace),
                 "path": file_path,
                 "taskId": task_id or None,
-                "kernel": kernel_result,
+                "mutation": mutation_result,
             }
         except Exception as exc:
             return {
@@ -654,7 +654,7 @@ class NativeMutationManager:
         self,
         workspace: Path,
         receipt: dict[str, Any],
-        kernel_result: dict[str, Any],
+        mutation_result: dict[str, Any],
         task_id: str,
     ) -> None:
         session_receipt = {
@@ -662,7 +662,7 @@ class NativeMutationManager:
             "taskId": task_id or None,
             "workspace": str(workspace),
             "receipt": receipt,
-            "kernelResult": kernel_result,
+            "mutationResult": mutation_result,
         }
         for history_path in (
             workspace / ".dietcode" / "mutation-history.json",
@@ -689,6 +689,26 @@ class NativeMutationManager:
         for token in state.coherence_tokens.values():
             token.anchors[receipt["path"]] = receipt["postContentHash"]
         self.write_mutation_state(workspace, state)
+
+    def auto_track_file_read(self, workspace: Path, file_path: str, task_id: str = "") -> None:
+        if not task_id:
+            return
+        full_path = (workspace / file_path).resolve()
+        if not is_path_in_workspace(workspace, full_path):
+            return
+        try:
+            rel_path = str(full_path.relative_to(workspace.resolve()))
+            current_hash = _file_hash(full_path)
+            if not current_hash:
+                return
+            state = self.read_mutation_state(workspace)
+            state.tracked_file_hashes[rel_path] = current_hash
+            for token in state.coherence_tokens.values():
+                if token.task_id == task_id:
+                    token.anchors[rel_path] = current_hash
+            self.write_mutation_state(workspace, state)
+        except OSError:
+            pass
 
 
 def resolve_workspace(override: str | None = None) -> tuple[Path | None, str | None]:

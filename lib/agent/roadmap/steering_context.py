@@ -48,7 +48,7 @@ def _roadmap_steering_fields(root: Path, path: Path) -> dict[str, Any]:
 
 
 def build_steering_context(*, workspace: Optional[str] = None) -> dict[str, Any]:
-    """Resolve project workspace + ROADMAP path with safety signals (kernel cockpit pattern)."""
+    """Resolve project workspace + ROADMAP path with safety signals (LUMI cockpit pattern)."""
     from plugins.dietcode.lib.agent.roadmap.config import RoadmapWorkspaceError, resolve_workspace
 
     if workspace and str(workspace).strip():

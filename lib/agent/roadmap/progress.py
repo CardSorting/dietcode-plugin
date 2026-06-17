@@ -101,7 +101,7 @@ def read_tail(*, lines: int = DEFAULT_TAIL) -> list[dict[str, Any]]:
 
 
 def read_current() -> dict[str, Any]:
-    """Latest roadmap tool event snapshot (kernel progress-current analogue)."""
+    """Latest roadmap tool event snapshot (progress --current analogue)."""
     path = progress_current_path()
     if not path.is_file():
         return {}
@@ -113,7 +113,7 @@ def read_current() -> dict[str, Any]:
 
 
 def read_progress_current() -> dict[str, Any]:
-    """Alias for kernel ergonomics parity."""
+    """Alias for operator ergonomics parity."""
     return read_current()
 
 
@@ -132,7 +132,7 @@ def summarize_recent_events(*, last: int = 5) -> list[dict[str, Any]]:
 
 
 def build_progress_snapshot(*, workspace: Optional[str] = None) -> dict[str, Any]:
-    """Full progress + steering snapshot (kernel progress --current analogue)."""
+    """Full progress + steering snapshot (progress --current analogue)."""
     from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace_root
     from plugins.dietcode.lib.agent.roadmap.operator import is_bootstrap_incomplete, recommend_next_action
     from plugins.dietcode.lib.agent.roadmap.snapshot import get_workspace_snapshot

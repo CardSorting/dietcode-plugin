@@ -23,11 +23,6 @@ def broccolidb_root() -> Path:
     return plugin_root() / "broccolidb"
 
 
-def kernel_root() -> Path:
-    """Deprecated — macOS kernel subtree removed; kept for import compatibility."""
-    return get_plugin_root() / ".removed-kernel"
-
-
 def _integration_marker() -> Path:
     try:
         from hermes_constants import get_hermes_home
@@ -140,11 +135,6 @@ def apply_seamless_defaults(*, save: bool = True) -> dict[str, Any]:
         if isinstance(ws_cfg, dict) and "workspace_root_source" not in ws_cfg:
             ws_cfg["workspace_root_source"] = "hermes_project"
             changed.append("dietcode.workspace.workspace_root_source")
-        # Back-compat: also seed legacy kernel.workspace_root_source when absent.
-        kernel_cfg = dietcode.setdefault("kernel", {})
-        if isinstance(kernel_cfg, dict) and "workspace_root_source" not in kernel_cfg:
-            kernel_cfg["workspace_root_source"] = "hermes_project"
-            changed.append("dietcode.kernel.workspace_root_source")
 
         roadmap_cfg = dietcode.setdefault("roadmap", {})
         if isinstance(roadmap_cfg, dict):
@@ -194,12 +184,7 @@ def apply_seamless_defaults(*, save: bool = True) -> dict[str, Any]:
     return {"ok": True, "changed": changed, "saved": bool(save and changed)}
 
 
-def ensure_kernel_built(*, auto_build: bool = False, timeout: int = 600) -> dict[str, Any]:
-    """Deprecated — native mutation replaced macOS kernel bridge."""
-    return {"ok": True, "action": "removed", "hint": "kernel subtree removed; use dietcode_kernel native tool"}
-
-
-def run_install_wizard(*, auto_npm: bool = True, auto_kernel: bool = False) -> dict[str, Any]:
+def run_install_wizard(*, auto_npm: bool = True) -> dict[str, Any]:
     """CLI / drag-and-drop installer — config + optional npm ci."""
     cfg = apply_seamless_defaults(save=True)
     runtime = ensure_broccolidb_runtime(auto_npm=auto_npm)
@@ -466,7 +451,6 @@ def deploy_to_hermes(
     sync_bundled_copy: bool = True,
     reinstall_hermes: bool = True,
     auto_npm: bool = True,
-    auto_kernel: bool = False,
     enable_plugin: bool = True,
     verify: bool = True,
     run_tests: bool = True,
@@ -529,7 +513,7 @@ def deploy_to_hermes(
             raise ImportError("could not load install.py from plugin dest")
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        install_result = mod.run_install_wizard(auto_npm=auto_npm, auto_kernel=auto_kernel)
+        install_result = mod.run_install_wizard(auto_npm=auto_npm)
         report["install"] = install_result
         if not install_result.get("ok"):
             report["ok"] = False
@@ -573,7 +557,6 @@ if __name__ == "__main__":
     parser.add_argument("--skip-npm", action="store_true")
     parser.add_argument("--skip-verify", action="store_true")
     parser.add_argument("--skip-tests", action="store_true")
-    parser.add_argument("--build-kernel", action="store_true")
     parser.add_argument("--no-enable", action="store_true", help="Skip hermes plugins enable dietcode")
     args = parser.parse_args()
 
@@ -584,7 +567,6 @@ if __name__ == "__main__":
             sync_bundled_copy=not args.skip_bundled_sync,
             reinstall_hermes=not args.skip_hermes_reinstall,
             auto_npm=not args.skip_npm,
-            auto_kernel=args.build_kernel,
             enable_plugin=not args.no_enable,
             verify=not args.skip_verify,
             run_tests=not args.skip_tests,
@@ -592,7 +574,6 @@ if __name__ == "__main__":
     else:
         result = run_install_wizard(
             auto_npm=not args.skip_npm,
-            auto_kernel=args.build_kernel,
         )
 
     print(json.dumps(result, indent=2))

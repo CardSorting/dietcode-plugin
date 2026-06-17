@@ -95,7 +95,7 @@ def _suggest_replacement(
             centralize or signal_text or f"Code soup risk: {soup.get('overall_risk', 'Low')} — see code_soup_pre_audit.",
             "code_soup_pre_audit",
         ),
-        "Runtime and mutation authority documented in project docs; plugin/kernel trees are not project roots.": (
+        "Runtime and mutation authority documented in project docs; plugin install trees are not project roots.": (
             runtime or "Runtime authority in repo manifests; ROADMAP.md stays in project workspace only.",
             "project_fingerprint.runtime_center_hint",
         ),
@@ -272,7 +272,7 @@ def _runtime_authority_hint(fingerprint: dict[str, Any], archetype: str) -> str:
     if runtime:
         return runtime
     if archetype == "hermes-plugin":
-        return "Hermes plugin.yaml and hooks define runtime authority; kernel trees are not project roots."
+        return "Hermes plugin.yaml and hooks define runtime authority; use dietcode_kernel for governed patches — never the plugin install tree."
     return "Document runtime, state, mutation, and diagnostic authority in repo manifests and docs."
 
 
@@ -326,7 +326,7 @@ def _workflow_hint(
 
 def _anti_goal(archetype: str, *, brief: str = "") -> str:
     goals = {
-        "hermes-plugin": "A Hermes plugin that stores ROADMAP.md outside the project workspace or drifts from kernel hook conventions.",
+        "hermes-plugin": "A Hermes plugin that stores ROADMAP.md outside the project workspace or drifts from native mutation hook conventions.",
         "monorepo": "A monorepo without documented package boundaries and shared center of gravity.",
         "web-app": "A web app whose UI, API, and deploy surfaces diverge without documented authority boundaries.",
         "cli-tool": "A CLI whose entrypoints multiply without a documented operational center.",

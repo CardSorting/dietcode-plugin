@@ -66,6 +66,7 @@ export type { CapabilityHealth } from './agent-context/capability-health.js';
 export { CapabilityBase } from './agent-context/CapabilityBase.js';
 export type * from './agent-context/intent-types.js';
 export { IntentTracer } from './agent-context/IntentTracer.js';
+export { RuntimeStateGraph } from './orchestration/state/RuntimeStateGraph.js';
 import type { BroccoliDbHealth, KnowledgeBaseItem, ServiceContext } from './agent-context/types.js';
 import type { CapabilityHealth } from './agent-context/capability-health.js';
 import { LRUCache } from './lru-cache.js';

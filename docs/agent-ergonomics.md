@@ -1,241 +1,56 @@
-# Agent ergonomics and kernel observability
+# Agent ergonomics
 
-Phase 6 operator workflow for long coherent mutation cycles. The kernel bridge
-works; this pass makes it **legible** — agents and operators can see what phase
-the system is in without adding mutation authority.
+Operator workflow for governed mutation cycles and long-horizon roadmap steering.
+Distilled from LUMI / codemarie-new — native mutation replaces the legacy macOS
+socket bridge.
 
-## Quick operator loop
+## Native mutation operator loop
 
 ```text
-1. /dietcode kernel cockpit        → one-screen state, gates, next action
-2. /dietcode kernel status          → gates, socket, workspace
-3. dietcode_kernel(action='patch') → governed mutation (instant ack in progress + result)
-4. /dietcode kernel watch          → compact live line with operation state
-5. /dietcode kernel progress       → human summary + next-phase hints
-6. dietcode_kernel(action='verify')→ allowlisted verify.run
-7. /dietcode kernel perf --ux      → responsiveness budgets
-8. /dietcode kernel last-error     → normalized failure envelope (if any)
+1. /dietcode mutation status          → workspace revision, drift, coherence tokens
+2. dietcode_kernel(action='status')   → same via tool JSON
+3. dietcode_kernel(action='coherence', paths=[…])  → before multi-file edits
+4. dietcode_kernel(action='patch')    → governed mutation with receipts
+5. dietcode_kernel(action='verify')   → run verification command
+6. joyzoning(action='verify')         → journal verification into lifecycle
+7. convergence_status                 → kanban_complete_allowed gate
 ```
 
-Progress is written automatically. You do not need to opt in.
+State lives in `.dietcode/mutation-state.json` under the project workspace.
+`read_file` auto-tracks file hashes when `HERMES_KANBAN_TASK` is set.
 
-## Progress storage
+### Storage
 
 | Path | Purpose |
 | --- | --- |
-| `~/.dietcode/session/kernel-progress.jsonl` | Append-only structured event log |
-| `~/.dietcode/session/kernel-progress-current.json` | Latest operation snapshot |
+| `.dietcode/mutation-state.json` | Workspace revision, tracked hashes, coherence tokens |
+| `.dietcode/mutation-history.json` | Optional local mutation receipt history |
+| `~/.dietcode/session/mutation-receipts.json` | Session-scoped receipt tail |
 
-Events include: `correlation_id`, `operation_id`, monotonic `ts_mono`, `duration_ms`,
-`phase`, `string_code`, `taskId`, `action`, `path`, `workspace_root`, `elapsed_ms`,
-`attempt`.
-
-### Phases
-
-| Phase | Meaning |
-| --- | --- |
-| `operation.accepted` | Immediate ack — operation_id, phase sequence, next hint |
-| `patch.staging` | Pre-apply mutation summary (files, bytes, taskId, verify hint) |
-| `bridge.heartbeat` | Coalesced long-phase heartbeat (still verifying…, elapsed) |
-| `bridge.preflight` | Config/workspace checks after ack |
-| `socket.ready` | Control socket + token available |
-| `workspace.open` | Kernel workspace opened on validated root |
-| `coherence.read` | Coherence-aware file read |
-| `coherence.anchor_refresh` | Anchor refresh / coherence retry |
-| `patch.validate` | Patch validation RPC |
-| `patch.apply` | Governed mutation RPC |
-| `approval.waiting` | Kernel approval required |
-| `verify.running` | `verify.run` in flight |
-| `journal.recording` | JoyZoning journal hook (non-blocking) |
-| `convergence.checking` | Verify journal + convergence context |
-| `done` | Operation completed successfully |
-| `error` | Operation failed |
-| `bridge.progress_stalled` | No progress update for 15s |
-
-## Slash commands
+### Slash commands
 
 | Command | Output |
 | --- | --- |
-| `/dietcode kernel progress` | Human summary (e.g. `patch applying: src/foo.py, attempt 2, 38s elapsed`) |
-| `/dietcode kernel progress --timeline` | Ordered phase timeline with durations |
-| `/dietcode kernel progress --last 5` | Summary of last N operations |
-| `/dietcode kernel progress --operation <id>` | Filter `--tail` / `--timeline` to one operation |
-| `/dietcode kernel progress --tail` | JSON tail of progress JSONL |
-| `/dietcode kernel progress --current` | Full current snapshot JSON |
-| `/dietcode kernel last-error` | Last normalized error envelope |
-| `/dietcode kernel explain-gate` | Closed gates, fixes, raw-write behavior |
-| `/dietcode kernel watch` | Compact single-line live summary |
-| `/dietcode kernel watch --follow` | Auto-refresh every ~1.5s (up to 30s) |
-| `/dietcode kernel perf --ux --last 10` | Ack latency, silent gaps, UX budget pass/fail |
-| `/dietcode kernel cockpit` | One-screen operator summary |
+| `/dietcode mutation` | Native mutation health JSON |
+| `/dietcode mutation status` | Compact workspace revision + drift summary |
+| `/dietcode doctor` | Full integration health (includes mutation probe) |
 
-Error and warn envelopes include: `next_action`, `safe_to_retry`, `retry_command`,
-`diagnostic_command`, `rollback_command` (when relevant).
+### Agent-facing hints
 
-`/dietcode doctor` and `/dietcode kernel status` also surface **stale progress**
-when an operation has not updated for 15 seconds.
+`dietcode_kernel` patch/verify results are journaled into JoyZoning via
+`post_tool_call` hooks. Pair governed patches with `joyzoning(action='begin')`
+and `joyzoning(action='patch')` for lifecycle coherence.
 
-## Agent-facing hints
+ROADMAP.md writes (via `write_file`, `patch`, or `dietcode_kernel`) receive
+`_roadmap_write_hint` with `preferred_command: roadmap(action='validate')`.
 
-`dietcode_kernel` responses include `_kernel_operator_hints`:
+### When mutation feels wrong
 
-- `workspace_root` — resolved mutation workspace
-- `mutation_safe` — whether workspace passes safe_for_mutation
-- `patch_allowed` — whether governed patch is available
-- `preferred_command` — exact tool invocation shape
-- `missing_gate` — closed gate id when patch unavailable
-- `recovery_suggestion` — plain-language next step
-- `suggested_slash_command` — operator command to run
-
-On failure, `_kernel_error_envelope` adds:
-
-- `human_message`, `operator_action`, `retryable`, `phase`, `raw_error` summary
-
-Raw `write_file` / `patch` warn/block payloads (Phase 3A/3B) include the same
-`preferred_command`, `recovery_suggestion`, and `suggested_slash_command` fields.
-
-## When the kernel feels stuck
-
-Work through this list in order — each step is read-only or diagnostic:
-
-1. **Check progress** — `/dietcode kernel progress`  
-   Human summary: `patch applying…`, `waiting for approval…`, `verify running…`, or `stalled: last phase …`.
-
-2. **Check timeline** — `/dietcode kernel progress --timeline`  
-   See which phase is taking time and how long each step lasted.
-
-3. **Check last error** — `/dietcode kernel last-error`  
-   Normalized envelope with `next_action`, `safe_to_retry`, and `retry_command`.
-
-4. **Explain gates** — `/dietcode kernel explain-gate`  
-   Lists closed gates, exact config/env fix, whether the fix is safe, and current `raw_write_policy` behavior.
-
-5. **Verify socket/token** — `/dietcode kernel status`  
-   `socket=live` and `token=ok` required for governed patch/verify.
-
-6. **Fallback to raw writes** — patch gate closed or kernel unavailable  
-   Raw `write_file` / `patch` remain available unless block mode is active (config + `DIETCODE_KERNEL_RAW_WRITE_BLOCK=1`).
-
-7. **Rollback block mode** — if raw writes are hard-blocked  
-   Set `raw_write_policy: allow` (or `warn`), unset `DIETCODE_KERNEL_RAW_WRITE_BLOCK`, reload Hermes.  
-   `/dietcode kernel explain-gate` shows the exact rollback line when block mode is on.
-
-For multiple operations in one session: `/dietcode kernel progress --last 5` or  
-`/dietcode kernel progress --operation <operation_id> --timeline`.
-
-## Performance (Phase 7)
-
-Measure before tuning: `/dietcode kernel perf --last 10`
-
-Optional bridge config (safe defaults seeded by install):
-
-```yaml
-dietcode:
-  kernel:
-    bridge:
-      preflight_cache_ttl_ms: 5000
-      workspace_open_cache: true
-      progress_flush_interval_ms: 250
-      verify_timeout_ms: 0          # 0 = use request_timeout_sec
-      max_concurrent_mutations_per_workspace: 1
-```
-
-Bench script: `python scripts/kernel_bridge_perf.py --compact`
-
-## Responsiveness (Phase 7B)
-
-Perceived performance without weakening safety gates:
-
-- **Instant ack** — `operation.accepted` within ~100ms; `_kernel_acknowledgement` on tool results
-- **Next-phase hints** — `next: patch.validate`, etc.; stall events include `waiting_reason`
-- **Heartbeats** — coalesced `bridge.heartbeat` during verify/approval/coherence/patch/journal
-- **Watch mode** — `/dietcode kernel watch` compact lines like `PATCH 7fd2 applying src/foo.py (12s)`
-- **Pre-stage summary** — `patch.staging` before apply (files, bytes, taskId, verify hint)
-- **UX perf** — `/dietcode kernel perf --ux --last 10` (ack latency, silent windows)
-- **Long-run tiers** — 30s / 60s / 120s stress notes with suggested diagnostics
-
-Optional warm idle state:
-
-```yaml
-dietcode:
-  kernel:
-    bridge:
-      keep_warm: false
-      keep_warm_idle_timeout_ms: 120000
-      keep_warm_ping_interval_ms: 30000
-```
-
-## Cockpit (Phase 7C)
-
-Release-grade operator UX — no mutation semantics changes.
-
-### Operation states
-
-Progress, watch, cockpit, and `perf --ux` normalize phases into:
-
-`idle` · `accepted` · `preparing` · `validating` · `recovering` · `applying` ·
-`verifying` · `journaling` · `blocked` · `stalled` · `failed` · `complete`
-
-### Symbols
-
-UTF-8 terminals: `✓` complete · `!` warning · `✕` failed · `…` running  
-ASCII fallback: set `DIETCODE_ASCII_ONLY=1`
-
-### Next action (exactly one)
-
-Every cockpit/progress view recommends one of:
-
-`wait` · `check last-error` · `run explain-gate` · `retry` · `rollback block mode` ·
-`start kernel socket` · `enable mutations` · `set workspace root`
-
-### UX budgets (`perf --ux`)
-
-| Metric | Budget |
-| --- | --- |
-| Time to acknowledgement | < 100ms |
-| Time to first progress | < 500ms |
-| Silent window (active) | < 5s |
-
-Smoke: `python scripts/kernel_cockpit_smoke.py`
-
-## Sonic tempo (Phase 7D)
-
-High-tempo UX — **GOTTA GO FAST (with receipts)**. No mutation semantics changes.
-
-- **Instant ack** — `… PATCH accepted — src/foo.py` flushed before heavy work (<50ms target)
-- **Kinetic watch** — `/dietcode kernel watch --follow` — spinner, in-place line refresh, ANSI colors
-- **Micro-phase suppression** — sub-100ms noise hidden unless error/stall/recovery/approval
-- **Fast path** — `FAST PATH ACTIVE` when `mode: sonic_fast_path`
-- **ETA** — `~3s remaining` when history confidence is high (hidden otherwise)
-- **Event hooks** — optional local shell hooks (`event_hooks_enabled: false` by default)
-
-```yaml
-dietcode:
-  kernel:
-    bridge:
-      event_hooks_enabled: false
-      event_hooks:
-        operation_accepted: "echo dietcode ack"
-        operation_failed: "echo dietcode fail"
-        verify_passed: "echo dietcode verify ok"
-        stalled: "echo dietcode stalled"
-```
-
-Bench: `python scripts/kernel_sonic_bench.py --compact`  
-ASCII mode: `DIETCODE_ASCII_ONLY=1`
-
-## Troubleshooting
-
-| Symptom | Likely cause | What to run |
-| --- | --- | --- |
-| Silent patch | Long RPC without visible phase | `/dietcode kernel progress --current` |
-| Socket offline | `control.sock` down | `/dietcode kernel status` → `make -C kernel restart-agent-server-fast` |
-| Token missing | `session.token` absent | Restart agent server |
-| Unsafe workspace | Plugin/kernel root resolved | Set `HERMES_KANBAN_WORKSPACE` → `/dietcode kernel explain-gate` |
-| Patch gate closed | `mutations_enabled: false` | `/dietcode kernel explain-gate` |
-| Verify command rejected | Not on allowlist | `/dietcode kernel status` (allowlist count) |
-| Journal unavailable | JoyZoning disabled/DB down | Patch still succeeds; check `_journal_warning` on result |
-| Stalled operation | No progress for 15s+ | `/dietcode kernel progress` — look for `bridge.progress_stalled` |
+1. **Check workspace** — `HERMES_KANBAN_WORKSPACE` must point at the project root, not the plugin install tree.
+2. **Check status** — `dietcode_kernel(action='status')` for revision drift and coherence token expiry.
+3. **Refresh anchors** — `dietcode_kernel(action='refresh', paths=[…])` after external edits.
+4. **Re-issue coherence** — `dietcode_kernel(action='coherence', paths=[…])` before retrying patch.
+5. **Explain roadmap gates** — `/roadmap explain-gate` when kanban_complete is blocked.
 
 ## Roadmap checkpoint operator loop
 
@@ -273,9 +88,8 @@ Every roadmap JSON payload includes:
 | `project_fingerprint` | Raw signals inside checkpoint `evidence` |
 | `bootstrap_fill_plan` | Evidence-backed placeholder replacements (when incomplete) |
 
-Fingerprint sources: README, Makefile, `package.json`, CI workflows, AGENTS.md,
-`.cursor/rules`, Backstage `catalog-info.yaml`, Docker Compose, Renovate,
-Biome/ESLint/Ruff, issue templates, and more. See [roadmap.md](roadmap.md).
+Use `roadmap(action='checkpoint', context='digest')` for a compact evidence bundle
+when full checkpoint payloads are too heavy.
 
 ### Operator loop
 
@@ -317,10 +131,10 @@ Section 9 code soup audit is mandatory. Keep Now ≤ 5 items.
 - Dedicated Hermes toolset: `roadmap` (tools: `roadmap`, `roadmap_checkpoint`)
 - `joyzoning(action='context')` → session brief + `project_identity_line` + merged `next_actions`
 - `joyzoning(action='roadmap')` → full cockpit payload
-- `/dietcode kernel cockpit` → merges roadmap steering (Project, Identity, Verify)
+- `/dietcode roadmap cockpit` → merges roadmap steering (Project, Identity, Verify)
 - Stale checkpoint blocks `kanban_complete` when `warn_on_stale_before_complete` is enabled
 - Unvalidated ROADMAP.md edits block `kanban_complete` when `block_kanban_on_validation_pending` is enabled (default)
-- `write_file` / `patch` on `ROADMAP.md` → `_roadmap_write_hint` → validate follow-up
+- `write_file` / `patch` / `dietcode_kernel` on `ROADMAP.md` → `_roadmap_write_hint` → validate follow-up
 - Roadmap tool calls emit `roadmap.*` runtime events with `project_identity_line` in telemetry
 
 Checkpoint evidence (tier `full`): README/arch excerpts, git history, TODO markers,
@@ -329,21 +143,20 @@ test file count, `code_soup_audit`, and embedded steering profile on every bundl
 ### Verification
 
 ```bash
-make verify   # smoke + production audit + operator smoke + 121 unit tests
+make verify   # smoke + production audit + operator smoke + unit tests
 ```
 
 Smoke: `python scripts/roadmap_smoke.py` · operator: `python scripts/roadmap_operator_smoke.py` · audit: `python scripts/roadmap_audit.py`
 
-## Constraints (unchanged)
+## Historical kernel bridge (v1.9.x)
 
-- No new mutation authority
-- Safety fuses and convergence gate preserved
-- Kanban never auto-completed from kernel progress
-- Linux degrades gracefully (no socket — progress commands still work; logs empty)
+v1.9.0–v1.9.4 documented a macOS socket kernel bridge with progress telemetry,
+cockpit UX, and raw-write warn/block policies. **v1.11.0 removed** the `kernel/`
+subtree in favor of native mutation (`lib/agent/native_mutation.py`). Release
+notes for the kernel era remain in [releases/](releases/).
 
 ## Related
 
-- [kernel-bridge-operations.md](kernel-bridge-operations.md) — bridge config and rollback
+- [architecture.md](architecture.md) — runtime layout and hook wiring
 - [roadmap.md](roadmap.md) — per-project ROADMAP steering, fingerprint, bootstrap autofill
 - [tools-reference.md](tools-reference.md) — `dietcode_kernel` and `roadmap` tools
-- [../kernel/docs/agent-ergonomics.md](../kernel/docs/agent-ergonomics.md) — native kernel checkpoint model

@@ -53,7 +53,7 @@ BOOTSTRAP_PLACEHOLDER_PHRASES: tuple[str, ...] = (
     "Initial audit from evidence bundle.",
     "Evidence-backed initial audit — see code_soup_pre_audit in checkpoint payload.",
     "Document runtime, state, mutation, and diagnostic authority.",
-    "Runtime and mutation authority documented in project docs; plugin/kernel trees are not project roots.",
+    "Runtime and mutation authority documented in project docs; plugin install trees are not project roots.",
     "Review recent git changes for isolated patterns.",
     "Confirm canonical patch and inspection paths are obvious.",
     "One recommendation to strengthen project gravity.",
@@ -396,7 +396,7 @@ def bootstrap_skeleton_from_evidence(evidence: dict[str, Any], *, workspace: str
     if archetype == "monorepo":
         anti_goals = "A monorepo without documented package boundaries and shared center of gravity."
     elif archetype == "hermes-plugin":
-        anti_goals = "A Hermes plugin that drifts from kernel conventions or stores ROADMAP.md outside the project workspace."
+        anti_goals = "A Hermes plugin that drifts from native mutation conventions or stores ROADMAP.md outside the project workspace."
 
     health_summary = "Initial roadmap bootstrap."
     if fingerprint.get("steering_brief"):
@@ -553,7 +553,7 @@ Evidence-backed initial audit — see code_soup_pre_audit in checkpoint payload.
 ### Authority Boundaries
 
 **Assessment:**  
-Runtime and mutation authority documented in project docs; plugin/kernel trees are not project roots.
+Runtime and mutation authority documented in project docs; plugin install trees are not project roots.
 
 ### Structural Drift
 

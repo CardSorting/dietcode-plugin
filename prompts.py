@@ -23,6 +23,26 @@ KANBAN_BROCCOLIDB_GUIDANCE = (
     "detect kanban/hive mismatches before they compound.\n"
 )
 
+MUTATION_KERNEL_GUIDANCE = (
+    "## Governed native mutation (tool: `dietcode_kernel`)\n"
+    "\n"
+    "Use `dietcode_kernel` for coherence-aware patches and verification — no external binary.\n"
+    "State lives in `.dietcode/mutation-state.json` under the project workspace.\n"
+    "\n"
+    "| Action | When |\n"
+    "|--------|------|\n"
+    "| `dietcode_kernel(action='status')` | Workspace revision, tracked hashes, coherence tokens |\n"
+    "| `dietcode_kernel(action='search', query=…)` | Literal search before patching |\n"
+    "| `dietcode_kernel(action='coherence', paths=[…])` | Issue token before multi-file edits |\n"
+    "| `dietcode_kernel(action='patch', path=…, unified_diff=…)` | Governed patch with anchor checks |\n"
+    "| `dietcode_kernel(action='verify', command=…)` | Run verification command; journals to JoyZoning |\n"
+    "| `dietcode_kernel(action='refresh', paths=[…])` | Refresh file anchors after external edits |\n"
+    "\n"
+    "Pair with JoyZoning: `joyzoning(action='begin')` → patch → `joyzoning(action='verify')`.\n"
+    "ROADMAP.md patches via `dietcode_kernel` receive the same `_roadmap_write_hint` as write_file.\n"
+    "Reads via `read_file` auto-track hashes when `HERMES_KANBAN_TASK` is set.\n"
+)
+
 ROADMAP_GUIDANCE = (
     "## Auto-rolling roadmap checkpoint (tool: `roadmap`)\n"
     "\n"
@@ -151,6 +171,7 @@ def build_dietcode_guidance(valid_tool_names: AbstractSet[str]) -> str:
     has_roadmap = "roadmap" in valid_tool_names or "roadmap_checkpoint" in valid_tool_names
     has_broccolidb_bridge = any(n.startswith("kanban_broccolidb_") for n in valid_tool_names)
     has_kanban_worker = "kanban_show" in valid_tool_names
+    has_mutation_kernel = "dietcode_kernel" in valid_tool_names
 
     if has_roadmap:
         try:
@@ -162,6 +183,8 @@ def build_dietcode_guidance(valid_tool_names: AbstractSet[str]) -> str:
         except Exception:
             pass
         parts.append(ROADMAP_GUIDANCE)
+    if has_mutation_kernel:
+        parts.append(MUTATION_KERNEL_GUIDANCE)
     if has_joyzoning:
         parts.append(JOYZONING_GUIDANCE)
     elif has_kanban_worker and has_broccolidb_bridge:

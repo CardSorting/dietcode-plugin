@@ -52,13 +52,32 @@ class NativeMutationTests(unittest.TestCase):
                 line_replace="hello native",
             )
             self.assertTrue(patched.get("ok"))
-            self.assertIn("kernel", patched)
+            self.assertIn("mutation", patched)
             self.assertEqual(target.read_text(encoding="utf-8"), "hello native\n")
 
             state_path = root / ".dietcode" / "mutation-state.json"
             self.assertTrue(state_path.is_file())
             state = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertGreaterEqual(state.get("workspaceRevision", 0), 2)
+
+    def test_auto_track_file_read_updates_anchors(self) -> None:
+        from plugins.dietcode.lib.agent.native_mutation import NativeMutationManager
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "tracked.txt"
+            target.write_text("anchor me\n", encoding="utf-8")
+
+            mgr = NativeMutationManager.get_instance()
+            token = mgr.issue_coherence_token(root, "task-1", ["tracked.txt"])
+            token_id = token["tokenId"]
+
+            mgr.auto_track_file_read(root, "tracked.txt", "task-1")
+
+            state = json.loads((root / ".dietcode" / "mutation-state.json").read_text(encoding="utf-8"))
+            self.assertIn("tracked.txt", state.get("trackedFileHashes", {}))
+            anchors = state["coherenceTokens"][token_id]["anchors"]
+            self.assertIn("tracked.txt", anchors)
 
 
 if __name__ == "__main__":

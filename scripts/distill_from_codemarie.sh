@@ -31,6 +31,7 @@ PRESERVE=(
   "infrastructure/db/Benchmark.ts"
   "infrastructure/db/IntegrityWorker.ts"
   "infrastructure/db/VerifySharding.ts"
+  "core/agent-context/InvariantEngine.ts"
 )
 
 TMP_BACKUP="$(mktemp -d)"
@@ -54,6 +55,10 @@ rsync -a --delete \
   --exclude node_modules \
   --exclude dist \
   --exclude '*.db' \
+  --exclude '*.db-wal' \
+  --exclude '*.db-shm' \
+  --exclude 'benchmark.db' \
+  --exclude 'test-production.db' \
   --exclude 'broccolidb-failed-flush-*.json' \
   --exclude 'workspaces/' \
   "$BDB_SRC/" "$BDB_DEST/"
@@ -73,3 +78,44 @@ for test in reembed_all.test.ts semantic_search.test.ts; do
 done
 
 echo "Done. Run: cd broccolidb && npm ci && npm run build && npm test"
+
+if [[ "${BUILD:-1}" != "0" ]]; then
+  echo "Building broccolidb..."
+  (cd "$BDB_DEST" && npm ci && npm run build)
+  if command -v diff >/dev/null 2>&1; then
+    CORE_DRIFT=$(diff -rq "$BDB_SRC/core" "$BDB_DEST/core" 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$CORE_DRIFT" != "0" ]]; then
+      echo "warn: core/ still differs after distill ($CORE_DRIFT lines) — check PRESERVE overlays" >&2
+    else
+      echo "core/ mirrored OK"
+    fi
+  fi
+fi
+
+# Optional skills (shared between LUMI and Hermes plugin).
+SKILL_SRC="$SRC/optional-skills/dietcode"
+SKILL_DEST="$DEST/optional-skills/dietcode"
+if [[ -d "$SKILL_SRC" ]]; then
+  echo "Distilling optional-skills/dietcode from $SKILL_SRC → $SKILL_DEST"
+  rsync -a --delete \
+    --exclude '.DS_Store' \
+    "$SKILL_SRC/" "$SKILL_DEST/"
+fi
+
+# Monorepo docs required by broccolidb guardrail tests (capabilities, intent tracing).
+DOC_API_SRC="$SRC/docs/api"
+DOC_API_DEST="$DEST/docs/api"
+if [[ -d "$DOC_API_SRC" ]]; then
+  echo "Distilling docs/api from $DOC_API_SRC → $DOC_API_DEST"
+  rsync -a \
+    "$DOC_API_SRC/" "$DOC_API_DEST/" \
+    --exclude '.DS_Store'
+fi
+
+ARCH_HIST_SRC="$SRC/docs/history/architecture"
+ARCH_HIST_DEST="$DEST/docs/history/architecture"
+if [[ -d "$ARCH_HIST_SRC" ]]; then
+  echo "Distilling docs/history/architecture from $ARCH_HIST_SRC → $ARCH_HIST_DEST"
+  mkdir -p "$ARCH_HIST_DEST"
+  rsync -a "$ARCH_HIST_SRC/" "$ARCH_HIST_DEST/"
+fi

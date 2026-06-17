@@ -165,7 +165,7 @@ _GATE_CHECKS: tuple[GateCheck, ...] = (
         "label": "Roadmap feature enabled",
         "is_open": _check_enabled,
         "why_closed": "dietcode.roadmap.enabled is false",
-        "fix": "Set dietcode.roadmap.enabled: true in Hermes config",
+        "fix": "Set dietcode.roadmap.enabled: true in Hermes config (or MIRA_ROADMAP_ENABLED=true)",
         "safe": True,
         "blocks_kanban_complete": False,
     },
@@ -236,7 +236,7 @@ _GATE_CHECKS: tuple[GateCheck, ...] = (
 
 
 def evaluate_gate_checks(inputs: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
-    """Return (closed_gates, open_gate_ids) in kernel explain-gate shape."""
+    """Return (closed_gates, open_gate_ids) in explain-gate shape."""
     closed: list[dict[str, Any]] = []
     open_ids: list[str] = []
     fp = inputs.get("project_fingerprint") or {}

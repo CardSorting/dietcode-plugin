@@ -138,7 +138,7 @@ def _candidate_from_kanban_config() -> tuple[Optional[str], str]:
 
 
 def resolve_workspace(*, explicit: Optional[str] = None) -> tuple[str, str]:
-    """Resolve the user project workspace for ROADMAP.md (never plugin/kernel trees).
+    """Resolve the user project workspace for ROADMAP.md (never plugin install trees).
 
     Returns ``(absolute_path, resolution_source)``.
     """
@@ -150,10 +150,10 @@ def resolve_workspace(*, explicit: Optional[str] = None) -> tuple[str, str]:
     try:
         from plugins.dietcode.lib.workspace_root import (
             is_quarantined_root,
-            resolve_workspace_root as resolve_kernel_workspace,
+            resolve_workspace_root as resolve_project_workspace,
         )
 
-        report = resolve_kernel_workspace()
+        report = resolve_project_workspace()
         candidate = report.resolved_workspace_root
         if candidate and not is_quarantined_root(candidate):
             return candidate, report.resolution_detail

@@ -1,7 +1,8 @@
 # Tools Reference
 
 DietCode exposes slash commands and registered Hermes tools across BroccoliDB,
-JoyZoning, convergence, kanban bridge, and the **kernel authority bridge**.
+JoyZoning, convergence, kanban bridge, and the **native mutation runtime**
+(`dietcode_kernel`).
 
 ## Slash commands
 
@@ -15,21 +16,10 @@ Integration console.
 | `doctor` | Strict health report with refreshed tool load state. |
 | `tools` | Tool module load report. |
 | `broccolidb` | BroccoliDB root and RPC availability. |
-| `kernel` | Full kernel health JSON (binary, socket, bridge, workspace, verify). |
-| `kernel status` | Compact operator summary (bridge, policy, gates, allowlist count). |
-| `kernel progress` | Human summary of current operation phase. |
-| `kernel progress --timeline` | Ordered phase timeline with per-phase durations. |
-| `kernel progress --last N` | Summarize last N operations (id, action, status, duration). |
-| `kernel progress --operation <id>` | Filter `--tail` / `--timeline` to one operation. |
-| `kernel progress --tail` | JSON tail of `~/.dietcode/session/kernel-progress.jsonl`. |
-| `kernel progress --current` | Full current-state JSON snapshot. |
-| `kernel last-error` | Last normalized kernel bridge error envelope. |
-| `kernel explain-gate` | Closed gates, config/env fixes, raw-write behavior. |
-| `kernel perf --last 10` | Phase timing breakdown (p50/p95 per bucket). |
-| `kernel perf --ux --last 10` | Perceived responsiveness (ack latency, silent gaps). |
-| `kernel watch` | Compact single-line live operation summary. |
-| `kernel watch --follow` | Kinetic in-place refresh (~1s), spinner + ANSI when supported. |
-| `kernel cockpit` | One-screen summary: state, gates, last patch/verify, next action. |
+| `mutation` | Native mutation health JSON (workspace, revision, drift). |
+| `mutation status` | Compact operator summary (workspace revision, coherence tokens). |
+| `roadmap` | Roadmap feature health with `project_identity_line`. |
+| `roadmap cockpit` | One-screen roadmap operator summary. |
 
 ### `/broccolidb`
 
@@ -53,31 +43,31 @@ Layering and governance console.
 | `suggest <file>` | Suggest a layer assignment. |
 | `refactor <file>` | Produce a dependency inversion refactor blueprint. |
 
-## Kernel bridge tool
+## Native mutation tool
 
 ### `dietcode_kernel`
 
-Governed macOS kernel bridge. Requires opt-in config (`mutations_enabled: true`
-for patch; verify available when bridge healthy).
+Governed native mutation runtime (Python port of LUMI `NativeMutationManager`).
+State in `.dietcode/mutation-state.json` — no macOS binary or socket bridge.
 
-| Action | Purpose | Gate |
-| --- | --- | --- |
-| `status` | Kernel workspace status via RPC | Bridge enabled |
-| `search` | Literal search in workspace | Safe workspace + socket |
-| `patch` | Coherent file mutation with `mutationReceipt` | Patch gate open |
-| `verify` | Run allowlisted `verify.run` command | Safe workspace + socket |
+| Action | Purpose |
+| --- | --- |
+| `status` | Workspace revision, tracked hashes, coherence tokens |
+| `search` | Literal search in workspace |
+| `coherence` | Issue coherence token before multi-file edits |
+| `patch` | Coherent file mutation with `mutationReceipt` |
+| `verify` | Run verification command in workspace |
+| `refresh` | Refresh file anchors after external edits |
 
-Patch parameters: `workspace`, `path`, `unified_diff` or `line_search`/`line_replace`, optional `task_id`.
+Patch parameters: `workspace`, `path`, `unified_diff` or `line_search`/`line_replace`,
+optional `task_id`, `coherenceTokenId`, `expectedWorkspaceRevision`.
 
 Verify parameters: `workspace`, `command`, optional `cwd`, `task_id`.
 
-Default verify allowlist prefixes: `make test`, `make kernel`, `git diff --check`,
-`npm test`, `./verify.sh`. Extend via `dietcode.kernel.bridge.verify_allowlist`.
-
 Successful patch/verify results are journaled into JoyZoning automatically via
-hooks. Kanban completion is **not** auto-triggered.
+hooks. `read_file` auto-tracks file hashes when `HERMES_KANBAN_TASK` is set.
 
-Implementation: `lib/tools/kernel_bridge_tools.py`, `lib/agent/kernel_bridge_client.py`.
+Implementation: `lib/tools/mutation_tools.py`, `lib/agent/native_mutation.py`.
 
 ## BroccoliDB tools
 
@@ -115,8 +105,8 @@ Unified governed-work primitive.
 | `role_context` | Load JSDP role context. |
 | `validate_handoff` | Validate JSDP handoff text. |
 
-When the kernel bridge is active, prefer `dietcode_kernel(action='patch'|'verify')`
-for physical mutation — JoyZoning hooks journal kernel receipts automatically.
+Prefer `dietcode_kernel(action='patch'|'verify')` for governed physical mutation —
+JoyZoning hooks journal patch/verify receipts automatically.
 
 ### Granular lifecycle tools
 
@@ -165,7 +155,7 @@ When bootstrap template phrases remain: `bootstrap_fill_plan`, optional
 
 - `joyzoning(action='context')` → session brief, `project_identity_line`, merged `next_actions`
 - `joyzoning(action='roadmap')` → cockpit payload with `recommended_next_action`
-- `/dietcode kernel cockpit` → roadmap steering merged (Project, Identity, Verify)
+- `/dietcode roadmap cockpit` → roadmap steering merged (Project, Identity, Verify)
 - `session.start` → roadmap phase, `first_call`, steering digest
 - Writes to `ROADMAP.md` → `_roadmap_write_hint` → `roadmap(action='validate')`
 - Tool calls → `roadmap.*` journal events with identity in progress telemetry
@@ -195,21 +185,19 @@ environment is available.
 
 ## Raw Hermes write tools
 
-| Tool | Kernel bridge interaction |
+| Tool | Native mutation interaction |
 | --- | --- |
-| `write_file` | Warn/block when patch gate open (policy-dependent) |
-| `patch` | Warn/block when patch gate open (policy-dependent) |
-| `read_file` | Never blocked by kernel router |
-| `dietcode_kernel` | Never blocked — preferred mutation path |
-
-Warning metadata: `_kernel_raw_write_warning` with `string_code: kernel_raw_write_warn`.
-Block payload: `string_code: kernel_raw_write_blocked`, `preferred_tool: dietcode_kernel`.
+| `write_file` | ROADMAP.md writes receive `_roadmap_write_hint`; pair with JoyZoning |
+| `patch` | Same ROADMAP.md nudges; prefer `dietcode_kernel` for coherence-aware edits |
+| `read_file` | Auto-tracks file hashes for active kanban task (`HERMES_KANBAN_TASK`) |
+| `dietcode_kernel` | Preferred governed mutation path |
 
 ## Operator scripts
 
 | Script | Purpose |
 | --- | --- |
-| `scripts/kernel_phase3_rehearsal.py` | Raw write warn + kernel patch + journal |
-| `scripts/kernel_bridge_e2e.py` | Full loop: patch → verify → journal → convergence |
+| `scripts/roadmap_audit.py` | Production roadmap audit |
+| `scripts/roadmap_smoke.py` | Roadmap smoke checks |
+| `scripts/roadmap_operator_smoke.py` | Operator ergonomics smoke |
 
-See [kernel-bridge-operations.md](kernel-bridge-operations.md).
+See [roadmap.md](roadmap.md) and [architecture.md](architecture.md).

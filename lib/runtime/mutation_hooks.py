@@ -3,13 +3,22 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
+def _task_id_from_env() -> str:
+    for key in ("HERMES_KANBAN_TASK", "DIETCODE_TASK_ID"):
+        val = os.environ.get(key, "").strip()
+        if val:
+            return val
+    return ""
+
+
 def _result_already_journaled(result: Any) -> bool:
-    from plugins.dietcode.lib.agent.kernel_receipt_journal import parse_tool_result
+    from plugins.dietcode.lib.agent.mutation_receipt_journal import parse_tool_result
 
     parsed = parse_tool_result(result)
     if not isinstance(parsed, dict):
@@ -33,20 +42,37 @@ def _post_tool_call(
     result: Any = None,
     **_: Any,
 ) -> None:
-    if tool_name != "dietcode_kernel":
+    name = (tool_name or "").strip().lower()
+    if name == "read_file" and isinstance(args, dict):
+        path = str(args.get("path") or "").strip()
+        task_id = _task_id_from_env()
+        if path and task_id:
+            try:
+                from plugins.dietcode.lib.agent.native_mutation import (
+                    NativeMutationManager,
+                    resolve_workspace,
+                )
+
+                ws, _err = resolve_workspace(None)
+                if ws is not None:
+                    NativeMutationManager.get_instance().auto_track_file_read(ws, path, task_id)
+            except Exception as exc:
+                logger.debug("dietcode mutation read tracking skipped: %s", exc)
+
+    if name != "dietcode_kernel":
         return
     if _result_already_journaled(result):
         return
     action = _journal_action(args)
     try:
         if action == "patch":
-            from plugins.dietcode.lib.agent.kernel_receipt_journal import journal_kernel_patch
+            from plugins.dietcode.lib.agent.mutation_receipt_journal import journal_mutation_patch
 
-            journal_kernel_patch(tool_name=tool_name, args=args, result=result)
+            journal_mutation_patch(tool_name=tool_name, args=args, result=result)
         elif action == "verify":
-            from plugins.dietcode.lib.agent.kernel_verify_journal import journal_kernel_verify
+            from plugins.dietcode.lib.agent.mutation_verify_journal import journal_mutation_verify
 
-            journal_kernel_verify(tool_name=tool_name, args=args, result=result)
+            journal_mutation_verify(tool_name=tool_name, args=args, result=result)
     except Exception as exc:
         logger.warning("dietcode mutation post_tool_call journal skipped: %s", exc)
 
@@ -64,19 +90,19 @@ def on_mutation_journal_transform(
         return None
     try:
         if action == "patch":
-            from plugins.dietcode.lib.agent.kernel_receipt_journal import (
-                journal_kernel_patch,
+            from plugins.dietcode.lib.agent.mutation_receipt_journal import (
+                journal_mutation_patch,
                 merge_journal_warning_into_result,
             )
 
-            report = journal_kernel_patch(tool_name=tool_name, args=args, result=result)
+            report = journal_mutation_patch(tool_name=tool_name, args=args, result=result)
             return merge_journal_warning_into_result(result, report)
-        from plugins.dietcode.lib.agent.kernel_verify_journal import (
-            journal_kernel_verify,
+        from plugins.dietcode.lib.agent.mutation_verify_journal import (
+            journal_mutation_verify,
             merge_journal_warning_into_result,
         )
 
-        report = journal_kernel_verify(tool_name=tool_name, args=args, result=result)
+        report = journal_mutation_verify(tool_name=tool_name, args=args, result=result)
         return merge_journal_warning_into_result(result, report)
     except Exception as exc:
         logger.warning("dietcode mutation transform journal skipped: %s", exc)

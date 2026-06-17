@@ -9,7 +9,7 @@ from pathlib import Path
 
 _SKIP_DIRS = frozenset({
     ".git", "node_modules", "dist", "build", ".venv", "venv", "__pycache__",
-    "kernel/build", "broccolidb/node_modules", ".cursor",
+    "broccolidb/node_modules", ".cursor", ".hermes",
 })
 
 _SOURCE_SUFFIXES = frozenset({".py", ".ts", ".js", ".mm", ".cpp", ".go", ".rs"})

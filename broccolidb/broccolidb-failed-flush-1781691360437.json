@@ -1,0 +1,189 @@
+{
+  "timestamp": "2026-06-17T10:16:00.437Z",
+  "error": "SqliteError: ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint\n    at Database.prepare (/Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/better-sqlite3/lib/methods/wrappers.js:5:21)\n    at SqliteConnection.executeQuery (file:///Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/kysely/dist/esm/dialect/sqlite/sqlite-driver.js:62:31)\n    at file:///Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/kysely/dist/esm/query-executor/query-executor-base.js:35:45\n    at #run (file:///Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/kysely/dist/esm/driver/single-connection-provider.js:24:22)\n    at SingleConnectionProvider.provideConnection (file:///Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/kysely/dist/esm/driver/single-connection-provider.js:16:41)\n    at DefaultQueryExecutor.provideConnection (file:///Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/kysely/dist/esm/query-executor/default-query-executor.js:20:41)\n    at DefaultQueryExecutor.executeQuery (file:///Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/kysely/dist/esm/query-executor/query-executor-base.js:34:27)\n    at NotCommittedOrRolledBackAssertingExecutor.executeQuery (file:///Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/kysely/dist/esm/kysely.js:896:31)\n    at InsertQueryBuilder.execute (file:///Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/kysely/dist/esm/query-builder/insert-query-builder.js:1106:51)\n    at BufferedDbPool.executeSingleOp (/Users/bozoegg/Desktop/dietcode-plugin/broccolidb/infrastructure/db/BufferedDbPool.ts:1233:19)",
+  "ops": [
+    {
+      "type": "insert",
+      "table": "nodes",
+      "values": {
+        "id": "b4b0d87e-158f-41b6-8d76-0a29376f0dc6",
+        "repoPath": "test-repo",
+        "parentId": null,
+        "data": "{\"content\":\"hello\"}",
+        "message": "commit msg",
+        "author": "test-agent",
+        "timestamp": 1781691360435,
+        "type": "snapshot",
+        "usage": "{\"promptTokens\":10,\"completionTokens\":20,\"totalTokens\":30,\"totalCost\":0.00018}",
+        "metadata": "{\"decisionIds\":[],\"environment\":{\"osName\":\"darwin\",\"osVersion\":\"25.2.0\",\"osArch\":\"arm64\",\"hostName\":\"MacBookPro.lan\",\"nodeVersion\":\"v22.22.3\",\"timestamp\":\"2026-06-17T10:16:00.433Z\"}}",
+        "tree": null
+      },
+      "layer": "domain",
+      "seq": 4,
+      "agentId": "test-agent",
+      "hasIncrements": false
+    },
+    {
+      "type": "insert",
+      "table": "telemetry",
+      "values": {
+        "id": "951c91fe-6be5-4d30-a652-4b8e7465c4a2",
+        "repoPath": "test-repo",
+        "agentId": "test-agent",
+        "taskId": null,
+        "promptTokens": 10,
+        "completionTokens": 20,
+        "totalTokens": 30,
+        "modelId": "default",
+        "cost": 0.00018,
+        "timestamp": 1781691360435,
+        "environment": "{\"osName\":\"darwin\",\"osVersion\":\"25.2.0\",\"osArch\":\"arm64\",\"hostName\":\"MacBookPro.lan\",\"nodeVersion\":\"v22.22.3\",\"timestamp\":\"2026-06-17T10:16:00.435Z\"}"
+      },
+      "layer": "infrastructure",
+      "seq": 6,
+      "hasIncrements": false
+    },
+    {
+      "type": "insert",
+      "table": "reflog",
+      "values": {
+        "id": "03f5e09c-9f6c-4d58-812f-35561ff0d059",
+        "ref": "main",
+        "oldHead": null,
+        "newHead": "b4b0d87e-158f-41b6-8d76-0a29376f0dc6",
+        "author": "test-agent",
+        "message": "commit msg",
+        "timestamp": 1781691360435,
+        "operation": "commit",
+        "repoPath": "test-repo"
+      },
+      "layer": "infrastructure",
+      "seq": 7,
+      "hasIncrements": false
+    },
+    {
+      "type": "insert",
+      "table": "swarm_locks",
+      "values": {
+        "resource": "production_resource",
+        "ownerId": "83922",
+        "expiresAt": 1781691420417,
+        "createdAt": 1781691360417
+      },
+      "seq": 2,
+      "hasIncrements": false
+    },
+    {
+      "type": "upsert",
+      "table": "branches",
+      "where": [
+        {
+          "column": "repoPath",
+          "value": "test-repo"
+        },
+        {
+          "column": "name",
+          "value": "main"
+        }
+      ],
+      "values": {
+        "repoPath": "test-repo",
+        "name": "main",
+        "head": "",
+        "createdAt": 1781691360431,
+        "isEphemeral": 0,
+        "expiresAt": null
+      },
+      "layer": "domain",
+      "seq": 3,
+      "hasIncrements": false
+    },
+    {
+      "type": "upsert",
+      "table": "telemetry_aggregates",
+      "where": [
+        {
+          "column": "repoPath",
+          "value": "test-repo"
+        },
+        {
+          "column": "id",
+          "value": "global"
+        }
+      ],
+      "values": {
+        "repoPath": "test-repo",
+        "id": "global",
+        "totalCommits": {
+          "_type": "increment",
+          "value": 1
+        },
+        "totalTokens": {
+          "_type": "increment",
+          "value": 30
+        },
+        "totalCost": {
+          "_type": "increment",
+          "value": 0.00018
+        }
+      },
+      "layer": "infrastructure",
+      "seq": 8,
+      "hasIncrements": true
+    },
+    {
+      "type": "upsert",
+      "table": "telemetry_aggregates",
+      "where": [
+        {
+          "column": "repoPath",
+          "value": "test-repo"
+        },
+        {
+          "column": "id",
+          "value": "agent_test-agent"
+        }
+      ],
+      "values": {
+        "repoPath": "test-repo",
+        "id": "agent_test-agent",
+        "totalCommits": {
+          "_type": "increment",
+          "value": 1
+        },
+        "totalTokens": {
+          "_type": "increment",
+          "value": 30
+        },
+        "totalCost": {
+          "_type": "increment",
+          "value": 0.00018
+        }
+      },
+      "layer": "infrastructure",
+      "seq": 9,
+      "hasIncrements": true
+    },
+    {
+      "type": "update",
+      "where": [
+        {
+          "column": "repoPath",
+          "value": "test-repo"
+        },
+        {
+          "column": "name",
+          "value": "main"
+        }
+      ],
+      "table": "branches",
+      "values": {
+        "head": "b4b0d87e-158f-41b6-8d76-0a29376f0dc6"
+      },
+      "layer": "domain",
+      "seq": 5,
+      "agentId": "test-agent",
+      "hasIncrements": false
+    }
+  ]
+}

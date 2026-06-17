@@ -520,7 +520,7 @@ def main() -> int:
         if "Write guard:" not in report:
             failures.append("cockpit report missing write guard line")
         if "→" not in report:
-            failures.append("cockpit report missing kernel-style next action arrow")
+            failures.append("cockpit report missing operator next action arrow")
 
         import os
 

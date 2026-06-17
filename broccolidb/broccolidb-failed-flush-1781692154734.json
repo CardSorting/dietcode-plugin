@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-06-17T10:29:14.734Z",
+  "error": "SqliteError: UNIQUE constraint failed: users.id\n    at SqliteConnection.executeQuery (file:///Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/kysely/dist/esm/dialect/sqlite/sqlite-driver.js:68:51)\n    at file:///Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/kysely/dist/esm/query-executor/query-executor-base.js:35:45\n    at #run (file:///Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/kysely/dist/esm/driver/single-connection-provider.js:24:22)\n    at SingleConnectionProvider.provideConnection (file:///Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/kysely/dist/esm/driver/single-connection-provider.js:16:41)\n    at DefaultQueryExecutor.provideConnection (file:///Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/kysely/dist/esm/query-executor/default-query-executor.js:20:41)\n    at DefaultQueryExecutor.executeQuery (file:///Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/kysely/dist/esm/query-executor/query-executor-base.js:34:27)\n    at NotCommittedOrRolledBackAssertingExecutor.executeQuery (file:///Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/kysely/dist/esm/kysely.js:896:31)\n    at InsertQueryBuilder.execute (file:///Users/bozoegg/Desktop/dietcode-plugin/broccolidb/node_modules/kysely/dist/esm/query-builder/insert-query-builder.js:1106:51)\n    at BufferedDbPool.executeBulkInsert (/Users/bozoegg/Desktop/dietcode-plugin/broccolidb/infrastructure/db/BufferedDbPool.ts:1231:10)\n    at <anonymous> (/Users/bozoegg/Desktop/dietcode-plugin/broccolidb/infrastructure/db/BufferedDbPool.ts:711:40)",
+  "ops": [
+    {
+      "type": "insert",
+      "table": "users",
+      "values": {
+        "id": "user-dup-test",
+        "createdAt": 100
+      },
+      "seq": 5,
+      "hasIncrements": false
+    },
+    {
+      "type": "insert",
+      "table": "users",
+      "values": {
+        "id": "user-dup-test",
+        "createdAt": 200
+      },
+      "seq": 6,
+      "hasIncrements": false
+    }
+  ]
+}

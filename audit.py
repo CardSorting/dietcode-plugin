@@ -99,8 +99,8 @@ _REQUIRED_RUNTIME_FILES: tuple[str, ...] = (
     "lib/runtime/mutation_hooks.py",
     "lib/agent/native_mutation.py",
     "lib/workspace_root.py",
-    "lib/agent/kernel_receipt_journal.py",
-    "lib/agent/kernel_verify_journal.py",
+    "lib/agent/mutation_receipt_journal.py",
+    "lib/agent/mutation_verify_journal.py",
     "slash_commands.py",
     "lib/tools/broccolidb.py",
     "hooks.py",
@@ -270,7 +270,6 @@ _DOC_SCAN_PATHS: tuple[str, ...] = (
     "docs/README.md",
     "docs/dietcode-plugin.md",
     "docs/architecture.md",
-    "docs/kernel-bridge-operations.md",
     "docs/broccolidb-native-execution-throughput.md",
 )
 

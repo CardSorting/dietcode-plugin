@@ -46,7 +46,7 @@ intent → dietcode_kernel patch → receipt → JoyZoning journal → verify �
 | `hooks.py` | Composed Hermes hook handlers. |
 | `lib/agent/native_mutation.py` | Coherence tokens, patch, verify, workspace state. |
 | `lib/workspace_root.py` | Project workspace resolution (never plugin install tree). |
-| `lib/tools/kernel_bridge_tools.py` | `dietcode_kernel` Hermes tool registration. |
+| `lib/tools/mutation_tools.py` | `dietcode_kernel` Hermes tool registration. |
 | `lib/runtime/mutation_hooks.py` | Journal patch/verify into JoyZoning. |
 | `lib/agent/joyzoning/` | Config, journal, convergence, JSDP helpers. |
 | `broccolidb/` | TypeScript graph, policy, database, Hermes RPC worker. |

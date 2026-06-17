@@ -3,7 +3,15 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type Database from 'better-sqlite3';
 import { type Kysely, sql, type Transaction } from 'kysely';
-import { getDb, getRawDb, getActiveShards, getDbPath, type Schema } from './Config.js';
+import {
+  destroyDb,
+  getDb,
+  getRawDb,
+  getActiveShards,
+  getDbPath,
+  registerDbPathChangeListener,
+  type Schema,
+} from './Config.js';
 import { LifecycleStateError } from '../../core/errors.js';
 import { lifecycleHealth, type ServiceHealth } from '../../core/agent-context/service-health.js';
 import { Logger } from '../../shared/services/Logger.js';
@@ -191,14 +199,37 @@ export class BufferedDbPool {
   private warmedIndices = new Set<string>(); // Level 9: Authoritative Memory Indices
   private locker = new Locker(this as import('./pool/types.js').IBufferedDbPool);
   private integrityMetrics = { brokenImports: 0, orphanedNodes: 0 };
+  private deadLetterQueue: { op: WriteOp; error: string; timestamp: number }[] = [];
+  private lastSuccessfulFlush: number | null = null;
+  private lastFlushLatency = 0;
+  private failedWriteCount = 0;
+  private lockContentionCount = 0;
   private SCHEMA_VERSION = 2; // Pass 4 hardening baseline
   private schemaVerified = false;
   private lifecycleState: 'new' | 'starting' | 'started' | 'stopping' | 'stopped' = 'new';
   private startPromise: Promise<void> | null = null;
 
-  constructor() {
-    this.startFlushLoop();
+  public getDeadLetterQueue() {
+    return this.deadLetterQueue;
   }
+
+  public clearDeadLetterQueue() {
+    this.deadLetterQueue = [];
+  }
+
+  private assertOperational(operation: string, allowStopping = false): void {
+    if (this.lifecycleState === 'new' || this.lifecycleState === 'starting') {
+      throw new LifecycleStateError(`BufferedDbPool.${operation}() called before start().`);
+    }
+    if (this.lifecycleState === 'stopping' && !allowStopping) {
+      throw new LifecycleStateError(`BufferedDbPool.${operation}() called while stop() is in progress.`);
+    }
+    if (this.lifecycleState === 'stopped') {
+      throw new LifecycleStateError(`BufferedDbPool.${operation}() called after stop().`);
+    }
+  }
+
+  constructor() {}
 
   public async start(): Promise<void> {
     if (this.lifecycleState === 'started') return;
@@ -212,17 +243,30 @@ export class BufferedDbPool {
       this.db = await getDb('main');
       this.rawDb = (await getRawDb('main')) as Database.Database;
       await this.verifySchemaVersion();
+      registerDbPathChangeListener(() => {
+        this.db = null;
+        this.rawDb = null;
+        this.stmtCache.clear();
+        this.schemaVerified = false;
+        if (this.lifecycleState === 'started') {
+          this.lifecycleState = 'stopped';
+        }
+      });
       this.lifecycleState = 'started';
-    })().catch((error) => {
-      this.lifecycleState = 'new';
-      this.startPromise = null;
-      throw error;
-    });
+      this.startFlushLoop();
+    })()
+      .catch((error) => {
+        this.lifecycleState = 'new';
+        throw error;
+      })
+      .finally(() => {
+        this.startPromise = null;
+      });
 
     return this.startPromise;
   }
 
-  public async health(): Promise<ServiceHealth> {
+  public async health(): Promise<ServiceHealth & { lastSuccessfulFlush?: number | null }> {
     const metrics = this.getMetrics();
     const lifecycle =
       this.lifecycleState === 'started'
@@ -231,15 +275,19 @@ export class BufferedDbPool {
           ? 'stopped'
           : 'new';
 
-    return lifecycleHealth('db', lifecycle, {
-      metrics: {
-        dbPath: getDbPath(),
-        activeBufferSize: metrics.activeBufferSize,
-        inFlightOpsSize: metrics.inFlightOpsSize,
-        activeShadows: metrics.activeShadows,
-        shardCount: metrics.shards.length,
-      },
-    });
+    return {
+      ...lifecycleHealth('db', lifecycle, {
+        metrics: {
+          dbPath: getDbPath(),
+          activeBufferSize: metrics.activeBufferSize,
+          inFlightOpsSize: metrics.inFlightOpsSize,
+          activeShadows: metrics.activeShadows,
+          shardCount: metrics.shards.length,
+          lastSuccessfulFlush: this.lastSuccessfulFlush,
+        },
+      }),
+      lastSuccessfulFlush: this.lastSuccessfulFlush,
+    };
   }
 
   private async verifySchemaVersion() {
@@ -341,6 +389,7 @@ export class BufferedDbPool {
   }
 
   public async beginWork(agentId: string) {
+    this.assertOperational('beginWork');
     const release = await this.stateMutex.acquire();
     try {
       if (!this.agentShadows.has(agentId)) {
@@ -408,6 +457,7 @@ export class BufferedDbPool {
   }
 
   public async pushBatch(ops: WriteOp[], agentId?: string, affectedFile?: string) {
+    this.assertOperational('pushBatch');
     const enqueueStart = performance.now();
     let currentBufferLength = 0;
 
@@ -507,6 +557,7 @@ export class BufferedDbPool {
   }
 
   public async commitWork(agentId: string) {
+    this.assertOperational('commitWork');
     let shadowOpsCount = 0;
     const release = await this.stateMutex.acquire();
     try {
@@ -550,6 +601,7 @@ export class BufferedDbPool {
   }
 
   public async rollbackWork(agentId: string) {
+    this.assertOperational('rollbackWork');
     const release = await this.stateMutex.acquire();
     try {
       this.agentShadows.delete(agentId);
@@ -559,6 +611,7 @@ export class BufferedDbPool {
   }
 
   public async runTransaction<T>(callback: (agentId: string) => Promise<T>): Promise<T> {
+    this.assertOperational('runTransaction');
     const agentId = `trx-${crypto.randomUUID()}`;
     await this.beginWork(agentId);
     try {
@@ -571,7 +624,8 @@ export class BufferedDbPool {
     }
   }
 
-  public async flush(retryCount: number = 0): Promise<void> {
+  public async flush(retryCount: number = 0, allowStopping = false): Promise<void> {
+    this.assertOperational('flush', allowStopping || retryCount > 0);
     const releaseFlush = await this.flushMutex.acquire();
     let opsToFlush: WriteOp[] = [];
     const startTime = Date.now();
@@ -667,6 +721,8 @@ export class BufferedDbPool {
       });
 
       const duration = Date.now() - startTime;
+      this.lastSuccessfulFlush = Date.now();
+      this.lastFlushLatency = duration;
       this.recordLatency(this.processingLatencies, duration);
 
       const throughput = Math.round(totalFlushed / (duration / 1000 || 0.001));
@@ -710,8 +766,15 @@ export class BufferedDbPool {
           // Re-inserting into buffer logic would go here if needed, but usually we just retry the batch
         }
       } else {
-        // Fatal errors should still be logged for forensic analysis
         Logger.error(`[DbPool] ❌ Flush failed (FATAL):`, e);
+        const errMsg = err.message || String(e);
+        this.failedWriteCount += opsToFlush.length;
+        for (const op of opsToFlush) {
+          this.deadLetterQueue.push({ op, error: errMsg, timestamp: Date.now() });
+          if (this.deadLetterQueue.length > 1000) {
+            this.deadLetterQueue.shift();
+          }
+        }
         try {
           const recoveryFile = path.resolve(process.cwd(), `broccolidb-failed-flush-${Date.now()}.json`);
           fs.writeFileSync(
@@ -813,6 +876,7 @@ export class BufferedDbPool {
       shardId?: string;
     }
   ): Promise<Schema[T][]> {
+    this.assertOperational('selectWhere');
     const release = await this.stateMutex.acquire();
     try {
       const db = options?.shardId ? await getDb(options.shardId) : await this.ensureDb();
@@ -832,6 +896,8 @@ export class BufferedDbPool {
           const opStr = cond.operator || '=';
           if (Array.isArray(cond.value)) {
             query = (query as any).where(cond.column, 'in', cond.value);
+          } else if (opStr.toUpperCase() === 'LIKE') {
+            query = (query as any).where(cond.column, 'like', cond.value);
           } else {
             query = (query as any).where(cond.column, opStr, cond.value);
           }
@@ -1019,7 +1085,7 @@ export class BufferedDbPool {
     options?: { shardId?: string; limit?: number; offset?: number },
   ): Promise<Schema[T] | null> {
     const results = await this.selectWhere(table, where, agentId, options);
-    return results.length > 0 ? (results[results.length - 1] as Schema[T]) : null;
+    return results.length > 0 ? (results[0] as Schema[T]) : null;
   }
 
   /** Level 8: resolve a sharded database handle. */
@@ -1266,6 +1332,10 @@ export class BufferedDbPool {
       },
       integrity: { ...this.integrityMetrics },
       shards: getActiveShards().length ? getActiveShards() : ['main'],
+      lastSuccessfulFlush: this.lastSuccessfulFlush,
+      lastFlushLatency: this.lastFlushLatency,
+      failedWriteCount: this.failedWriteCount,
+      lockContentionCount: this.lockContentionCount,
     };
   }
 
@@ -1344,6 +1414,7 @@ export class BufferedDbPool {
   }
 
   public async pruneExpiredShadows(maxAgeMs = 5 * 60 * 1000): Promise<number> {
+    this.assertOperational('pruneExpiredShadows');
     const release = await this.stateMutex.acquire();
     let pruned = 0;
     try {
@@ -1360,29 +1431,193 @@ export class BufferedDbPool {
     return pruned;
   }
 
-  public async stop() {
-    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') return;
+  public async stop(): Promise<void> {
+    if (this.lifecycleState === 'stopped') return;
+    if (this.lifecycleState === 'new') {
+      this.lifecycleState = 'stopped';
+      return;
+    }
+    if (this.lifecycleState === 'starting' && this.startPromise) {
+      await this.startPromise;
+    }
+    if (this.lifecycleState === 'stopping') return;
+
     this.lifecycleState = 'stopping';
     if (this.flushInterval) clearInterval(this.flushInterval);
     if (this.cleanupInterval) clearInterval(this.cleanupInterval);
     if (this.flushTimeout) clearTimeout(this.flushTimeout);
-    
-    // Level 9: Final Sovereign Flush
-    // We do multiple passes to ensure any side-effects of flushes (e.g. queue status updates) are also persisted.
-    await this.flush();
-    await this.flush(); 
-    
-    if (this.db) {
-        await this.db.destroy();
-        this.db = null;
+
+    try {
+      await this.flush(0, true);
+      await this.flush(0, true);
+    } finally {
+      this.stmtCache.clear();
+      this.db = null;
+      this.rawDb = null;
+      await destroyDb();
+      this.lifecycleState = 'stopped';
+      this.startPromise = null;
     }
-    if (this.rawDb) {
-        this.rawDb.close();
-        this.rawDb = null;
-    }
-    this.lifecycleState = 'stopped';
-    this.startPromise = null;
+  }
+
+  public selectFrom<T extends keyof Schema>(table: T): QueryBuilder<T> {
+    return new QueryBuilder(this, table);
+  }
+
+  public insertInto<T extends keyof Schema>(table: T): InsertBuilder<T> {
+    return new InsertBuilder(this, table);
+  }
+
+  public updateTable<T extends keyof Schema>(table: T): UpdateBuilder<T> {
+    return new UpdateBuilder(this, table);
+  }
+
+  public deleteFrom<T extends keyof Schema>(table: T): DeleteBuilder<T> {
+    return new DeleteBuilder(this, table);
   }
 }
 
 export const dbPool = new BufferedDbPool();
+
+export class QueryBuilder<T extends keyof Schema> {
+  private conditions: WhereCondition[] = [];
+  private order?: { column: keyof Schema[T]; direction: 'asc' | 'desc' };
+  private lim?: number;
+
+  constructor(private pool: BufferedDbPool, private table: T) {}
+
+  where(column: keyof Schema[T] & string, value: any): this;
+  where(column: keyof Schema[T] & string, operator: WhereCondition['operator'], value: any): this;
+  where(column: keyof Schema[T] & string, operatorOrValue: any, value?: any): this {
+    if (value === undefined) {
+      this.conditions.push({ column, value: operatorOrValue });
+    } else {
+      this.conditions.push({ column, operator: operatorOrValue, value });
+    }
+    return this;
+  }
+
+  orderBy(column: keyof Schema[T], direction: 'asc' | 'desc' = 'asc'): this {
+    this.order = { column, direction };
+    return this;
+  }
+
+  limit(limit: number): this {
+    this.lim = limit;
+    return this;
+  }
+
+  async execute(agentId?: string): Promise<Schema[T][]> {
+    return this.pool.selectWhere(this.table, this.conditions, agentId, {
+      orderBy: this.order as any,
+      limit: this.lim,
+    });
+  }
+
+  async executeTakeFirst(agentId?: string): Promise<Schema[T] | null> {
+    const results = await this.execute(agentId);
+    return results.length > 0 ? (results[0] as Schema[T]) : null;
+  }
+}
+
+export class InsertBuilder<T extends keyof Schema> {
+  private valuesToInsert?: Record<string, unknown> | Record<string, unknown>[];
+  private conflictTargetCol?: string | string[];
+
+  constructor(private pool: BufferedDbPool, private table: T) {}
+
+  values(val: Partial<Schema[T]> | Partial<Schema[T]>[]): this {
+    this.valuesToInsert = val as any;
+    return this;
+  }
+
+  onConflict(target: string | string[]): this {
+    this.conflictTargetCol = target;
+    return this;
+  }
+
+  async execute(agentId?: string, affectedFile?: string): Promise<void> {
+    if (!this.valuesToInsert) return;
+
+    if (Array.isArray(this.valuesToInsert)) {
+      const ops = this.valuesToInsert.map((v) => ({
+        type: 'insert' as const,
+        table: this.table,
+        values: v,
+        agentId,
+      }));
+      await this.pool.pushBatch(ops, agentId, affectedFile);
+    } else {
+      const op: WriteOp = {
+        type: this.conflictTargetCol ? 'upsert' : 'insert',
+        table: this.table,
+        values: this.valuesToInsert,
+        conflictTarget: this.conflictTargetCol,
+        agentId,
+      };
+      await this.pool.push(op, agentId, affectedFile);
+    }
+  }
+}
+
+export class UpdateBuilder<T extends keyof Schema> {
+  private setValues?: Record<string, unknown>;
+  private conditions: WhereCondition[] = [];
+
+  constructor(private pool: BufferedDbPool, private table: T) {}
+
+  set(val: Partial<Schema[T]> | Record<string, unknown>): this {
+    this.setValues = val as any;
+    return this;
+  }
+
+  where(column: keyof Schema[T] & string, value: any): this;
+  where(column: keyof Schema[T] & string, operator: WhereCondition['operator'], value: any): this;
+  where(column: keyof Schema[T] & string, operatorOrValue: any, value?: any): this {
+    if (value === undefined) {
+      this.conditions.push({ column, value: operatorOrValue });
+    } else {
+      this.conditions.push({ column, operator: operatorOrValue, value });
+    }
+    return this;
+  }
+
+  async execute(agentId?: string, affectedFile?: string): Promise<void> {
+    if (!this.setValues) return;
+    const op: WriteOp = {
+      type: 'update',
+      table: this.table,
+      values: this.setValues,
+      where: this.conditions,
+      agentId,
+    };
+    await this.pool.push(op, agentId, affectedFile);
+  }
+}
+
+export class DeleteBuilder<T extends keyof Schema> {
+  private conditions: WhereCondition[] = [];
+
+  constructor(private pool: BufferedDbPool, private table: T) {}
+
+  where(column: keyof Schema[T] & string, value: any): this;
+  where(column: keyof Schema[T] & string, operator: WhereCondition['operator'], value: any): this;
+  where(column: keyof Schema[T] & string, operatorOrValue: any, value?: any): this {
+    if (value === undefined) {
+      this.conditions.push({ column, value: operatorOrValue });
+    } else {
+      this.conditions.push({ column, operator: operatorOrValue, value });
+    }
+    return this;
+  }
+
+  async execute(agentId?: string, affectedFile?: string): Promise<void> {
+    const op: WriteOp = {
+      type: 'delete',
+      table: this.table,
+      where: this.conditions,
+      agentId,
+    };
+    await this.pool.push(op, agentId, affectedFile);
+  }
+}

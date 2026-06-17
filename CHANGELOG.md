@@ -7,11 +7,20 @@ Replaces the quarantined macOS `kernel/` subtree and socket bridge with the
 
 ### Highlights
 
-- **Removed** — `kernel/` C++ tree, socket RPC bridge, patch gate, raw-write router, kernel cockpit/progress UX.
+- **Removed** — `kernel/` C++ tree, socket RPC bridge, macOS kernel CI workflow, `kernel_*` journal modules.
+- **Renamed** — `mutation_tools.py`, `mutation_receipt_journal.py`, `mutation_verify_journal.py`.
+- **API** — patch results use `mutation` key (journals accept legacy `kernel` for one release).
 - **Added** — `lib/agent/native_mutation.py` — Python port of coherence tokens, governed patch, verify, drift detection.
 - **`dietcode_kernel` tool** — now calls native mutation (status, search, patch, verify, coherence, refresh).
 - **Workspace** — `lib/workspace_root.py` replaces `kernel_workspace` (plugin-tree quarantine only).
 - **Doctor** — `/dietcode mutation` replaces `/dietcode kernel`.
+- **Read tracking** — `read_file` auto-anchors hashes when `HERMES_KANBAN_TASK` is set (LUMI `ToolExecutor` parity).
+- **Prompts** — `dietcode_kernel` operator guidance in `prompts.py`.
+- **Roadmap copy** — native mutation wording replaces stale kernel-tree references.
+- **Distill** — `optional-skills/dietcode` synced from codemarie-new; `make distill` builds + verifies core mirror.
+- **BroccoliDB Hermes** — corrupt-DB recovery in sharded `Config.ts`; v30 pool lifecycle guards in `BufferedDbPool`.
+- **Checkpoint digest** — `roadmap(action='checkpoint', context='digest')` omits heavy evidence blobs.
+- **Docs** — native mutation replaces kernel bridge in operator guides.
 
 ## v1.10.0 — BroccoliDB v30 distill (2026-06-17)
 

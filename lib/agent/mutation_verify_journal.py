@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Bridge kernel verify.run receipts into JoyZoning mutation_verify (Phase 4)."""
+"""Journal dietcode_kernel verify results into JoyZoning mutation_verify."""
 from __future__ import annotations
 
 import logging
@@ -30,24 +30,20 @@ def reset_verify_journal_dedup_cache() -> None:
 
 
 def parse_tool_result(result: Any) -> Optional[dict[str, Any]]:
-    try:
-        from plugins.dietcode.lib.agent.kernel_receipt_journal import parse_tool_result as _parse
-    except ImportError:
-        from lib.agent.kernel_receipt_journal import parse_tool_result as _parse
+    from plugins.dietcode.lib.agent.mutation_receipt_journal import parse_tool_result as _parse
+
     return _parse(result)
 
 
 def merge_journal_warning_into_result(result: Any, journal_report: dict[str, Any]) -> Optional[str]:
-    try:
-        from plugins.dietcode.lib.agent.kernel_receipt_journal import (
-            merge_journal_warning_into_result as _merge,
-        )
-    except ImportError:
-        from lib.agent.kernel_receipt_journal import merge_journal_warning_into_result as _merge
+    from plugins.dietcode.lib.agent.mutation_receipt_journal import (
+        merge_journal_warning_into_result as _merge,
+    )
+
     return _merge(result, journal_report)
 
 
-def should_journal_kernel_verify(
+def should_journal_mutation_verify(
     tool_name: str,
     args: Any,
     parsed: Optional[dict[str, Any]],
@@ -82,7 +78,7 @@ def _build_verify_report(parsed: dict[str, Any]) -> str:
     stdout = str(parsed.get("stdout_summary") or "")
     stderr = str(parsed.get("stderr_summary") or "")
     lines = [
-        f"kernel verify.run: {cmd}",
+        f"native verify: {cmd}",
         f"passed={passed} exit_code={exit_code}",
     ]
     if stdout.strip():
@@ -95,7 +91,7 @@ def _build_verify_report(parsed: dict[str, Any]) -> str:
 def _build_journal_metadata(parsed: dict[str, Any]) -> dict[str, Any]:
     meta: dict[str, Any] = {
         "source": "dietcode_kernel",
-        "physical_authority": "kernel",
+        "physical_authority": "native_mutation",
         "lifecycle_authority": "joyzoning",
         "verify_ran": True,
     }
@@ -111,9 +107,9 @@ def _build_journal_metadata(parsed: dict[str, Any]) -> dict[str, Any]:
     ):
         if parsed.get(key) is not None:
             meta[key] = parsed[key]
-    kernel = parsed.get("kernel")
-    if isinstance(kernel, dict) and kernel:
-        meta["kernel"] = kernel
+    block = parsed.get("mutation") or parsed.get("kernel")
+    if isinstance(block, dict) and block:
+        meta["mutation"] = block
     return meta
 
 
@@ -143,19 +139,15 @@ def _resolve_active_mutation_id(scope_id: str) -> tuple[str | None, dict[str, An
     }
 
 
-def journal_kernel_verify(
+def journal_mutation_verify(
     *,
     tool_name: str,
     args: Any = None,
     result: Any = None,
 ) -> dict[str, Any]:
-    """
-    Record kernel verify.run in JoyZoning via mutation_verify semantics.
-
-    Success and failure both journal when verify_ran; never auto-completes kanban.
-    """
+    """Record native verify in JoyZoning via mutation_verify semantics."""
     parsed = parse_tool_result(result)
-    if not should_journal_kernel_verify(tool_name, args, parsed):
+    if not should_journal_mutation_verify(tool_name, args, parsed):
         return {"journaled": False, "skipped": True}
 
     assert parsed is not None
@@ -165,7 +157,7 @@ def journal_kernel_verify(
     except ImportError:
         return {
             "journaled": False,
-            "warning": "JoyZoning unavailable — kernel verify not journaled",
+            "warning": "JoyZoning unavailable — verify not journaled",
         }
 
     cfg = get_joyzoning_config()
@@ -215,7 +207,7 @@ def journal_kernel_verify(
         )
 
         emit_runtime_event(
-            "mutation.kernel_verified" if passed else "mutation.kernel_verify_failed",
+            "mutation.verified" if passed else "mutation.verify_failed",
             scope_id=scope_id,
             payload={
                 "mutation_id": mutation_id,
@@ -234,8 +226,8 @@ def journal_kernel_verify(
             "metadata": metadata,
         }
     except Exception as exc:
-        logger.warning("kernel verify journal failed (non-fatal): %s", exc)
+        logger.warning("mutation verify journal failed (non-fatal): %s", exc)
         return {
             "journaled": False,
-            "warning": f"Kernel verify completed but JoyZoning journal failed: {exc}",
+            "warning": f"Verify completed but JoyZoning journal failed: {exc}",
         }

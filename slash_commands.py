@@ -467,7 +467,7 @@ Subcommands:
   watch                  Compact live summary of last roadmap action
   last-error             Last roadmap failure or validation issue
   explain-stale          Why checkpoint may be stale vs git activity
-  explain-gate           Closed schema/freshness gates (kernel explain-gate analogue)
+  explain-gate           Closed schema/freshness gates
 """
 
 def _handle_roadmap(raw_args: str) -> Optional[str]:

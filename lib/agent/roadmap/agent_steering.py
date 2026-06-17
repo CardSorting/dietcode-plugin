@@ -112,7 +112,7 @@ def _project_context_lines(steering: dict[str, Any]) -> list[str]:
 
 
 def format_agent_steering_line(*, workspace: Optional[str] = None) -> str:
-    """Live ROADMAP steering for system-prompt injection (kernel cockpit pattern)."""
+    """Live ROADMAP steering for system-prompt injection (LUMI cockpit pattern)."""
     try:
         from plugins.dietcode.lib.agent.roadmap.config import get_roadmap_config
 

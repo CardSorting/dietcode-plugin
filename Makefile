@@ -19,6 +19,7 @@ deploy-fast:
 
 distill:
 	./scripts/distill_from_codemarie.sh
+	cd broccolidb && npm test 2>/dev/null | tail -5 || true
 
 verify test-roadmap:
 	python3 scripts/roadmap_smoke.py

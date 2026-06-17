@@ -21,7 +21,7 @@ _TOOL_MODULES = (
     f"{_LIB}.convergence_tools",
     f"{_LIB}.jsdp_harness_tools",
     f"{_LIB}.kanban_broccolidb_tools",
-    f"{_LIB}.kernel_bridge_tools",
+    f"{_LIB}.mutation_tools",
     f"{_LIB}.roadmap_tools",
 )
 
@@ -32,7 +32,7 @@ DEFERRED_TOOL_MODULE_STEMS: frozenset[str] = frozenset({
     "convergence_tools",
     "jsdp_harness_tools",
     "kanban_broccolidb_tools",
-    "kernel_bridge_tools",
+    "mutation_tools",
     "roadmap_tools",
 })
 
@@ -187,7 +187,7 @@ def register_dietcode_toolset() -> None:
     if "dietcode" not in TOOLSETS:
         create_custom_toolset(
             "dietcode",
-            "BroccoliDB, JoyZoning, JSDP, kernel bridge, and native roadmap checkpoints",
+            "BroccoliDB, JoyZoning, JSDP, native mutation, and roadmap checkpoints",
             tools=[
                 "kanban_broccolidb_context",
                 "kanban_broccolidb_sync",

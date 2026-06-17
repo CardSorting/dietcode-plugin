@@ -41,12 +41,8 @@ def _load_workspace_config() -> dict[str, Any]:
         dietcode = raw.get("dietcode", {})
         if not isinstance(dietcode, dict):
             return {}
-        # Back-compat: dietcode.kernel.* keys still honored.
         ws = dietcode.get("workspace", {})
-        if isinstance(ws, dict) and ws:
-            return ws
-        kernel = dietcode.get("kernel", {})
-        return kernel if isinstance(kernel, dict) else {}
+        return ws if isinstance(ws, dict) else {}
     except Exception:
         return {}
 

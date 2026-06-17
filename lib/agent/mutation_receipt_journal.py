@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Bridge kernel patch receipts into JoyZoning mutation journal (Phase 2C)."""
+"""Journal dietcode_kernel patch receipts into JoyZoning mutation lifecycle."""
 from __future__ import annotations
 
 import json
@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 _JOURNAL_DEDUP_TTL_SEC = 300.0
 _JOURNAL_DEDUP_MAX = 500
 
-# Kernel mutationReceipt keys we copy when present (no invented fields).
 _RECEIPT_KEYS = frozenset({
     "path",
     "beforeContentHash",
@@ -23,7 +22,7 @@ _RECEIPT_KEYS = frozenset({
     "atomic",
 })
 
-_KERNEL_RESULT_KEYS = frozenset({
+_MUTATION_RESULT_KEYS = frozenset({
     "operationId",
     "patched",
     "revisionBefore",
@@ -75,17 +74,25 @@ def parse_tool_result(result: Any) -> Optional[dict[str, Any]]:
     return None
 
 
+def _mutation_block(parsed: dict[str, Any]) -> Optional[dict[str, Any]]:
+    for key in ("mutation", "kernel"):
+        block = parsed.get(key)
+        if isinstance(block, dict):
+            return block
+    return None
+
+
 def extract_mutation_receipt(parsed: dict[str, Any]) -> Optional[dict[str, Any]]:
-    kernel = parsed.get("kernel")
-    if not isinstance(kernel, dict):
+    block = _mutation_block(parsed)
+    if not block:
         return None
-    receipt = kernel.get("mutationReceipt")
+    receipt = block.get("mutationReceipt")
     if not isinstance(receipt, dict) or not receipt:
         return None
     return receipt
 
 
-def should_journal_kernel_patch(
+def should_journal_mutation_patch(
     tool_name: str,
     args: Any,
     parsed: Optional[dict[str, Any]],
@@ -105,10 +112,10 @@ def _copy_present_keys(source: dict[str, Any], keys: frozenset[str]) -> dict[str
 
 
 def build_journal_metadata(parsed: dict[str, Any], receipt: dict[str, Any]) -> dict[str, Any]:
-    """Build JoyZoning journal metadata from kernel tool result (present fields only)."""
+    """Build JoyZoning journal metadata from native mutation tool result."""
     meta: dict[str, Any] = {
         "source": "dietcode_kernel",
-        "physical_authority": "kernel",
+        "physical_authority": "native_mutation",
         "lifecycle_authority": "joyzoning",
     }
 
@@ -123,16 +130,16 @@ def build_journal_metadata(parsed: dict[str, Any], receipt: dict[str, Any]) -> d
     if receipt_copy:
         meta["mutationReceipt"] = receipt_copy
 
-    kernel = parsed.get("kernel")
-    if isinstance(kernel, dict):
-        kernel_extra = _copy_present_keys(kernel, _KERNEL_RESULT_KEYS)
-        if kernel_extra:
-            meta["kernel"] = kernel_extra
+    block = _mutation_block(parsed)
+    if block:
+        mutation_extra = _copy_present_keys(block, _MUTATION_RESULT_KEYS)
+        if mutation_extra:
+            meta["mutation"] = mutation_extra
 
     coherence: dict[str, Any] = {}
     rpc = parsed.get("rpc")
     rpc_result = rpc.get("result") if isinstance(rpc, dict) else None
-    for src in (parsed, kernel if isinstance(kernel, dict) else {}, rpc_result if isinstance(rpc_result, dict) else {}):
+    for src in (parsed, block or {}, rpc_result if isinstance(rpc_result, dict) else {}):
         if not isinstance(src, dict):
             continue
         for key in _COHERENCE_KEYS:
@@ -142,7 +149,7 @@ def build_journal_metadata(parsed: dict[str, Any], receipt: dict[str, Any]) -> d
         meta["coherence"] = coherence
 
     verify: dict[str, Any] = {}
-    for src in (parsed, kernel if isinstance(kernel, dict) else {}, rpc_result if isinstance(rpc_result, dict) else {}):
+    for src in (parsed, block or {}, rpc_result if isinstance(rpc_result, dict) else {}):
         if not isinstance(src, dict):
             continue
         for key in _VERIFY_KEYS:
@@ -167,7 +174,7 @@ def _dedup_key(parsed: dict[str, Any], receipt: dict[str, Any]) -> str:
 
 def _resolve_mutation_id(scope_id: str, parsed: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     from plugins.dietcode.lib.agent.joyzoning.journal import get_journal
-    from plugins.dietcode.lib.agent.joyzoning.mutation_lifecycle import begin_mutation, record_patch
+    from plugins.dietcode.lib.agent.joyzoning.mutation_lifecycle import begin_mutation
 
     journal = get_journal()
     active = journal.get_active_mutation(scope_id)
@@ -176,26 +183,22 @@ def _resolve_mutation_id(scope_id: str, parsed: dict[str, Any]) -> tuple[str, di
         return mutation_id, {"reused_active_mutation": True, "mutation_id": mutation_id}
 
     rel_path = str(parsed.get("path") or "unknown")
-    begun = begin_mutation(goal=f"kernel patch: {rel_path}", scope_id=scope_id)
+    begun = begin_mutation(goal=f"native patch: {rel_path}", scope_id=scope_id)
     if not begun.get("success"):
         raise RuntimeError(begun.get("message") or begun.get("error") or "begin_mutation failed")
     mutation_id = str(begun["mutation_id"])
     return mutation_id, {"created_mutation": True, "mutation_id": mutation_id, "begin": begun}
 
 
-def journal_kernel_patch(
+def journal_mutation_patch(
     *,
     tool_name: str,
     args: Any = None,
     result: Any = None,
 ) -> dict[str, Any]:
-    """
-    Record a successful dietcode_kernel patch in the JoyZoning journal.
-
-    Returns ``{journaled: bool, warning?: str, ...}``. Never flips tool success.
-    """
+    """Record a successful dietcode_kernel patch in the JoyZoning journal."""
     parsed = parse_tool_result(result)
-    if not should_journal_kernel_patch(tool_name, args, parsed):
+    if not should_journal_mutation_patch(tool_name, args, parsed):
         return {"journaled": False, "skipped": True}
 
     assert parsed is not None
@@ -207,7 +210,7 @@ def journal_kernel_patch(
     except ImportError:
         return {
             "journaled": False,
-            "warning": "JoyZoning unavailable — kernel patch not journaled",
+            "warning": "JoyZoning unavailable — patch not journaled",
         }
 
     cfg = get_joyzoning_config()
@@ -229,7 +232,7 @@ def journal_kernel_patch(
         from plugins.dietcode.lib.agent.joyzoning.journal import get_journal
         from plugins.dietcode.lib.agent.joyzoning.runtime_events import emit_runtime_event
 
-        summary = f"kernel patch {rel_path}"
+        summary = f"native patch {rel_path}"
         patch_result = record_patch(mutation_id, summary=summary, scope_id=scope_id)
         if not patch_result.get("success"):
             raise RuntimeError(patch_result.get("message") or patch_result.get("error") or "record_patch failed")
@@ -243,7 +246,7 @@ def journal_kernel_patch(
         )
 
         emit_runtime_event(
-            "mutation.kernel_patched",
+            "mutation.patched",
             scope_id=scope_id,
             payload={
                 "mutation_id": mutation_id,
@@ -261,10 +264,10 @@ def journal_kernel_patch(
             "metadata": metadata,
         }
     except Exception as exc:
-        logger.warning("kernel receipt journal failed (non-fatal): %s", exc)
+        logger.warning("mutation receipt journal failed (non-fatal): %s", exc)
         return {
             "journaled": False,
-            "warning": f"Kernel patch succeeded but JoyZoning journal failed: {exc}",
+            "warning": f"Patch succeeded but JoyZoning journal failed: {exc}",
         }
 
 

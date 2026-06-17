@@ -1,4 +1,4 @@
-"""Roadmap operator ergonomics — next-action recommendations (kernel cockpit pattern)."""
+"""Roadmap operator ergonomics — next-action recommendations (LUMI cockpit pattern)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -144,7 +144,7 @@ def format_explain_gate_report(
     open_gates: Optional[list[str]] = None,
     kanban_complete_allowed: Optional[bool] = None,
 ) -> str:
-    """Explain closed schema/freshness gates (kernel explain-gate analogue)."""
+    """Explain closed schema/freshness gates."""
     lines = [
         "🗺️ Roadmap gate explanation",
         f"Workspace: {workspace or '(auto)'}",

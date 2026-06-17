@@ -1,15 +1,15 @@
 # DietCode Documentation
 
 Operator and developer documentation for the DietCode Hermes plugin
-(**v1.9.4 — Sonic Kernel UX**).
+(**v1.11.0 — Native mutation + BroccoliDB v30**).
 
-DietCode bundles BroccoliDB, JoyZoning, JSDP, and an **optional macOS
-kernel authority bridge**. The kernel handles physical mutation and verification;
-JoyZoning owns the lifecycle journal and convergence gates; raw Hermes writes
-remain allowed by default with opt-in warn/block policies.
+DietCode bundles BroccoliDB, JoyZoning, JSDP, and a **native mutation runtime**
+(`dietcode_kernel`) aligned with LUMI / codemarie-new. JoyZoning owns the
+lifecycle journal and convergence gates; governed patches use coherence tokens
+and `.dietcode/mutation-state.json`.
 
 ```text
-intent → patch → receipt → journal → verify → verification journal → convergence
+intent → dietcode_kernel patch → receipt → journal → verify → convergence
 ```
 
 ## Start here
@@ -17,49 +17,26 @@ intent → patch → receipt → journal → verify → verification journal →
 | You are… | Read first | Then |
 | --- | --- | --- |
 | **Installing the plugin** | [dietcode-plugin.md](dietcode-plugin.md) | Run `/dietcode doctor` |
-| **Operating the kernel bridge** | [kernel-bridge-operations.md](kernel-bridge-operations.md) | `/dietcode kernel status` |
+| **Governed mutation** | [architecture.md](architecture.md) | `/dietcode mutation status` |
 | **Understanding the runtime** | [architecture.md](architecture.md) | [tools-reference.md](tools-reference.md) |
 | **Governed roadmap steering** | [roadmap.md](roadmap.md) | `/roadmap cockpit` |
 | **Working with BroccoliDB** | [broccolidb.md](broccolidb.md) | `/broccolidb status` |
-| **Building the kernel binary** | [../kernel/README.md](../kernel/README.md) | `make -C kernel validate` |
+| **Upgrading to v1.11.0** | [CHANGELOG.md](../CHANGELOG.md) | Native mutation — no `kernel/` subtree |
 | **Upgrading to v1.10.0** | [CHANGELOG.md](../CHANGELOG.md) | `make distill` then `cd broccolidb && npm ci && npm run build` |
-| **Upgrading to v1.9.4** | [releases/v1.9.4.md](releases/v1.9.4.md) | [../CHANGELOG.md](../CHANGELOG.md) |
-| **v1.9.3 cockpit** | [releases/v1.9.3.md](releases/v1.9.3.md) | [agent-ergonomics.md](agent-ergonomics.md) |
-| **v1.9.2 performance** | [releases/v1.9.2.md](releases/v1.9.2.md) | [agent-ergonomics.md](agent-ergonomics.md) |
-| **v1.9.1 observability** | [releases/v1.9.1.md](releases/v1.9.1.md) | [agent-ergonomics.md](agent-ergonomics.md) |
-| **v1.9.0 kernel bridge** | [releases/v1.9.0.md](releases/v1.9.0.md) | [kernel-bridge-operations.md](kernel-bridge-operations.md) |
+| **Agent operator loops** | [agent-ergonomics.md](agent-ergonomics.md) | `/roadmap cockpit` |
 
 ## Plugin documents
 
 | Document | Purpose |
 | --- | --- |
-| [dietcode-plugin.md](dietcode-plugin.md) | Install, verification, configuration, governed workflow (includes roadmap config). |
+| [dietcode-plugin.md](dietcode-plugin.md) | Install, verification, configuration, governed workflow. |
 | [architecture.md](architecture.md) | Runtime layout, hook wiring, authority split, subprocess boundaries. |
-| [kernel-bridge-operations.md](kernel-bridge-operations.md) | Warn/block modes, rehearsal, rollback, doctor interpretation, failure modes. |
 | [tools-reference.md](tools-reference.md) | Slash commands and registered Hermes tools (`dietcode_kernel`, JoyZoning, BroccoliDB). |
 | [broccolidb.md](broccolidb.md) | Bundled BroccoliDB package, RPC worker, database location, smoke tests. |
 | [broccolidb-native-execution-throughput.md](broccolidb-native-execution-throughput.md) | Native RPC execution model and throughput notes. |
-| [agent-ergonomics.md](agent-ergonomics.md) | Kernel progress telemetry, stuck-operator runbook, roadmap loop summary. |
-| [roadmap.md](roadmap.md) | Per-project ROADMAP steering: fingerprint, 12-section schema, bootstrap autofill, gates, config, example JSON. |
-| [releases/v1.9.4.md](releases/v1.9.4.md) | v1.9.4 sonic kernel UX release notes. |
-| [releases/v1.9.3.md](releases/v1.9.3.md) | v1.9.3 cockpit responsiveness release notes. |
-| [releases/v1.9.2.md](releases/v1.9.2.md) | v1.9.2 performance pass release notes. |
-| [releases/v1.9.1.md](releases/v1.9.1.md) | v1.9.1 observability polish release notes. |
-| [releases/v1.9.0.md](releases/v1.9.0.md) | v1.9.0 kernel authority bridge release notes. |
-
-## Kernel subtree documents
-
-The quarantined kernel under `kernel/` builds and validates independently. Hermes
-integration is wired through the plugin bridge (`lib/agent/kernel_bridge_client.py`).
-
-| Document | Purpose |
-| --- | --- |
-| [../kernel/README.md](../kernel/README.md) | Kernel build, socket, validate, quick start. |
-| [../kernel/MIGRATION.md](../kernel/MIGRATION.md) | Phase 1–5 integration history. |
-| [../kernel/docs/README.md](../kernel/docs/README.md) | Kernel doc index (RPC, coherence, gates). |
-| [../kernel/docs/kernel-rpc.md](../kernel/docs/kernel-rpc.md) | JSON-RPC methods and Python CLI. |
-| [../kernel/docs/coherence-tokens.md](../kernel/docs/coherence-tokens.md) | Coherence token model. |
-| [../kernel/docs/verify-gate.md](../kernel/docs/verify-gate.md) | Kernel `verify.run` gate. |
+| [agent-ergonomics.md](agent-ergonomics.md) | Native mutation loop, roadmap operator loop, progress storage. |
+| [roadmap.md](roadmap.md) | Per-project ROADMAP steering: fingerprint, 12-section schema, bootstrap autofill, gates. |
+| [releases/](releases/) | Historical release notes (v1.9.x kernel bridge era). |
 
 ## BroccoliDB package documents
 
@@ -80,16 +57,18 @@ Inside Hermes:
 
 ```text
 /dietcode doctor
-/dietcode kernel status
+/dietcode mutation status
+/roadmap cockpit
+joyzoning(action='context')
 ```
 
-Optional macOS kernel validation:
+Distill substrate updates from codemarie-new:
 
 ```bash
-make -C kernel kernel
-make -C kernel restart-agent-server-fast
-python scripts/kernel_bridge_e2e.py
+make distill
+cd broccolidb && npm ci && npm run build
 ```
 
-The doctor output is the source of truth for hooks, tools, runtime contracts,
-BroccoliDB, JoyZoning, JSDP, and kernel bridge health.
+## Changelog
+
+See [../CHANGELOG.md](../CHANGELOG.md).

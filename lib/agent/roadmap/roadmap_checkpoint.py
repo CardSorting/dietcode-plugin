@@ -333,6 +333,10 @@ def checkpoint_brief(
             payload["agent_next_call"] = "roadmap(action='validate')"
             status = operational_status(workspace=root, tier="full")
             payload["phase"] = status.get("phase")
+    from plugins.dietcode.lib.agent.roadmap.checkpoint_digest import is_digest_context, slim_checkpoint_payload
+
+    if is_digest_context(context):
+        return clarity_envelope(slim_checkpoint_payload(payload), phase_info={"phase": status["phase"]})
     return clarity_envelope(payload, phase_info={"phase": status["phase"]})
 
 

@@ -658,7 +658,7 @@ origin, identity line, verify command, bootstrap fill when incomplete.
 
 ### Kernel cockpit
 
-`/dietcode kernel cockpit` → `roadmap_steering` from `session_brief()`:
+`/dietcode roadmap cockpit` → `roadmap_steering` from `session_brief()`:
 
 ```text
 Project: My App — Tagline.

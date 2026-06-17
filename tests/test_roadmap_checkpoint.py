@@ -1480,6 +1480,36 @@ class RoadmapEvidenceSteeringTests(unittest.TestCase):
             self.assertEqual(attached.get("project_identity_line"), digest.get("identity_line"))
 
 
+class RoadmapCheckpointDigestTests(unittest.TestCase):
+    def test_is_digest_context(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.checkpoint_digest import is_digest_context
+
+        self.assertTrue(is_digest_context("digest"))
+        self.assertTrue(is_digest_context("compact"))
+        self.assertFalse(is_digest_context("stale refresh"))
+
+    def test_slim_checkpoint_payload_strips_heavy_fields(self) -> None:
+        from plugins.dietcode.lib.agent.roadmap.checkpoint_digest import slim_checkpoint_payload
+
+        slim = slim_checkpoint_payload({
+            "action": "checkpoint",
+            "phase": "checkpoint",
+            "evidence": {
+                "roadmap": {"exists": True, "health_status": "Healthy"},
+                "source_files": [{"path": "src/a.ts"}],
+                "project_identity_line": "Test — stack",
+            },
+            "existing_roadmap_summary": "very long roadmap text",
+            "suggested_bootstrap": "full skeleton",
+            "code_soup_pre_audit": {"issues": [1, 2, 3]},
+        })
+        self.assertEqual(slim.get("context_mode"), "digest")
+        self.assertNotIn("existing_roadmap_summary", slim)
+        self.assertNotIn("suggested_bootstrap", slim)
+        self.assertIsInstance(slim.get("evidence"), dict)
+        self.assertTrue(slim.get("evidence_digest_note"))
+
+
 class RoadmapWorkspaceResolutionTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -1494,7 +1524,7 @@ class RoadmapWorkspaceResolutionTests(unittest.TestCase):
         with self.assertRaises(RoadmapWorkspaceError):
             resolve_workspace(explicit=str(_PLUGIN_ROOT.resolve() / "lib"))
 
-    def test_resolve_workspace_uses_kernel_project_root(self) -> None:
+    def test_resolve_workspace_uses_project_root(self) -> None:
         from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace
 
         project = str(self.project)
@@ -1511,7 +1541,7 @@ class RoadmapWorkspaceResolutionTests(unittest.TestCase):
         self.assertEqual(source, "explicit")
 
     @mock.patch.dict(os.environ, {"HERMES_KANBAN_WORKSPACE": ""}, clear=False)
-    def test_resolve_workspace_skips_quarantined_kernel_candidate(self) -> None:
+    def test_resolve_workspace_skips_quarantined_plugin_candidate(self) -> None:
         from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace
 
         with mock.patch(

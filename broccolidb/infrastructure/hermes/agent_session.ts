@@ -2,10 +2,14 @@
  * Persistent AgentContext for the Hermes RPC worker — amortizes Connection/Workspace
  * bootstrap across graph tool calls (avoids per-call tsx + AgentContext cold start).
  */
+import { setDbPath } from "../db/Config.js";
 import { AgentContext } from "../../core/agent-context.js";
 import { Connection } from "../../core/connection.js";
 import { Workspace } from "../../core/workspace.js";
 import { dbPool } from "../db/BufferedDbPool.js";
+
+const dbEnv = process.env.HERMES_BROCCOLIDB_DB;
+if (dbEnv) setDbPath(dbEnv);
 
 let _contextPromise: Promise<AgentContext> | null = null;
 
