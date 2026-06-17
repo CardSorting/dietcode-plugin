@@ -203,7 +203,7 @@ flowchart TB
   subgraph surfaces [Agent surfaces]
     S1[guide / checkpoint / validate]
     S2[cockpit / doctor / health]
-    S3[joyzoning / kernel cockpit]
+    S3[joyzoning / roadmap cockpit]
     S4[write hints / progress JSONL]
   end
   FP --> EV
@@ -539,7 +539,7 @@ Evaluated top-to-bottom in `operator.py`:
 9. **validate_pending phase** → validate
 10. **Default** → checkpoint or guide depending on freshness
 
-Exactly **one** next action is returned — same pattern as kernel cockpit.
+Exactly **one** next action is returned — same pattern as roadmap cockpit.
 
 ---
 
@@ -551,7 +551,7 @@ gate messages include the project **`steering_brief`** from fingerprint.
 | Gate ID | Closes when | Blocks kanban_complete (default) |
 | --- | --- | --- |
 | `roadmap_enabled` | Feature disabled in config | Yes |
-| `workspace_safe` | Workspace is plugin/kernel/quarantine root | Yes |
+| `workspace_safe` | Workspace is plugin install / quarantine root | Yes |
 | `roadmap_present` | ROADMAP.md missing | Yes |
 | `schema_valid` | Validation errors or incomplete sections | Configurable (`block_kanban_on_invalid_schema`, default false) |
 | `validation_current` | ROADMAP.md edited since last validate | Yes (`block_kanban_on_validation_pending`) |
@@ -561,7 +561,7 @@ gate messages include the project **`steering_brief`** from fingerprint.
 When bootstrap is incomplete, **`schema_valid` fix text** is overridden to
 prioritize `apply_bootstrap_fill` before validate.
 
-Use `roadmap(action='explain_gate')` or `/roadmap explain-gate` for kernel-style
+Use `roadmap(action='explain_gate')` or `/roadmap explain-gate` for operator-style
 `closed_gates` / `open_gates` arrays with `why`, `fix`, and `safe` flags.
 
 ---
@@ -569,7 +569,7 @@ Use `roadmap(action='explain_gate')` or `/roadmap explain-gate` for kernel-style
 ## Workspace resolution
 
 ROADMAP.md always belongs in the **user project workspace**, never in
-`~/.hermes/plugins/dietcode` or the kernel tree.
+`~/.hermes/plugins/dietcode` or the plugin install tree.
 
 Resolution order (`resolve_workspace()` in `config.py`):
 
@@ -769,7 +769,7 @@ lib/agent/roadmap/
   operator.py              recommend_next_action, operator hints
   agent_steering.py        steering_line for prompts and session
   gate.py                  Gate evaluation + personalized messages
-  session.py               session_brief for session.start / kernel cockpit
+  session.py               session_brief for session.start / roadmap cockpit
   cockpit.py               Operator payload + format_cockpit_report
   doctor.py                Production health checks
   explain_gate.py          Gate diagnostics
@@ -789,7 +789,7 @@ scripts/roadmap_audit.py       Production hardening audit
 scripts/roadmap_operator_smoke.py
 scripts/roadmap_smoke.py
 tests/test_roadmap_checkpoint.py   (111 tests)
-tests/test_kernel_cockpit.py       Kernel + roadmap steering merge
+tests/test_native_mutation.py        Native mutation + coherence enforcement
 ```
 
 ---
@@ -805,10 +805,10 @@ make verify
 | Step | Script / test | Validates |
 | --- | --- | --- |
 | 1 | `scripts/roadmap_smoke.py` | Basic tool wiring |
-| 2 | `scripts/roadmap_audit.py` | Fingerprint, autofill, identity on all surfaces, joyzoning merge, kernel cockpit, gate personalization, placeholder coverage |
+| 2 | `scripts/roadmap_audit.py` | Fingerprint, autofill, identity on all surfaces, joyzoning merge, roadmap cockpit, gate personalization, placeholder coverage |
 | 3 | `scripts/roadmap_operator_smoke.py` | Operator ergonomics end-to-end |
 | 4 | `tests/test_roadmap_checkpoint.py` | Unit tests for fingerprint, fill plan, gates, native bridge |
-| 5 | `tests/test_kernel_cockpit.py` | Roadmap steering in kernel cockpit report |
+| 5 | `tests/test_native_mutation.py` | Coherence tokens and governed patch roundtrip |
 
 Individual runs:
 
@@ -1132,14 +1132,14 @@ Individual scripts:
 ```bash
 python3 scripts/roadmap_audit.py          # production hardening
 python3 scripts/roadmap_operator_smoke.py # ergonomics
-python3 -m unittest tests.test_roadmap_checkpoint tests.test_kernel_cockpit -q
+python3 -m unittest tests.test_roadmap_checkpoint tests.test_native_mutation -q
 ```
 
 ### Production audit expectations
 
 `roadmap_audit.py` validates: fingerprint detection, autofill mapping for all
 phrases, `project_identity_line` on session/validate/progress/doctor/clarity
-envelope/checkpoint, joyzoning merge hints, kernel cockpit Identity line, gate
+envelope/checkpoint, joyzoning merge hints, roadmap cockpit Identity line, gate
 personalization with project brief, write guard, and autofill write →
 `validation_pending`.
 
@@ -1147,7 +1147,7 @@ personalization with project brief, write guard, and autofill write →
 
 ## Related
 
-- [agent-ergonomics.md](agent-ergonomics.md) — kernel + roadmap operator UX summary
+- [agent-ergonomics.md](agent-ergonomics.md) — native mutation + roadmap operator UX summary
 - [tools-reference.md](tools-reference.md) — slash command catalog
 - [architecture.md](architecture.md) — hook wiring and gate integration
 - [../optional-skills/dietcode/auto-rolling-roadmap/SKILL.md](../optional-skills/dietcode/auto-rolling-roadmap/SKILL.md) — agent skill contract

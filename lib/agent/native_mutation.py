@@ -140,7 +140,7 @@ def apply_unified_diff(content: str, diff: str) -> str:
 def apply_line_search_replace(content: str, search: str, replace: str) -> str:
     if not search:
         return content
-    return content.replace(search, replace, 1)
+    return content.replace(search, replace)
 
 
 @dataclass
@@ -444,7 +444,8 @@ class NativeMutationManager:
                 "reason": "token_required",
                 "message": (
                     "Mutating RPC requires coherenceTokenId and expectedWorkspaceRevision when "
-                    "taskId is set. Call dietcode_kernel(action='status') or read the files again."
+                    "taskId is set. Call dietcode_kernel(action='status') or read the files again "
+                    "to obtain a token."
                 ),
                 "details": {
                     "requiredAction": "refresh_context",
@@ -457,16 +458,44 @@ class NativeMutationManager:
             return {
                 "ok": False,
                 "reason": "token_unknown",
-                "message": "Coherence token is missing or unknown.",
-                "details": {"requiredAction": "refresh_context"},
+                "message": (
+                    "Coherence token is missing or unknown. Please obtain a new coherence token "
+                    "by calling dietcode_kernel(action='status') or reading the target files."
+                ),
+                "details": {
+                    "requiredAction": "refresh_context",
+                    "currentWorkspaceRevision": state.workspace_revision,
+                },
             }
 
         expires = datetime.fromisoformat(token.expires_at.replace("Z", "+00:00"))
         if _utc_now() > expires:
-            return {"ok": False, "reason": "token_expired", "message": "Coherence token has expired."}
+            return {
+                "ok": False,
+                "reason": "token_expired",
+                "message": (
+                    "Coherence token has expired. Please refresh the coherence token by calling "
+                    "dietcode_kernel(action='status') or reading the target files."
+                ),
+                "details": {
+                    "requiredAction": "refresh_context",
+                    "currentWorkspaceRevision": state.workspace_revision,
+                },
+            }
 
         if token.task_id != task_id:
-            return {"ok": False, "reason": "token_task_mismatch", "message": "Coherence token does not match taskId."}
+            return {
+                "ok": False,
+                "reason": "token_task_mismatch",
+                "message": (
+                    "Coherence token does not match taskId. Please ensure the coherence token "
+                    "matches the current task."
+                ),
+                "details": {
+                    "requiredAction": "refresh_context",
+                    "currentWorkspaceRevision": state.workspace_revision,
+                },
+            }
 
         if expected_workspace_revision != state.workspace_revision:
             return {
@@ -474,16 +503,29 @@ class NativeMutationManager:
                 "reason": "workspace_changed",
                 "message": (
                     f"Workspace revision changed. Expected {expected_workspace_revision}, "
-                    f"current is {state.workspace_revision}."
+                    f"current is {state.workspace_revision}. Another task or change has updated "
+                    "the workspace. Please review the changes, call "
+                    "dietcode_kernel(action='status') to refresh the workspace revision, and retry."
                 ),
-                "details": {"currentWorkspaceRevision": state.workspace_revision},
+                "details": {
+                    "requiredAction": "refresh_context",
+                    "currentWorkspaceRevision": state.workspace_revision,
+                },
             }
 
         if token.verify_revision != state.verify_revision:
             return {
                 "ok": False,
                 "reason": "verify_revision_stale",
-                "message": "Verification revision changed since this task observed state.",
+                "message": (
+                    "Verification revision changed since this task observed state. A verify "
+                    "command has run. Please refresh your state with "
+                    "dietcode_kernel(action='status') before proceeding."
+                ),
+                "details": {
+                    "requiredAction": "refresh_context",
+                    "currentWorkspaceRevision": state.workspace_revision,
+                },
             }
 
         changed_paths: list[str] = []
@@ -497,8 +539,17 @@ class NativeMutationManager:
             return {
                 "ok": False,
                 "reason": "coherence_mismatch",
-                "message": f"Anchored file content changed: {', '.join(changed_paths)}",
-                "details": {"changedPaths": changed_paths},
+                "message": (
+                    "Anchored file content changed since this task read it. The following files "
+                    f"have changed on disk: {', '.join(changed_paths)}. Please use standard file "
+                    "read tools (e.g. read_file) to inspect the changes and synchronize your "
+                    "context before applying the patch."
+                ),
+                "details": {
+                    "changedPaths": changed_paths,
+                    "requiredAction": "refresh_context",
+                    "currentWorkspaceRevision": state.workspace_revision,
+                },
             }
 
         return {"ok": True}
@@ -520,7 +571,7 @@ class NativeMutationManager:
             return {
                 "ok": False,
                 "error": {
-                    "string_code": "workspace_unsafe",
+                    "string_code": "bridge_workspace_unsafe",
                     "message": f"Target path lies outside active workspace: {file_path}",
                 },
             }
@@ -592,6 +643,7 @@ class NativeMutationManager:
                 "workspace_root": str(workspace),
                 "path": file_path,
                 "taskId": task_id or None,
+                "kernel": mutation_result,
                 "mutation": mutation_result,
             }
         except Exception as exc:
@@ -613,7 +665,7 @@ class NativeMutationManager:
                 return {
                     "ok": False,
                     "error": {
-                        "string_code": "workspace_unsafe",
+                        "string_code": "bridge_workspace_unsafe",
                         "message": f"Working directory lies outside workspace: {cwd}",
                     },
                 }
@@ -662,6 +714,7 @@ class NativeMutationManager:
             "taskId": task_id or None,
             "workspace": str(workspace),
             "receipt": receipt,
+            "kernelResult": mutation_result,
             "mutationResult": mutation_result,
         }
         for history_path in (

@@ -37,6 +37,23 @@ def _json_result(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
+def _coerce_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _param_str(args: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        val = args.get(key)
+        if val is not None and str(val).strip():
+            return str(val).strip()
+    return ""
+
+
 def dietcode_kernel(
     action: str,
     *,
@@ -53,6 +70,7 @@ def dietcode_kernel(
     coherence_token_id: str = "",
     expected_workspace_revision: Optional[int] = None,
     paths: Optional[list[str]] = None,
+    **raw_args: Any,
 ) -> str:
     """Native mutation runtime — status, search, governed patch, verify, coherence, refresh."""
     act = (action or "").strip().lower()
@@ -61,7 +79,7 @@ def dietcode_kernel(
             f"Unknown action {action!r}. Use: status | search | patch | verify | coherence | refresh."
         )
 
-    ws, err = _resolve_workspace(workspace)
+    ws, err = _resolve_workspace(workspace or raw_args.get("workspace"))
     if ws is None:
         return _json_result({
             "ok": False,
@@ -69,44 +87,59 @@ def dietcode_kernel(
         })
 
     mgr = _manager()
-    tid = _default_task_id(task_id)
+    tid = _default_task_id(_param_str(raw_args, "task_id", "taskId") or task_id)
+    file_path = _param_str(raw_args, "path")
+    if not file_path:
+        file_path = path.strip()
+    search_query = _param_str(raw_args, "query") or query.strip()
+    diff = _param_str(raw_args, "unified_diff", "unifiedDiff") or unified_diff
+    search_line = _param_str(raw_args, "line_search", "lineSearch") or line_search
+    replace_line = _param_str(raw_args, "line_replace", "lineReplace") or line_replace
+    verify_cmd = _param_str(raw_args, "command") or command.strip()
+    verify_cwd = _param_str(raw_args, "cwd") or cwd
+    token_id = _param_str(raw_args, "coherence_token_id", "coherenceTokenId") or coherence_token_id
+    rev = expected_workspace_revision
+    if rev is None:
+        rev = _coerce_int(raw_args.get("expected_workspace_revision"))
+    if rev is None:
+        rev = _coerce_int(raw_args.get("expectedWorkspaceRevision"))
+    anchor_paths = paths if paths is not None else raw_args.get("paths")
+    if not isinstance(anchor_paths, list):
+        anchor_paths = []
 
     if act == "status":
         return _json_result(mgr.get_status(ws, tid))
 
     if act == "search":
-        if not query.strip():
+        if not search_query:
             return tool_error("query is required for search")
-        return _json_result(mgr.search_literal(ws, query, max_results=max_results))
+        return _json_result(mgr.search_literal(ws, search_query, max_results=max_results))
 
     if act == "coherence":
         if not tid:
             return tool_error("task_id is required for coherence")
-        token = mgr.issue_coherence_token(ws, tid, paths or [])
+        token = mgr.issue_coherence_token(ws, tid, anchor_paths)
         return _json_result({"ok": True, "result": token})
 
     if act == "refresh":
-        return _json_result(mgr.refresh_anchor(ws, paths))
+        return _json_result(mgr.refresh_anchor(ws, anchor_paths or None))
 
     if act == "verify":
-        if not command.strip():
+        if not verify_cmd:
             return tool_error("command is required for verify")
-        return _json_result(mgr.apply_verify(ws, command, cwd=cwd, task_id=tid))
+        return _json_result(mgr.apply_verify(ws, verify_cmd, cwd=verify_cwd, task_id=tid))
 
-    if not path.strip():
+    if not file_path:
         return tool_error("path is required for patch")
-    rev = expected_workspace_revision
-    if rev is None and coherence_token_id:
-        pass
     return _json_result(
         mgr.apply_patch(
             ws,
-            path,
-            unified_diff=unified_diff,
-            line_search=line_search,
-            line_replace=line_replace,
+            file_path,
+            unified_diff=diff,
+            line_search=search_line,
+            line_replace=replace_line,
             task_id=tid,
-            coherence_token_id=coherence_token_id or None,
+            coherence_token_id=token_id or None,
             expected_workspace_revision=rev,
         )
     )
@@ -139,7 +172,9 @@ registry.register(
                 "cwd": {"type": "string"},
                 "max_results": {"type": "integer", "default": 20},
                 "coherence_token_id": {"type": "string"},
+                "coherenceTokenId": {"type": "string"},
                 "expected_workspace_revision": {"type": "integer"},
+                "expectedWorkspaceRevision": {"type": "integer"},
                 "paths": {
                     "type": "array",
                     "items": {"type": "string"},
@@ -154,16 +189,19 @@ registry.register(
         workspace=args.get("workspace"),
         path=args.get("path", ""),
         query=args.get("query", ""),
-        unified_diff=args.get("unified_diff", ""),
-        line_search=args.get("line_search", ""),
-        line_replace=args.get("line_replace", ""),
-        task_id=args.get("task_id", ""),
+        unified_diff=args.get("unified_diff", "") or args.get("unifiedDiff", ""),
+        line_search=args.get("line_search", "") or args.get("lineSearch", ""),
+        line_replace=args.get("line_replace", "") or args.get("lineReplace", ""),
+        task_id=args.get("task_id", "") or args.get("taskId", ""),
         command=args.get("command", ""),
         cwd=args.get("cwd", ""),
         max_results=int(args.get("max_results") or 20),
-        coherence_token_id=str(args.get("coherence_token_id") or ""),
-        expected_workspace_revision=args.get("expected_workspace_revision"),
+        coherence_token_id=str(args.get("coherence_token_id") or args.get("coherenceTokenId") or ""),
+        expected_workspace_revision=args.get("expected_workspace_revision")
+        if args.get("expected_workspace_revision") is not None
+        else args.get("expectedWorkspaceRevision"),
         paths=args.get("paths"),
+        **{k: v for k, v in args.items() if k not in {"action"}},
     ),
     emoji="🥦",
 )

@@ -101,3 +101,10 @@ def _post_tool_call(
         )
     except Exception as exc:
         logger.debug("dietcode.joyzoning post_tool_call: %s", exc)
+
+    try:
+        from plugins.dietcode.lib.agent.layer_align import maybe_align_after_write
+
+        maybe_align_after_write(tool_name=tool_name, args=args)
+    except Exception as exc:
+        logger.debug("dietcode layer align post_tool_call: %s", exc)

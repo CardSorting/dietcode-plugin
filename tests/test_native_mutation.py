@@ -53,6 +53,8 @@ class NativeMutationTests(unittest.TestCase):
             )
             self.assertTrue(patched.get("ok"))
             self.assertIn("mutation", patched)
+            self.assertIn("kernel", patched)
+            self.assertEqual(patched["kernel"], patched["mutation"])
             self.assertEqual(target.read_text(encoding="utf-8"), "hello native\n")
 
             state_path = root / ".dietcode" / "mutation-state.json"
@@ -78,6 +80,39 @@ class NativeMutationTests(unittest.TestCase):
             self.assertIn("tracked.txt", state.get("trackedFileHashes", {}))
             anchors = state["coherenceTokens"][token_id]["anchors"]
             self.assertIn("tracked.txt", anchors)
+
+    def test_patch_requires_coherence_when_task_id_set(self) -> None:
+        from plugins.dietcode.lib.agent.native_mutation import NativeMutationManager
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "coherence.txt"
+            target.write_text("let status = 'init';\n", encoding="utf-8")
+
+            mgr = NativeMutationManager.get_instance()
+            denied = mgr.apply_patch(
+                root,
+                "coherence.txt",
+                line_search="let status = 'init';",
+                line_replace="let status = 'changed';",
+                task_id="task-coherence",
+            )
+            self.assertFalse(denied.get("ok"))
+            self.assertEqual(denied.get("error", {}).get("string_code"), "token_required")
+
+            status = mgr.get_status(root, "task-coherence")
+            token = status["result"]["coherenceToken"]
+            allowed = mgr.apply_patch(
+                root,
+                "coherence.txt",
+                line_search="let status = 'init';",
+                line_replace="let status = 'changed';",
+                task_id="task-coherence",
+                coherence_token_id=token["tokenId"],
+                expected_workspace_revision=token["workspaceRevision"],
+            )
+            self.assertTrue(allowed.get("ok"))
+            self.assertTrue(allowed["kernel"]["patched"])
 
 
 if __name__ == "__main__":

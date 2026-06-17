@@ -22,7 +22,20 @@ _ACTIONS = frozenset({
     "explain_stale",
     "explain_gate",
 })
+# Hyphen aliases accepted at the tool boundary (mirrors RoadmapToolHandler.ts).
+_ACTION_ALIASES = frozenset({
+    "explain-gate",
+    "explain-stale",
+})
 _TOOLSET = "roadmap"
+
+
+def _normalize_action(action: str) -> str:
+    """Lowercase, map hyphen aliases, and collapse to canonical underscore form."""
+    act = (action or "").strip().lower()
+    if act in _ACTION_ALIASES:
+        return act.replace("-", "_")
+    return act.replace("-", "_")
 
 
 def _roadmap_available() -> bool:
@@ -235,15 +248,37 @@ def _dispatch(
     raise ValueError(f"unreachable action {act!r}")
 
 
+def _emit_task_progress(act: str, task_progress: str, payload: dict[str, Any], workspace: Optional[str]) -> None:
+    if not task_progress.strip():
+        return
+    try:
+        from plugins.dietcode.lib.agent.roadmap.config import get_roadmap_config
+        from plugins.dietcode.lib.agent.roadmap.progress import emit_progress
+
+        if not get_roadmap_config().progress_enabled:
+            return
+        emit_progress(
+            "roadmap.task_progress",
+            action=act,
+            workspace=workspace,
+            payload={"task_progress": task_progress.strip(), "phase": payload.get("phase")},
+            success=True,
+        )
+    except Exception:
+        pass
+
+
 def roadmap(
-    action: str,
+    action: str = "",
     *,
     context: str = "",
     user_request: str = "",
     workspace: Optional[str] = None,
+    task_progress: str = "",
+    default_action: str = "guide",
 ) -> str:
     """Auto-rolling roadmap checkpoint — native project steering primitive."""
-    act = (action or "").strip().lower()
+    act = _normalize_action(action) or default_action
     if act not in _ACTIONS:
         from plugins.dietcode.lib.agent.roadmap.errors import as_tool_error, error_envelope
 
@@ -263,6 +298,7 @@ def roadmap(
             user_request=user_request,
             workspace=workspace,
         )
+        _emit_task_progress(act, task_progress, payload, workspace)
         return json.dumps(payload, ensure_ascii=False)
     except ImportError as exc:
         from plugins.dietcode.lib.agent.roadmap.errors import as_tool_error, error_envelope
@@ -289,7 +325,7 @@ def roadmap(
 
 def roadmap_checkpoint(**kwargs) -> str:
     """Alias for roadmap — preferred name in governed long-horizon sessions."""
-    return roadmap(**kwargs)
+    return roadmap(default_action="checkpoint", **kwargs)
 
 
 _SCHEMA = {
@@ -315,8 +351,11 @@ _SCHEMA = {
             "type": "string",
             "description": "Auto-detected workspace — override only if needed",
         },
+        "task_progress": {
+            "type": "string",
+            "description": "Optional operator note — journaled to roadmap-progress.jsonl as roadmap.task_progress",
+        },
     },
-    "required": ["action"],
 }
 
 registry.register(
@@ -336,6 +375,8 @@ registry.register(
         context=args.get("context", ""),
         user_request=args.get("user_request", ""),
         workspace=args.get("workspace"),
+        task_progress=args.get("task_progress", ""),
+        default_action="guide",
     ),
     check_fn=_roadmap_available,
     emoji="🗺️",
@@ -346,14 +387,15 @@ registry.register(
     toolset=_TOOLSET,
     schema={
         "name": "roadmap_checkpoint",
-        "description": "Alias for roadmap — guide | checkpoint | validate | cockpit | progress | watch.",
+        "description": "Alias for roadmap — defaults to checkpoint when action omitted.",
         "parameters": _SCHEMA,
     },
-    handler=lambda args, **kw: roadmap(
+    handler=lambda args, **kw: roadmap_checkpoint(
         action=args.get("action", ""),
         context=args.get("context", ""),
         user_request=args.get("user_request", ""),
         workspace=args.get("workspace"),
+        task_progress=args.get("task_progress", ""),
     ),
     check_fn=_roadmap_available,
     emoji="🗺️",

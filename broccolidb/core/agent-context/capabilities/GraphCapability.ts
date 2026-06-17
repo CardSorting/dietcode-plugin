@@ -42,6 +42,8 @@ import {
   type GraphKnowledgeResult,
   type GraphMergeKnowledgeInput,
   type GraphMergeKnowledgeResult,
+  type GraphLinkKnowledgeInput,
+  type GraphLinkKnowledgeResult,
   type GraphStructuralImpactInput,
   type GraphStructuralImpactResult,
   type GraphTraverseInput,
@@ -108,6 +110,16 @@ export class GraphCapability extends CapabilityBase {
     });
   }
 
+  async linkKnowledge(input: GraphLinkKnowledgeInput): Promise<GraphLinkKnowledgeResult> {
+    return this.execute('linkKnowledge', async () => {
+      const sourceId = requireNonEmptyString(input.sourceId, 'sourceId');
+      const targetId = requireNonEmptyString(input.targetId, 'targetId');
+      const relation = requireNonEmptyString(input.relation, 'relation');
+      await this.graphService.linkKnowledge(sourceId, targetId, relation, input.weight ?? 1.0);
+      return { linked: true, sourceId, targetId, relation };
+    });
+  }
+
   async getKnowledge(input: GraphKnowledgeIdInput): Promise<GraphKnowledgeResult> {
     return this.execute('getKnowledge', async () => ({
       item: await this.graphService.getKnowledge(requireNonEmptyString(input.kbId, 'kbId')),
@@ -134,6 +146,14 @@ export class GraphCapability extends CapabilityBase {
     return this.execute('getNodeCentrality', async () =>
       this.graphService.getNodeCentrality(requireNonEmptyString(input.kbId, 'kbId'))
     );
+  }
+
+  async refreshKnowledge(input: GraphKnowledgeIdInput): Promise<{ refreshed: true; kbId: string }> {
+    return this.execute('refreshKnowledge', async () => {
+      const kbId = requireNonEmptyString(input.kbId, 'kbId');
+      await this.graphService.refreshKnowledge(kbId);
+      return { refreshed: true, kbId };
+    });
   }
 
   async extractSubgraph(input: GraphTraverseInput) {

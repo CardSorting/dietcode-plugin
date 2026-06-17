@@ -247,6 +247,11 @@ export interface QueryAppendSharedMemoryResult {
   appended: true;
 }
 
+export interface QueryGetSharedMemoryResult {
+  memories: string[];
+  count: number;
+}
+
 export interface QueryDecayConfidenceInput {
   factor: number;
   olderThan: number | Date;
@@ -367,6 +372,20 @@ export interface GraphMergeKnowledgeResult {
   merged: true;
   sourceId: string;
   targetId: string;
+}
+
+export interface GraphLinkKnowledgeInput {
+  sourceId: string;
+  targetId: string;
+  relation: string;
+  weight?: number;
+}
+
+export interface GraphLinkKnowledgeResult {
+  linked: true;
+  sourceId: string;
+  targetId: string;
+  relation: string;
 }
 
 export interface GraphTraverseInput {

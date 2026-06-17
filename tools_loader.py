@@ -23,6 +23,7 @@ _TOOL_MODULES = (
     f"{_LIB}.kanban_broccolidb_tools",
     f"{_LIB}.mutation_tools",
     f"{_LIB}.roadmap_tools",
+    f"{_LIB}.project_map_tools",
 )
 
 # Diet tool modules loaded only via plugins/dietcode/tools_loader.py (not tools/ auto-discovery).
@@ -34,6 +35,7 @@ DEFERRED_TOOL_MODULE_STEMS: frozenset[str] = frozenset({
     "kanban_broccolidb_tools",
     "mutation_tools",
     "roadmap_tools",
+    "project_map_tools",
 })
 
 # Minimum surface the dietcode toolset must resolve (behavioral contract).
@@ -60,6 +62,9 @@ _DIETCODE_TOOL_PREFIXES = (
     "runtime_",
     "jsdp_",
     "roadmap_",
+    "mem_",
+    "query_cognitive_",
+    "create_cognitive_",
 )
 _DIETCODE_TOOL_NAMES = frozenset({
     "joyzoning",
@@ -68,6 +73,7 @@ _DIETCODE_TOOL_NAMES = frozenset({
     "dietcode_kernel",
     "roadmap",
     "roadmap_checkpoint",
+    "project_map",
 })
 
 

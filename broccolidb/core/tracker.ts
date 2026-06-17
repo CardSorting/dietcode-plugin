@@ -117,6 +117,7 @@ export const EnvironmentTracker = {
         { column: 'repoPath', value: basePath },
         { column: 'id', value: 'global' },
       ],
+      conflictTarget: 'id',
       values: {
         repoPath: basePath,
         id: 'global',
@@ -135,6 +136,7 @@ export const EnvironmentTracker = {
         { column: 'repoPath', value: basePath },
         { column: 'id', value: `agent_${agentId}` },
       ],
+      conflictTarget: 'id',
       values: {
         repoPath: basePath,
         id: `agent_${agentId}`,
@@ -154,6 +156,7 @@ export const EnvironmentTracker = {
           { column: 'repoPath', value: basePath },
           { column: 'id', value: `task_${taskId}` },
         ],
+        conflictTarget: 'id',
         values: {
           repoPath: basePath,
           id: `task_${taskId}`,

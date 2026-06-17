@@ -21,6 +21,8 @@ KANBAN_BROCCOLIDB_GUIDANCE = (
     "changes if auto-sync is disabled.\n"
     "5. Orchestrators: run `kanban_broccolidb_drift()` periodically to "
     "detect kanban/hive mismatches before they compound.\n"
+    "6. Before broad exploration in Plan Mode, call `project_map(path=…)` or "
+    "`project_map(query=…)` for starting files, risks, and fact-check probes.\n"
 )
 
 MUTATION_KERNEL_GUIDANCE = (

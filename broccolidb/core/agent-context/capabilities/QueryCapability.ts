@@ -21,6 +21,7 @@ import {
   type QueryAgentBundleResult,
   type QueryAppendSharedMemoryInput,
   type QueryAppendSharedMemoryResult,
+  type QueryGetSharedMemoryResult,
   type QueryDecayConfidenceInput,
   type QueryDecayConfidenceResult,
   type QueryErgonomicsSnapshotResult,
@@ -157,6 +158,16 @@ export class QueryCapability extends CapabilityBase {
         layer: 'domain',
       });
       return { appended: true };
+    });
+  }
+
+  async getSharedMemory(): Promise<QueryGetSharedMemoryResult> {
+    return this.execute('getSharedMemory', async () => {
+      const ws = await this.db.selectOne('workspaces', [
+        { column: 'id', value: this.workspace.workspaceId },
+      ]);
+      const memories = JSON.parse(String(ws?.sharedMemoryLayer || '[]')) as string[];
+      return { memories, count: memories.length };
     });
   }
 

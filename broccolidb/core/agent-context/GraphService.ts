@@ -101,6 +101,25 @@ export class GraphService {
     return generatedIds;
   }
 
+  async linkKnowledge(
+    sourceId: string,
+    targetId: string,
+    relation: string,
+    weight = 1.0,
+  ): Promise<void> {
+    await this.ctx.push({
+      type: "insert",
+      table: "knowledge_edges",
+      values: {
+        sourceId,
+        targetId,
+        type: relation,
+        weight,
+      },
+      layer: "domain",
+    } as WriteOp);
+  }
+
   async mergeKnowledge(sourceId: string, targetId: string): Promise<void> {
     const source = await this.getKnowledge(sourceId);
     const target = await this.getKnowledge(targetId);
@@ -150,6 +169,19 @@ export class GraphService {
     });
 
     await this.deleteKnowledge(sourceId);
+  }
+
+  async refreshKnowledge(kbId: string): Promise<void> {
+    await this.ctx.push({
+      type: 'update',
+      table: 'knowledge',
+      where: [
+        { column: 'id', value: kbId },
+        { column: 'userId', value: this.ctx.userId },
+      ],
+      values: { confidence: 1.0 },
+      layer: 'domain',
+    } as WriteOp);
   }
 
   async updateKnowledge(kbId: string, patch: Partial<KnowledgeBaseItem>): Promise<void> {

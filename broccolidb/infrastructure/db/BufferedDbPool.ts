@@ -1251,22 +1251,33 @@ export class BufferedDbPool {
         .values(op.values as any)
         .execute();
     } else if (op.type === 'upsert' && op.values) {
-      let query = trx.insertInto(op.table).values(op.values as any);
+      const insertValues: Record<string, unknown> = {};
+      const updateSets: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(op.values)) {
+        if (this.isIncrement(v)) {
+          insertValues[k] = v.value;
+          updateSets[k] = sql`${sql.ref(k)} + ${v.value}`;
+        } else {
+          insertValues[k] = v;
+          updateSets[k] = v;
+        }
+      }
+      let query = trx.insertInto(op.table).values(insertValues as any);
       if (op.conflictTarget) {
         query = (query as any).onConflict((oc: any) =>
           oc
             .columns(Array.isArray(op.conflictTarget) ? op.conflictTarget : [op.conflictTarget])
-            .doUpdateSet(op.values)
+            .doUpdateSet(updateSets)
         );
       } else if (op.where && !Array.isArray(op.where)) {
         query = (query as any).onConflict((oc: any) =>
-          oc.column((op.where as WhereCondition).column).doUpdateSet(op.values)
+          oc.column((op.where as WhereCondition).column).doUpdateSet(updateSets)
         );
       } else if (op.where && Array.isArray(op.where)) {
         const cols = op.where.map((c) => c.column);
-        query = (query as any).onConflict((oc: any) => oc.columns(cols).doUpdateSet(op.values));
+        query = (query as any).onConflict((oc: any) => oc.columns(cols).doUpdateSet(updateSets));
       } else {
-        query = (query as any).onConflict((oc: any) => oc.column('id').doUpdateSet(op.values));
+        query = (query as any).onConflict((oc: any) => oc.column('id').doUpdateSet(updateSets));
       }
       await query.execute();
     } else if (op.type === 'update' && op.values) {

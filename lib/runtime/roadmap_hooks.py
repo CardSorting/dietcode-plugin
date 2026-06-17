@@ -59,6 +59,9 @@ def _on_session_start(*, session_id: str = "", **_: Any) -> None:
             logger.debug("DietCode roadmap skill install skipped: %s", exc)
 
     try:
+        from plugins.dietcode.lib.agent.roadmap.external_watch import begin_session_roadmap_watch
+
+        begin_session_roadmap_watch(root)
         brief = session_brief(workspace=root)
         emit_roadmap_event(
             "session_started",
@@ -82,6 +85,9 @@ def _on_session_end(*, session_id: str = "", **_: Any) -> None:
 
     try:
         root = resolve_workspace_root()
+        from plugins.dietcode.lib.agent.roadmap.external_watch import end_session_roadmap_watch
+
+        end_session_roadmap_watch(root, session_id=session_id)
         brief = session_brief(workspace=root)
         emit_roadmap_event(
             "session_ended",
@@ -274,14 +280,18 @@ def _post_tool_call(
             from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace_root
             from plugins.dietcode.lib.agent.roadmap.workspace_state import record_file_mutation
 
+            ws_root = resolve_workspace_root()
             record_file_mutation(
-                resolve_workspace_root(),
+                ws_root,
                 tool=tool_name,
                 path=str(mutate_path or ""),
             )
+            from plugins.dietcode.lib.agent.roadmap.external_watch import note_tool_roadmap_mutation
+
+            note_tool_roadmap_mutation(ws_root)
             from plugins.dietcode.lib.agent.roadmap.snapshot import invalidate_snapshot
 
-            invalidate_snapshot(resolve_workspace_root())
+            invalidate_snapshot(ws_root)
             emit_roadmap_event(
                 "roadmap_file_mutated",
                 session_id=session_id,
