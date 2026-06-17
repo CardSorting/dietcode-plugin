@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, FrozenSet
 
 if TYPE_CHECKING:
@@ -13,30 +14,37 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _LIB = "plugins.dietcode.lib.tools"
+_PLUGIN_ROOT = Path(__file__).resolve().parent
 
-# Loaded exclusively by the DietCode plugin (not tools/ auto-discovery).
-_TOOL_MODULES = (
-    f"{_LIB}.broccolidb",
-    f"{_LIB}.joyzoning_tools",
-    f"{_LIB}.convergence_tools",
-    f"{_LIB}.jsdp_harness_tools",
-    f"{_LIB}.kanban_broccolidb_tools",
-    f"{_LIB}.mutation_tools",
-    f"{_LIB}.roadmap_tools",
-    f"{_LIB}.project_map_tools",
-)
+# Not standalone tool entrypoints (bridge helpers or loaded via broccolidb.py).
+_TOOL_MODULE_SKIP: frozenset[str] = frozenset({
+    "kanban_broccolidb_bridge",
+    "mem_tools",
+})
+
+
+def discover_tool_modules() -> tuple[str, ...]:
+    """Auto-discover DietCode tool modules under lib/tools/."""
+    tools_dir = _PLUGIN_ROOT / "lib" / "tools"
+    stems = sorted(
+        path.stem
+        for path in tools_dir.glob("*.py")
+        if path.stem not in _TOOL_MODULE_SKIP and not path.stem.startswith("_")
+    )
+    if "broccolidb" in stems:
+        stems.remove("broccolidb")
+        ordered = ["broccolidb", *stems]
+    else:
+        ordered = stems
+    return tuple(f"{_LIB}.{stem}" for stem in ordered)
+
+
+_TOOL_MODULES = discover_tool_modules()
 
 # Diet tool modules loaded only via plugins/dietcode/tools_loader.py (not tools/ auto-discovery).
-DEFERRED_TOOL_MODULE_STEMS: frozenset[str] = frozenset({
-    "broccolidb",
-    "joyzoning_tools",
-    "convergence_tools",
-    "jsdp_harness_tools",
-    "kanban_broccolidb_tools",
-    "mutation_tools",
-    "roadmap_tools",
-    "project_map_tools",
-})
+DEFERRED_TOOL_MODULE_STEMS: frozenset[str] = frozenset(
+    module.rsplit(".", 1)[-1] for module in _TOOL_MODULES
+)
 
 # Minimum surface the dietcode toolset must resolve (behavioral contract).
 EXPECTED_DIETCODE_TOOLS: FrozenSet[str] = frozenset({

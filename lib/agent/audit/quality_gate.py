@@ -139,7 +139,15 @@ def kanban_complete_allowed(scope_id: Optional[str] = None) -> tuple[bool, Optio
 
 
 def explain_quality_gate(scope_id: Optional[str] = None) -> dict[str, Any]:
+    from plugins.dietcode.lib.agent.recovery_catalog import (
+        quality_recovery_steps,
+        recovery_steps_as_dicts,
+        resolve_kanban_complete_flow,
+        resolve_mutation_context,
+    )
+
     sid = _resolve_scope(scope_id)
+    ctx = resolve_mutation_context(sid)
     cfg = get_completion_gate_config()
     meta = build_quality_metadata(sid)
     decision = evaluate_completion_gate(meta, config=cfg)
@@ -147,6 +155,7 @@ def explain_quality_gate(scope_id: Optional[str] = None) -> dict[str, Any]:
         "plugins.dietcode.lib.agent.audit.severity",
         fromlist=["partition_violations"],
     ).partition_violations(meta.get("violations"))
+    steps = quality_recovery_steps(ctx=ctx)
     return {
         "enabled": cfg.enabled,
         "scope_id": sid,
@@ -161,9 +170,8 @@ def explain_quality_gate(scope_id: Optional[str] = None) -> dict[str, Any]:
         "spider_gate": meta.get("spider_gate"),
         "recent_verify_passed": meta.get("recent_verify_passed"),
         "block_count": meta.get("block_count") or 0,
-        "recovery": [
-            "broccolidb_violations() — list structural findings",
-            "joyzoning(action='verify', report='...', passed=true) — record verification",
-            "broccolidb_heal() — prune ghost graph nodes when DB is up",
-        ],
+        "recovery": recovery_steps_as_dicts(steps),
+        "agent_next_call": (
+            steps[0].command if decision.blocked else resolve_kanban_complete_flow(ctx=ctx)
+        ),
     }

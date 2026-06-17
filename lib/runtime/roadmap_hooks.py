@@ -5,6 +5,8 @@ import json
 import logging
 from typing import Any, Optional
 
+from plugins.dietcode.lib.runtime.hook_guards import skip_unless
+
 logger = logging.getLogger(__name__)
 
 _ROADMAP_TOOLS = frozenset({"roadmap", "roadmap_checkpoint"})
@@ -27,19 +29,14 @@ _EVENT_BY_ACTION = {
 
 
 def _roadmap_enabled() -> bool:
-    try:
-        from plugins.dietcode.lib.agent.roadmap.config import get_roadmap_config
+    from plugins.dietcode.lib.agent.features import is_roadmap_enabled
 
-        return bool(get_roadmap_config().enabled)
-    except Exception:
-        return False
+    return is_roadmap_enabled()
 
 
+@skip_unless("roadmap")
 def _on_session_start(*, session_id: str = "", **_: Any) -> None:
     """Install skills, emit session event, surface roadmap brief in runtime journal."""
-    if not _roadmap_enabled():
-        return
-
     try:
         from plugins.dietcode.lib.agent.roadmap.config import get_roadmap_config, resolve_workspace_root
         from plugins.dietcode.lib.agent.roadmap.session import emit_roadmap_event, session_brief

@@ -19,74 +19,29 @@ def pre_tool_call_block(
     if tool_name != "kanban_complete":
         return None
     try:
-        from plugins.dietcode.lib.agent.joyzoning.config import get_joyzoning_config, resolve_scope_id
-        from plugins.dietcode.lib.agent.joyzoning.convergence import require_review_before_complete
+        from plugins.dietcode.lib.agent.gates.kanban_complete import first_block_message
 
-        if not get_joyzoning_config().enabled:
-            return None
-        parsed = args if isinstance(args, dict) else {}
-        scope = resolve_scope_id(parsed.get("task_id"))
-        msg = require_review_before_complete(scope)
-        if msg:
-            return block_dict(msg)
-
-        try:
-            from plugins.dietcode.lib.agent.roadmap.gate import require_fresh_checkpoint_before_complete
-
-            roadmap_msg = require_fresh_checkpoint_before_complete()
-            if roadmap_msg:
-                return block_dict(roadmap_msg)
-        except ImportError:
-            pass
-
-        try:
-            from plugins.dietcode.lib.agent.audit.quality_gate import kanban_complete_allowed
-
-            allowed, quality_msg, _ = kanban_complete_allowed(scope)
-            if not allowed and quality_msg:
-                return block_dict(quality_msg)
-        except ImportError:
-            pass
+        message = first_block_message(args=args)
+        if message:
+            return block_dict(message)
         return None
     except Exception as exc:
         if fail_closed:
-            try:
-                from plugins.dietcode.lib.agent.joyzoning.config import get_joyzoning_config
-                if get_joyzoning_config().enabled:
-                    return block_dict(f"Convergence gate unavailable: {exc}")
-            except Exception:
-                return block_dict("Convergence gate unavailable.")
+            from plugins.dietcode.lib.agent.features import is_joyzoning_enabled
+
+            if is_joyzoning_enabled():
+                return block_dict(f"Convergence gate unavailable: {exc}")
+            return block_dict("Convergence gate unavailable.")
         return None
 
 
 def assert_kanban_completion_allowed(task_id: str) -> None:
     """Raise when joyzoning convergence policy blocks kanban completion."""
-    from plugins.dietcode.lib.agent.joyzoning.config import get_joyzoning_config
-    from plugins.dietcode.lib.agent.joyzoning.convergence import require_review_before_complete
+    from plugins.dietcode.lib.agent.gates.kanban_complete import first_block_message
 
-    if not get_joyzoning_config().enabled:
-        return
-    msg = require_review_before_complete(task_id)
-    if msg:
-        raise JoyZoningCompletionBlocked(msg)
-
-    try:
-        from plugins.dietcode.lib.agent.roadmap.gate import require_fresh_checkpoint_before_complete
-
-        roadmap_msg = require_fresh_checkpoint_before_complete()
-        if roadmap_msg:
-            raise JoyZoningCompletionBlocked(roadmap_msg)
-    except ImportError:
-        pass
-
-    try:
-        from plugins.dietcode.lib.agent.audit.quality_gate import kanban_complete_allowed
-
-        allowed, quality_msg, _ = kanban_complete_allowed(task_id)
-        if not allowed and quality_msg:
-            raise JoyZoningCompletionBlocked(quality_msg)
-    except ImportError:
-        pass
+    message = first_block_message(task_id)
+    if message:
+        raise JoyZoningCompletionBlocked(message)
 
 
 class JoyZoningCompletionBlocked(Exception):

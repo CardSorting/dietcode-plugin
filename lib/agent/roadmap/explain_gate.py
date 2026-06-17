@@ -79,25 +79,33 @@ def build_explain_gate_payload(*, workspace: Optional[str] = None) -> dict[str, 
         payload["report"] = report + suffix
     payload = clarity_envelope(payload)
     try:
-        from plugins.dietcode.lib.agent.audit.quality_gate import explain_quality_gate
-        from plugins.dietcode.lib.agent.joyzoning.config import resolve_scope_id
+        from plugins.dietcode.lib.agent.gates.kanban_complete import evaluate_kanban_complete_gates
 
-        quality = explain_quality_gate(resolve_scope_id())
-        payload["quality_gate"] = quality
-        combined_allowed = bool(kanban_allowed) and bool(quality.get("kanban_complete_allowed", True))
+        gate_result = evaluate_kanban_complete_gates(evaluate_all=True)
+        quality_layer = gate_result.layer("quality")
+        quality = quality_layer.detail if quality_layer and isinstance(quality_layer.detail, dict) else {}
+        if quality:
+            payload["quality_gate"] = quality
+        combined_allowed = gate_result.allowed
         payload["kanban_complete_allowed"] = combined_allowed
         payload["success"] = combined_allowed
         payload["ok"] = combined_allowed
-        if not quality.get("kanban_complete_allowed"):
-            payload["gates_closed"] = {
-                **(payload.get("gates_closed") or {}),
-                "quality_audit": True,
-            }
-            reasons = quality.get("reasons") or []
-            if reasons:
+        from plugins.dietcode.lib.agent.ergonomics import resolve_agent_next_call
+        from plugins.dietcode.lib.agent.gates.kanban_complete import gate_layers_payload
+
+        gate_snapshot = gate_layers_payload(gate_result)
+        payload["agent_next_call"] = resolve_agent_next_call(gates=gate_snapshot)
+        if not combined_allowed:
+            closed = dict(payload.get("gates_closed") or {})
+            if quality_layer and not quality_layer.allowed:
+                closed["quality_audit"] = True
+            if gate_result.layer("joyzoning") and not gate_result.layer("joyzoning").allowed:
+                closed["joyzoning_convergence"] = True
+            payload["gates_closed"] = closed
+            block = gate_result.block_message
+            if block:
                 payload["operator_summary"] = (
-                    f"{payload.get('operator_summary', '')} | "
-                    f"Quality gate: {reasons[0].get('message', 'blocked')}"
+                    f"{payload.get('operator_summary', '')} | Gate: {block}"
                 ).strip(" |")
     except ImportError:
         pass

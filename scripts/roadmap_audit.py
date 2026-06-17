@@ -34,6 +34,15 @@ _REQUIRED = (
     "lib/agent/roadmap/roadmap_checkpoint.py",
     "lib/tools/roadmap_tools.py",
     "lib/runtime/roadmap_hooks.py",
+    "lib/runtime/hook_registry.py",
+    "lib/runtime/hook_guards.py",
+    "lib/runtime/command_registry.py",
+    "lib/agent/gates/kanban_complete.py",
+    "lib/agent/features.py",
+    "lib/agent/config_hub.py",
+    "lib/agent/self_check.py",
+    "lib/agent/production_audit.py",
+    "lib/agent/ergonomics.py",
     "hooks.py",
     "prompts.py",
     "optional-skills/dietcode/auto-rolling-roadmap/SKILL.md",
@@ -94,6 +103,13 @@ def main() -> int:
 
     for hit in _scan_production_sources():
         failures.append(f"production language audit: {hit}")
+
+    from plugins.dietcode.lib.agent.production_audit import run_production_hardening_audit
+
+    hardening = run_production_hardening_audit(root=_PLUGIN_ROOT)
+    if not hardening.get("ok"):
+        for item in hardening.get("failures") or []:
+            failures.append(f"production hardening: {item}")
 
     from plugins.dietcode.lib.agent.roadmap.cockpit import build_cockpit_payload, format_cockpit_report
     from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace
@@ -544,9 +560,11 @@ def main() -> int:
             else:
                 os.environ["HERMES_KANBAN_WORKSPACE"] = prev_ws
 
-        hooks_text = (_PLUGIN_ROOT / "hooks.py").read_text(encoding="utf-8")
-        if "roadmap_pre" not in hooks_text:
-            failures.append("hooks.py missing roadmap pre_tool_call registration")
+        from plugins.dietcode.lib.runtime.hook_registry import HOOK_CHAINS
+
+        pre_specs = HOOK_CHAINS.get("pre_tool_call", ())
+        if not any("roadmap_hooks" in module for module, _ in pre_specs):
+            failures.append("hook_registry missing roadmap pre_tool_call registration")
 
         from importlib.util import module_from_spec, spec_from_file_location
 
@@ -602,7 +620,6 @@ def main() -> int:
         from plugins.dietcode.lib.agent.roadmap.gate import evaluate_gate_checks
 
         gate_inputs = {
-            "config": get_roadmap_config() if False else None,
             "workspace": str(root),
             "roadmap_present": True,
             "bootstrap_complete": False,

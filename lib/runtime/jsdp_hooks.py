@@ -5,9 +5,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from plugins.dietcode.lib.runtime.hook_guards import when_enabled
+
 logger = logging.getLogger(__name__)
 
 
+@when_enabled("jsdp")
 def _on_session_start(*, session_id: str = "", **_: Any) -> None:
     """Emit ``jsdp.role_started`` when a dispatched worker carries a JSDP role."""
     try:
@@ -15,10 +18,6 @@ def _on_session_start(*, session_id: str = "", **_: Any) -> None:
         from plugins.dietcode.lib.agent.joyzoning.runtime_events import emit_runtime_event
 
         cfg = get_joyzoning_config()
-        if not cfg.enabled or not cfg.jsdp_enabled:
-            return
-        if not cfg.jsdp_role:
-            return
         emit_runtime_event(
             "jsdp.role_started",
             scope_id=resolve_scope_id(),

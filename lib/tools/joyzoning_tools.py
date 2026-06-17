@@ -15,6 +15,7 @@ _ACTIONS = frozenset({
     "context",
     "doctor",
     "status",
+    "operator",
     "begin",
     "patch",
     "verify",
@@ -27,11 +28,9 @@ _ACTIONS = frozenset({
 
 
 def _joyzoning_enabled() -> bool:
-    try:
-        from plugins.dietcode.lib.agent.joyzoning.config import get_joyzoning_config
-        return get_joyzoning_config().enabled
-    except Exception:
-        return False
+    from plugins.dietcode.lib.agent.features import is_joyzoning_enabled
+
+    return is_joyzoning_enabled()
 
 
 def joyzoning(
@@ -64,6 +63,11 @@ def joyzoning(
     if act == "status":
         from plugins.dietcode.lib.tools.convergence_tools import convergence_status
         return convergence_status(scope_id=scope_id)
+
+    if act == "operator":
+        from plugins.dietcode.lib.agent.ergonomics import build_operator_brief
+
+        return json.dumps(build_operator_brief(scope_id=scope_id))
 
     if act == "begin":
         from plugins.dietcode.lib.tools.convergence_tools import mutation_begin
@@ -133,7 +137,7 @@ registry.register(
                     "type": "string",
                     "enum": sorted(_ACTIONS),
                     "description": (
-                        "context=where am I; doctor=health; status=convergence; "
+                        "context=where am I; doctor=health; status=convergence; operator=unified gate brief; "
                         "begin|patch|verify|request_review=lifecycle; events=journal tail; "
                         "role_context|validate_handoff=JSDP; "
                         "roadmap=roadmap cockpit brief; "

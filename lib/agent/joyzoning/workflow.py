@@ -198,11 +198,23 @@ def build_operational_context(*, scope_id: str | None = None) -> dict[str, Any]:
     except Exception as exc:
         journal_integrity = {"success": False, "error": str(exc)}
 
+    gate_result = None
     gate_message = None
     roadmap_gate_message = None
+    roadmap_gate_state: dict[str, Any] | None = None
     try:
-        from plugins.dietcode.lib.agent.joyzoning.convergence import require_review_before_complete
-        gate_message = require_review_before_complete(anchor_scope)
+        from plugins.dietcode.lib.agent.gates.kanban_complete import evaluate_kanban_complete_gates
+
+        gate_result = evaluate_kanban_complete_gates(anchor_scope, evaluate_all=True)
+        gate_message = gate_result.block_message
+        joyzoning_layer = gate_result.layer("joyzoning")
+        roadmap_layer = gate_result.layer("roadmap")
+        if joyzoning_layer and not joyzoning_layer.allowed:
+            gate_message = joyzoning_layer.message
+        if roadmap_layer and not roadmap_layer.allowed:
+            roadmap_gate_message = roadmap_layer.message
+            if isinstance(roadmap_layer.detail, dict):
+                roadmap_gate_state = roadmap_layer.detail
     except Exception:
         pass
 
@@ -214,21 +226,22 @@ def build_operational_context(*, scope_id: str | None = None) -> dict[str, Any]:
         pass
 
     roadmap_brief: dict[str, Any] | None = None
-    roadmap_gate_state: dict[str, Any] | None = None
     try:
-        from plugins.dietcode.lib.agent.roadmap.gate import build_roadmap_gate_state
         from plugins.dietcode.lib.agent.roadmap.session import session_brief as roadmap_session_brief
 
         roadmap_brief = roadmap_session_brief()
-        roadmap_gate_state = build_roadmap_gate_state()
-        if roadmap_gate_state.get("enabled") and not roadmap_gate_state.get("kanban_complete_allowed"):
-            roadmap_gate_message = (
-                f"ROADMAP steering gate closed — {roadmap_gate_state.get('stale_summary') or roadmap_gate_state.get('stale_reason')}. "
-                "Run roadmap(action='checkpoint') before kanban_complete. "
-                "Diagnostic: /roadmap explain-gate"
-            )
+        if roadmap_gate_state is None:
+            from plugins.dietcode.lib.agent.roadmap.gate import build_roadmap_gate_state
+
+            roadmap_gate_state = build_roadmap_gate_state()
     except Exception:
         pass
+
+    quality_gate = None
+    if gate_result is not None:
+        quality_layer = gate_result.layer("quality")
+        if quality_layer and isinstance(quality_layer.detail, dict):
+            quality_gate = quality_layer.detail
 
     return {
         "success": True,
@@ -236,8 +249,13 @@ def build_operational_context(*, scope_id: str | None = None) -> dict[str, Any]:
         "anchor_scope_id": anchor_scope,
         "scope_cluster": scope_cluster,
         "convergence_state": state.value,
-        "kanban_complete_allowed": gate_message is None and roadmap_gate_message is None,
-        "kanban_complete_block_reason": gate_message or roadmap_gate_message,
+        "kanban_complete_allowed": gate_result.allowed if gate_result is not None else (
+            gate_message is None and roadmap_gate_message is None
+        ),
+        "kanban_complete_block_reason": gate_result.block_message if gate_result is not None else (
+            gate_message or roadmap_gate_message
+        ),
+        "quality_gate": quality_gate,
         "roadmap_complete_block_reason": roadmap_gate_message,
         "roadmap_gate": roadmap_gate_state,
         "roadmap_steering_line": (roadmap_brief or {}).get("steering_line"),
@@ -268,3 +286,6 @@ def build_operational_context(*, scope_id: str | None = None) -> dict[str, Any]:
             "merge_gate": "convergence_mark_converged",
         },
     }
+    from plugins.dietcode.lib.agent.response_envelope import attach_operator_envelope
+
+    return attach_operator_envelope(payload, scope_id=anchor_scope)

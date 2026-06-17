@@ -99,7 +99,8 @@ JOYZONING_GUIDANCE = (
     "## Start every governed session\n"
     "\n"
     "1. `joyzoning(action='context')` — scope bindings, convergence state, next_actions.\n"
-    "2. `joyzoning(action='doctor')` if anything looks miswired.\n"
+    "2. `joyzoning(action='operator')` — unified gate brief when kanban_complete is blocked.\n"
+    "3. `joyzoning(action='doctor')` if anything looks miswired.\n"
     "\n"
     "## Mutation lifecycle (plan → patch → verify → review → converge)\n"
     "\n"
@@ -163,6 +164,24 @@ JOYZONING_GUIDANCE = (
 )
 
 
+COMPLETION_GATE_GUIDANCE = (
+    "## Quality audit completion gate\n"
+    "\n"
+    "When `joyzoning.governance.completion_gate.enabled` is true, `kanban_complete` runs a "
+    "three-tier gate: JoyZoning convergence → roadmap steering → Spider/hardening score.\n"
+    "\n"
+    "| Call | When |\n"
+    "|------|------|\n"
+    "| `joyzoning(action='operator')` | Unified gate brief — `agent_next_call`, `recovery_steps` |\n"
+    "| `joyzoning(action='status')` | Convergence + all gate layers |\n"
+    "| `roadmap(action='explain_gate')` | Roadmap schema/freshness gates |\n"
+    "| `broccolidb_violations()` | Structural findings before complete |\n"
+    "| `joyzoning(action='verify', report='…', passed=true)` | Record verification evidence |\n"
+    "\n"
+    "Do not call `kanban_complete` while `kanban_complete_allowed` is false — pre_tool_call blocks it.\n"
+)
+
+
 def build_dietcode_guidance(valid_tool_names: AbstractSet[str]) -> str:
     """Return DietCode prompt block when matching tools are loaded."""
     if not valid_tool_names:
@@ -174,6 +193,13 @@ def build_dietcode_guidance(valid_tool_names: AbstractSet[str]) -> str:
     has_broccolidb_bridge = any(n.startswith("kanban_broccolidb_") for n in valid_tool_names)
     has_kanban_worker = "kanban_show" in valid_tool_names
     has_mutation_kernel = "dietcode_kernel" in valid_tool_names
+    has_completion_gate = False
+    try:
+        from plugins.dietcode.lib.agent.features import is_completion_gate_enabled
+
+        has_completion_gate = is_completion_gate_enabled()
+    except Exception:
+        pass
 
     if has_roadmap:
         try:
@@ -191,5 +217,7 @@ def build_dietcode_guidance(valid_tool_names: AbstractSet[str]) -> str:
         parts.append(JOYZONING_GUIDANCE)
     elif has_kanban_worker and has_broccolidb_bridge:
         parts.append(KANBAN_BROCCOLIDB_GUIDANCE)
+    if has_completion_gate and has_joyzoning:
+        parts.append(COMPLETION_GATE_GUIDANCE)
 
     return "\n\n".join(parts)

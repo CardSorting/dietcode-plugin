@@ -8,44 +8,44 @@ from tools.registry import registry, tool_error
 
 
 def _joyzoning_enabled() -> bool:
-    try:
-        from plugins.dietcode.lib.agent.joyzoning.config import get_joyzoning_config
-        return get_joyzoning_config().enabled
-    except Exception:
-        return False
+    from plugins.dietcode.lib.agent.features import is_joyzoning_enabled
+
+    return is_joyzoning_enabled()
 
 
 def convergence_status(scope_id: str = None) -> str:
+    from plugins.dietcode.lib.agent.gates.kanban_complete import (
+        evaluate_kanban_complete_gates,
+        gate_layers_payload,
+    )
     from plugins.dietcode.lib.agent.joyzoning.config import resolve_scope_id
-    from plugins.dietcode.lib.agent.joyzoning.convergence import require_review_before_complete
     from plugins.dietcode.lib.agent.joyzoning.journal import get_journal
     from plugins.dietcode.lib.agent.joyzoning.workflow import _resolve_cluster
 
     sid = resolve_scope_id(scope_id)
     state, anchor, cluster = _resolve_cluster(sid)
     record = get_journal().get_convergence(anchor)
-    gate = require_review_before_complete(anchor)
-    quality_gate = None
-    try:
-        from plugins.dietcode.lib.agent.audit.quality_gate import explain_quality_gate
+    gate_result = evaluate_kanban_complete_gates(anchor, evaluate_all=True)
+    gate_payload = gate_layers_payload(gate_result)
+    from plugins.dietcode.lib.agent.response_envelope import attach_operator_envelope
 
-        quality_gate = explain_quality_gate(anchor)
-    except ImportError:
-        quality_gate = None
-    conv_allowed = gate is None
-    quality_allowed = True if not quality_gate else bool(quality_gate.get("kanban_complete_allowed", True))
-    return json.dumps({
+    operator = build_operator_brief(scope_id=anchor)
+    payload = {
         "success": True,
         "scope_id": sid,
         "anchor_scope_id": anchor,
         "scope_cluster": cluster,
         "state": state.value,
-        "kanban_complete_allowed": conv_allowed and quality_allowed,
-        "kanban_complete_block_reason": gate,
-        "quality_gate": quality_gate,
+        "kanban_complete_allowed": gate_result.allowed,
+        "kanban_complete_block_reason": gate_result.block_message,
+        "quality_gate": gate_payload.get("quality_gate"),
+        "roadmap_gate": gate_payload.get("roadmap_gate"),
+        "gate_layers": gate_payload.get("layers"),
         "record": record,
         "active_mutation": get_journal().get_active_mutation(anchor),
-    })
+        **{k: operator[k] for k in ("operator_summary", "agent_next_call", "recovery_steps") if k in operator},
+    }
+    return json.dumps(attach_operator_envelope(payload, scope_id=anchor))
 
 
 def mutation_begin(goal: str, scope_id: str = None) -> str:

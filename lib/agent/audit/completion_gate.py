@@ -169,5 +169,7 @@ def build_gate_block_message(decision: CompletionGateDecision, metadata: dict[st
     if warning:
         lines.append(f"Warnings: {', '.join(warning)}")
     lines.append("")
-    lines.append("Run broccolidb_violations / joyzoning(action='verify') then retry.")
+    lines.append(
+        "Next: broccolidb_violations() then joyzoning(action='verify', report='tests and structural gate cleared', passed=true)."
+    )
     return "\n".join(lines)

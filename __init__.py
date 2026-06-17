@@ -20,7 +20,6 @@ def _run_namespace_bootstrap() -> None:
 
 _run_namespace_bootstrap()
 
-from plugins.dietcode.health import handle_dietcode_command
 from plugins.dietcode.hooks import register_all_hooks
 from plugins.dietcode.prompts import build_dietcode_guidance
 from plugins.dietcode.tools_loader import load_dietcode_tools, register_dietcode_toolset
@@ -39,33 +38,9 @@ def _mark_registered(ctx) -> None:
 
 
 def _register_commands(ctx) -> None:
-    from plugins.dietcode.slash_commands import (
-        _handle_broccolidb,
-        _handle_joyzoning,
-        _handle_roadmap,
-    )
+    from plugins.dietcode.lib.runtime.command_registry import register_all_commands
 
-    ctx.register_command(
-        "dietcode",
-        handler=handle_dietcode_command,
-        description="DietCode integration health — BroccoliDB, JoyZoning, JSDP.",
-        args_hint="[status|doctor|tools|broccolidb]",
-    )
-    ctx.register_command(
-        "dc",
-        handler=handle_dietcode_command,
-        description="DietCode integration health (alias).",
-        args_hint="[status|doctor|tools|broccolidb]",
-    )
-    for name, handler, desc, hint in (
-        ("joyzoning", _handle_joyzoning, "JoyZoning layering compliance audit.", "[status|check <file>|…]"),
-        ("jz", _handle_joyzoning, "JoyZoning layering audit (alias).", "[status|check <file>|…]"),
-        ("broccolidb", _handle_broccolidb, "BroccoliDB epistemic database console.", "[status|query|audit|heal]"),
-        ("bdb", _handle_broccolidb, "BroccoliDB console (alias).", "[status|query|audit|heal]"),
-        ("roadmap", _handle_roadmap, "Native roadmap checkpoint console.", "[cockpit|doctor|checkpoint|validate|guide]"),
-        ("rm", _handle_roadmap, "Roadmap checkpoint console (alias).", "[cockpit|doctor|checkpoint|validate|guide]"),
-    ):
-        ctx.register_command(name, handler=handler, description=desc, args_hint=hint)
+    register_all_commands(ctx)
 
 
 def register(ctx) -> None:
@@ -95,6 +70,16 @@ def register(ctx) -> None:
         logger.debug("DietCode seamless setup skipped: %s", exc)
 
     _mark_registered(ctx)
+
+    try:
+        from plugins.dietcode.lib.agent.self_check import run_self_check
+
+        check = run_self_check()
+        if not check.get("ok"):
+            logger.warning("DietCode: self-check issues: %s", check.get("failures"))
+    except Exception as exc:
+        logger.debug("DietCode self-check skipped: %s", exc)
+
     logger.info(
         "DietCode: registered (%d tool modules, %d registry tools, %d hook chains)",
         len(report.loaded),

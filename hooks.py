@@ -6,13 +6,11 @@ import json
 import logging
 from typing import Any, Callable
 
+from plugins.dietcode.lib.agent.features import is_governance_enabled, is_joyzoning_enabled
+from plugins.dietcode.lib.runtime.hook_registry import HOOK_CHAINS, load_hook_chain
+
 logger = logging.getLogger(__name__)
 
-# Session start order matters:
-#   1. Kanban ↔ BroccoliDB hive sync (worker scope + debounced queue)
-#   2. JoyZoning runtime (scope registry + session.start journal event)
-#   3. JSDP role_started (when jsdp_role env is set)
-#   4. Roadmap optional-skills install (when auto_install_skills enabled)
 _ON_SESSION_START: tuple[Callable[..., Any], ...] = ()
 _ON_SESSION_END: tuple[Callable[..., Any], ...] = ()
 _POST_TOOL_CALL: tuple[Callable[..., Any], ...] = ()
@@ -20,64 +18,15 @@ _PRE_TOOL_CALL: tuple[Callable[..., Any], ...] = ()
 _TRANSFORM_TOOL_RESULT: tuple[Callable[..., Any], ...] = ()
 
 
-def _joyzoning_enabled_safe() -> bool:
-    try:
-        from plugins.dietcode.lib.agent.joyzoning.config import get_joyzoning_config
-
-        return bool(get_joyzoning_config().enabled)
-    except Exception:
-        return False
-
-
-def _governance_enabled_safe() -> bool:
-    try:
-        from plugins.dietcode.lib.agent.governance_exemptions import (
-            is_governance_enforcement_enabled,
-        )
-
-        return bool(is_governance_enforcement_enabled())
-    except Exception:
-        return False
-
-
 def _ensure_handlers() -> None:
     global _ON_SESSION_START, _ON_SESSION_END, _POST_TOOL_CALL, _PRE_TOOL_CALL, _TRANSFORM_TOOL_RESULT
     if _ON_SESSION_START:
         return
-    from plugins.dietcode.lib.runtime.jsdp_hooks import _on_session_start as jsdp_start
-    from plugins.dietcode.lib.runtime.roadmap_hooks import (
-        _on_session_end as roadmap_end,
-        _on_session_start as roadmap_start,
-        _post_tool_call as roadmap_post,
-        _pre_tool_call as roadmap_pre,
-        on_roadmap_write_transform,
-    )
-    from plugins.dietcode.lib.runtime.governance_hooks import on_transform_tool_result
-    from plugins.dietcode.lib.runtime.mutation_hooks import (
-        _post_tool_call as mutation_post,
-        on_mutation_journal_transform,
-    )
-    from plugins.dietcode.lib.runtime.joyzoning_hooks import (
-        _on_session_end as jz_end,
-        _on_session_start as jz_start,
-        _post_tool_call as jz_post,
-        _pre_tool_call as jz_pre,
-    )
-    from plugins.dietcode.lib.runtime.kanban_hooks import (
-        _on_post_tool_call as kanban_post,
-        _on_session_start as kanban_start,
-    )
-    from plugins.dietcode.lib.runtime.audit_hooks import _post_tool_call as audit_post
-
-    _ON_SESSION_START = (kanban_start, jz_start, jsdp_start, roadmap_start)
-    _ON_SESSION_END = (jz_end, roadmap_end)
-    _POST_TOOL_CALL = (jz_post, mutation_post, kanban_post, roadmap_post, audit_post)
-    _PRE_TOOL_CALL = (jz_pre, roadmap_pre)
-    _TRANSFORM_TOOL_RESULT = (
-        on_mutation_journal_transform,
-        on_roadmap_write_transform,
-        on_transform_tool_result,
-    )
+    _ON_SESSION_START = load_hook_chain("on_session_start")
+    _ON_SESSION_END = load_hook_chain("on_session_end")
+    _POST_TOOL_CALL = load_hook_chain("post_tool_call")
+    _PRE_TOOL_CALL = load_hook_chain("pre_tool_call")
+    _TRANSFORM_TOOL_RESULT = load_hook_chain("transform_tool_result")
 
 
 def _run_all(hook_name: str, handlers: tuple[Callable[..., Any], ...]) -> None:
@@ -101,7 +50,7 @@ def _run_pre_tool_call(handlers: tuple[Callable[..., Any], ...]) -> Callable[...
                 result = handler(**kwargs)
             except Exception as exc:
                 logger.warning("DietCode pre_tool_call (%s) failed: %s", handler.__name__, exc)
-                if _joyzoning_enabled_safe():
+                if is_joyzoning_enabled():
                     from plugins.dietcode.lib.agent.joyzoning.convergence_gate import block_dict
 
                     return block_dict(f"Convergence gate unavailable: {exc}")
@@ -137,10 +86,16 @@ def _run_transform(handlers: tuple[Callable[..., Any], ...]) -> Callable[..., An
                 result = handler(**kwargs)
             except Exception as exc:
                 logger.warning("DietCode transform_tool_result (%s) failed: %s", handler.__name__, exc)
-                if _governance_enabled_safe():
+                if is_governance_enabled():
                     return _governance_unavailable_payload(exc)
                 continue
             if isinstance(result, str) and result.strip():
+                try:
+                    from plugins.dietcode.lib.runtime.audit_hooks import capture_governance_transform_result
+
+                    capture_governance_transform_result(result)
+                except Exception:
+                    pass
                 return result
         return None
 
@@ -156,3 +111,11 @@ def register_all_hooks(ctx) -> None:
     ctx.register_hook("post_tool_call", _run_all("post_tool_call", _POST_TOOL_CALL))
     ctx.register_hook("pre_tool_call", _run_pre_tool_call(_PRE_TOOL_CALL))
     ctx.register_hook("transform_tool_result", _run_transform(_TRANSFORM_TOOL_RESULT))
+
+
+def hook_chain_summary() -> dict[str, list[str]]:
+    """Return declared hook chains for doctor/audit surfaces."""
+    return {
+        hook_name: [f"{module}:{attr}" for module, attr in specs]
+        for hook_name, specs in HOOK_CHAINS.items()
+    }

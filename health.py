@@ -36,6 +36,7 @@ _HELP = """\
 
 Subcommands:
   status / doctor          Full integration health report
+  operator                 Unified gate brief — agent_next_call and recovery_steps
   tools                    Tool module load report
   broccolidb               BroccoliDB root + RPC availability
   mutation                 Native mutation workspace health (dietcode_kernel)
@@ -213,7 +214,7 @@ def _roadmap_health() -> dict[str, Any]:
                 if c.get("name") == "workspace_skill_installed"
             ),
             "schema_valid": (doctor.get("validation") or {}).get("valid"),
-            "kanban_complete_allowed": (doctor.get("roadmap_gate") or {}).get("kanban_complete_allowed"),
+            "kanban_complete_allowed": _gates_health().get("kanban_complete_allowed"),
             "roadmap_gate": doctor.get("roadmap_gate"),
             "recommended_next_action": doctor.get("recommended_next_action"),
             "checks": doctor.get("checks"),
@@ -234,6 +235,25 @@ def _jsdp_health() -> dict[str, Any]:
             "role": cfg.jsdp_role or None,
             "chain_id": cfg.jsdp_chain_id or None,
             "hook_module": "plugins.dietcode.lib.runtime.jsdp_hooks",
+        }
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def _gates_health() -> dict[str, Any]:
+    try:
+        from plugins.dietcode.lib.agent.features import build_runtime_snapshot
+
+        snapshot = build_runtime_snapshot()
+        gates = snapshot.get("gates") or {}
+        return {
+            "ok": bool(gates.get("kanban_complete_allowed", True)),
+            "kanban_complete_allowed": gates.get("kanban_complete_allowed"),
+            "kanban_complete_block_reason": gates.get("kanban_complete_block_reason"),
+            "layers": gates.get("layers"),
+            "features": snapshot.get("features"),
+            "config": snapshot.get("config"),
+            "hook_chains": snapshot.get("hook_chains"),
         }
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
@@ -264,6 +284,7 @@ def build_status_report(*, strict: bool = False, refresh: bool = False) -> dict[
         "joyzoning": _joyzoning_health(),
         "jsdp": _jsdp_health(),
         "roadmap": _roadmap_health(),
+        "gates": _gates_health(),
     }
 
 
@@ -448,6 +469,11 @@ def handle_dietcode_command(raw_args: str) -> Optional[str]:
     sub = argv[0].lower()
     if sub in ("status", "doctor"):
         return format_status_report(doctor=(sub == "doctor"), refresh=(sub == "doctor"))
+
+    if sub == "operator":
+        from plugins.dietcode.lib.agent.ergonomics import build_operator_brief
+
+        return json.dumps(build_operator_brief(), indent=2, ensure_ascii=False)
 
     if sub == "tools":
         load = get_load_report(force=True)

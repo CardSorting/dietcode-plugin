@@ -69,6 +69,24 @@ def _plugin_disabled_in_config() -> bool:
         return False
 
 
+def _runtime_features_snapshot() -> dict[str, bool]:
+    try:
+        from plugins.dietcode.lib.agent.features import features_snapshot
+
+        return features_snapshot()
+    except Exception:
+        return {}
+
+
+def _hook_chain_summary() -> dict[str, list[str]]:
+    try:
+        from plugins.dietcode.hooks import hook_chain_summary
+
+        return hook_chain_summary()
+    except Exception:
+        return {}
+
+
 def _hook_names_present() -> dict[str, bool]:
     try:
         from hermes_cli.plugins import get_plugin_manager
@@ -106,6 +124,8 @@ def validate_runtime_contract(*, strict: bool = False) -> ContractReport:
         "modules_failed": load.failed,
         "registry_missing": load.registry_missing,
         "hooks": hooks,
+        "hook_chains": _hook_chain_summary(),
+        "runtime_features": _runtime_features_snapshot(),
         "governance_config_enabled": governance_on,
         "dietcode_in_toolsets": expected,
         "dietcode_disabled_in_config": disabled,
@@ -206,6 +226,30 @@ def validate_runtime_contract(*, strict: bool = False) -> ContractReport:
         if registered and not no_dupes:
             report.add_error(f"Duplicate diet hook registrations: {dupe_issues}")
 
+        hook_registry_failures = []
+        try:
+            from plugins.dietcode.lib.runtime.hook_registry import validate_hook_registry
+
+            hook_registry_failures = validate_hook_registry()
+        except Exception as exc:
+            hook_registry_failures = [f"hook registry validation failed: {exc}"]
+        report.checks["hook_registry_valid"] = not hook_registry_failures
+        report.checks["hook_registry_failures"] = hook_registry_failures
+        if hook_registry_failures:
+            report.add_error(f"Hook registry invalid: {hook_registry_failures}")
+
+        command_registry_failures = []
+        try:
+            from plugins.dietcode.lib.runtime.command_registry import validate_command_registry
+
+            command_registry_failures = validate_command_registry()
+        except Exception as exc:
+            command_registry_failures = [f"command registry validation failed: {exc}"]
+        report.checks["command_registry_valid"] = not command_registry_failures
+        report.checks["command_registry_failures"] = command_registry_failures
+        if command_registry_failures:
+            report.add_error(f"Command registry invalid: {command_registry_failures}")
+
         from plugins.dietcode.audit import scan_stale_doc_paths
 
         stale_docs = scan_stale_doc_paths()
@@ -237,6 +281,10 @@ def validate_runtime_contract(*, strict: bool = False) -> ContractReport:
             "lib/runtime/kanban_hooks.py",
             "lib/runtime/jsdp_hooks.py",
             "lib/runtime/roadmap_hooks.py",
+            "lib/runtime/audit_hooks.py",
+            "lib/runtime/mutation_hooks.py",
+            "lib/runtime/hook_registry.py",
+            "lib/agent/gates/kanban_complete.py",
             "lib/tools/roadmap_tools.py",
             "lib/agent/roadmap/cockpit.py",
             "lib/agent/roadmap/doctor.py",
