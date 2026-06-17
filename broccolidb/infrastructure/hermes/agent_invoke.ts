@@ -33,6 +33,7 @@ export const AGENT_OPS = [
 	"simulate_merge_forecast",
 	"acquire_lock",
 	"release_lock",
+	"spider_gate",
 	"verify_sovereignty",
 ] as const;
 
@@ -303,6 +304,25 @@ export async function runAgentInvoke(
 				await flushAgentContext();
 			}
 			return { success: true, released: true, resource };
+		}
+		case "spider_gate": {
+			const scope = String(args.scope ?? "changed-files") === "all" ? "all" : "changed-files";
+			const gate = await ctx.graph.spider.gate({ scope, includeTypes: false });
+			const findings = (gate.report?.findings ?? []).slice(0, 20).map((f) => ({
+				diagnosticId: f.diagnosticId,
+				message: f.message,
+				severity: f.severity,
+				filePath: f.filePath,
+			}));
+			return {
+				success: true,
+				blocked: gate.blocked,
+				exitCode: gate.exitCode,
+				conclusion: gate.conclusion,
+				findingCount: gate.report?.findings?.length ?? 0,
+				reportId: gate.report?.reportId,
+				findings,
+			};
 		}
 		case "verify_sovereignty": {
 			const nodeId = String(args.kb_id ?? args.kbId ?? "");

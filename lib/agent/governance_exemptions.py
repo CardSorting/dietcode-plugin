@@ -1335,7 +1335,14 @@ def enforce_governance_on_mutation(
         _record_gate_passes(target_files)
         return None
 
-    return json.dumps(_governance_fault_payload(target_files, exempt, gate, result))
+    payload = _governance_fault_payload(target_files, exempt, gate, result)
+    try:
+        from plugins.dietcode.lib.runtime.audit_hooks import on_governance_block
+
+        on_governance_block(payload)
+    except Exception:
+        pass
+    return json.dumps(payload)
 
 
 # Back-compat alias (tests and older imports).

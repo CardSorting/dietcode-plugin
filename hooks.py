@@ -67,10 +67,11 @@ def _ensure_handlers() -> None:
         _on_post_tool_call as kanban_post,
         _on_session_start as kanban_start,
     )
+    from plugins.dietcode.lib.runtime.audit_hooks import _post_tool_call as audit_post
 
     _ON_SESSION_START = (kanban_start, jz_start, jsdp_start, roadmap_start)
     _ON_SESSION_END = (jz_end, roadmap_end)
-    _POST_TOOL_CALL = (jz_post, mutation_post, kanban_post, roadmap_post)
+    _POST_TOOL_CALL = (jz_post, mutation_post, kanban_post, roadmap_post, audit_post)
     _PRE_TOOL_CALL = (jz_pre, roadmap_pre)
     _TRANSFORM_TOOL_RESULT = (
         on_mutation_journal_transform,

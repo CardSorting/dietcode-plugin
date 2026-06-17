@@ -38,6 +38,15 @@ def pre_tool_call_block(
                 return block_dict(roadmap_msg)
         except ImportError:
             pass
+
+        try:
+            from plugins.dietcode.lib.agent.audit.quality_gate import kanban_complete_allowed
+
+            allowed, quality_msg, _ = kanban_complete_allowed(scope)
+            if not allowed and quality_msg:
+                return block_dict(quality_msg)
+        except ImportError:
+            pass
         return None
     except Exception as exc:
         if fail_closed:
@@ -67,6 +76,15 @@ def assert_kanban_completion_allowed(task_id: str) -> None:
         roadmap_msg = require_fresh_checkpoint_before_complete()
         if roadmap_msg:
             raise JoyZoningCompletionBlocked(roadmap_msg)
+    except ImportError:
+        pass
+
+    try:
+        from plugins.dietcode.lib.agent.audit.quality_gate import kanban_complete_allowed
+
+        allowed, quality_msg, _ = kanban_complete_allowed(task_id)
+        if not allowed and quality_msg:
+            raise JoyZoningCompletionBlocked(quality_msg)
     except ImportError:
         pass
 

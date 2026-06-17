@@ -220,6 +220,26 @@ def _fallback_agent_context_script(op: str, args: dict[str, Any], *, timeout: in
   await context.coordination.releaseLock({{ resource: {resource!r} }});
   console.log(JSON.stringify({{ success: true, released: true, resource: {resource!r} }}));
 """
+    elif op == "spider_gate":
+        scope = args.get("scope") or "changed-files"
+        body = f"""\
+  const gate = await context.graph.spider.gate({{ scope: {scope!r}, includeTypes: false }});
+  const findings = (gate.report?.findings ?? []).slice(0, 20).map((f) => ({{
+    diagnosticId: f.diagnosticId,
+    message: f.message,
+    severity: f.severity,
+    filePath: f.filePath,
+  }}));
+  console.log(JSON.stringify({{
+    success: true,
+    blocked: gate.blocked,
+    exitCode: gate.exitCode,
+    conclusion: gate.conclusion,
+    findingCount: gate.report?.findings?.length ?? 0,
+    reportId: gate.report?.reportId,
+    findings,
+  }}));
+"""
     elif op == "heal":
         body = """\
   const healResult = await context.selfHealGraph();

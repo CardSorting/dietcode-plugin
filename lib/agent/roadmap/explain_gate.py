@@ -77,4 +77,28 @@ def build_explain_gate_payload(*, workspace: Optional[str] = None) -> dict[str, 
             else "\nBootstrap fill: roadmap(action='apply_bootstrap_fill', context='write') then validate."
         )
         payload["report"] = report + suffix
-    return clarity_envelope(payload)
+    payload = clarity_envelope(payload)
+    try:
+        from plugins.dietcode.lib.agent.audit.quality_gate import explain_quality_gate
+        from plugins.dietcode.lib.agent.joyzoning.config import resolve_scope_id
+
+        quality = explain_quality_gate(resolve_scope_id())
+        payload["quality_gate"] = quality
+        combined_allowed = bool(kanban_allowed) and bool(quality.get("kanban_complete_allowed", True))
+        payload["kanban_complete_allowed"] = combined_allowed
+        payload["success"] = combined_allowed
+        payload["ok"] = combined_allowed
+        if not quality.get("kanban_complete_allowed"):
+            payload["gates_closed"] = {
+                **(payload.get("gates_closed") or {}),
+                "quality_audit": True,
+            }
+            reasons = quality.get("reasons") or []
+            if reasons:
+                payload["operator_summary"] = (
+                    f"{payload.get('operator_summary', '')} | "
+                    f"Quality gate: {reasons[0].get('message', 'blocked')}"
+                ).strip(" |")
+    except ImportError:
+        pass
+    return payload

@@ -25,14 +25,24 @@ def convergence_status(scope_id: str = None) -> str:
     state, anchor, cluster = _resolve_cluster(sid)
     record = get_journal().get_convergence(anchor)
     gate = require_review_before_complete(anchor)
+    quality_gate = None
+    try:
+        from plugins.dietcode.lib.agent.audit.quality_gate import explain_quality_gate
+
+        quality_gate = explain_quality_gate(anchor)
+    except ImportError:
+        quality_gate = None
+    conv_allowed = gate is None
+    quality_allowed = True if not quality_gate else bool(quality_gate.get("kanban_complete_allowed", True))
     return json.dumps({
         "success": True,
         "scope_id": sid,
         "anchor_scope_id": anchor,
         "scope_cluster": cluster,
         "state": state.value,
-        "kanban_complete_allowed": gate is None,
+        "kanban_complete_allowed": conv_allowed and quality_allowed,
         "kanban_complete_block_reason": gate,
+        "quality_gate": quality_gate,
         "record": record,
         "active_mutation": get_journal().get_active_mutation(anchor),
     })

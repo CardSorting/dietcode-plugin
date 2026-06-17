@@ -25,7 +25,7 @@ verify test-roadmap:
 	python3 scripts/roadmap_smoke.py
 	python3 scripts/roadmap_audit.py
 	python3 scripts/roadmap_operator_smoke.py
-	python3 -m unittest tests.test_roadmap_checkpoint tests.test_roadmap_tools tests.test_roadmap_external_watch tests.test_project_map_tools tests.test_layer_align tests.test_native_mutation tests.test_mem_tools -q
+	python3 -m unittest tests.test_roadmap_checkpoint tests.test_roadmap_tools tests.test_roadmap_external_watch tests.test_project_map_tools tests.test_layer_align tests.test_native_mutation tests.test_mem_tools tests.test_quality_gate -q
 
 install:
 	python3 install.py
