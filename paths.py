@@ -7,23 +7,11 @@ from pathlib import Path
 from typing import Optional
 
 _BROCCOLIDB_DIRNAME = "broccolidb"
-_KERNEL_DIRNAME = "kernel"
 
 
 def get_plugin_root() -> Path:
     """Canonical DietCode plugin install root (this repository / plugin folder)."""
     return Path(__file__).resolve().parent
-
-
-def kernel_root() -> Path:
-    return get_plugin_root() / _KERNEL_DIRNAME
-
-
-def kernel_binary_path() -> Path:
-    env = os.environ.get("DIETCODE_APP_PATH", "").strip()
-    if env:
-        return Path(env).expanduser()
-    return kernel_root() / "build" / "dietcode-kernel"
 
 
 def is_valid_broccolidb_root(path: Path | str) -> bool:

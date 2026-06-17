@@ -1,3 +1,4 @@
+// [LAYER: CORE]
 import * as crypto from 'node:crypto';
 import type { BufferedDbPool } from '../infrastructure/db/BufferedDbPool.js';
 import { Connection } from './connection.js';
@@ -7,7 +8,7 @@ import type { FileEntry } from './file-tree.js';
 import { FileTree } from './file-tree.js';
 import { LRUCache } from './lru-cache.js';
 import { TaskMutex } from './mutex.js';
-import { EnvironmentTracker, telemetryQueue } from './tracker.js';
+import { EnvironmentTracker } from './tracker.js';
 
 // ─── Interfaces ───
 
@@ -482,7 +483,7 @@ export class Repository {
             if (data.factId) kbIds.push(data.factId);
 
             if (kbIds.length > 0) {
-              const reports = await this.agentContext.detectContradictions(kbIds);
+              const { reports } = await this.agentContext.reasoning.detectContradictions({ startIds: kbIds });
               if (reports.length > 0) {
                 throw new AgentGitError(
                   `Reasoning commit blocked: High-confidence logical contradiction detected.`,
@@ -526,12 +527,10 @@ export class Repository {
     data: Record<string, any>,
     options: { usage?: Usage } = {}
   ) {
-    // 1. Offload Telemetry to memory queue (batched flush later)
+    // 1. Offload Telemetry directly to BufferedDbPool (batched flush later)
     if (options.usage) {
-      telemetryQueue.enqueue(this.db, this.basePath, {
-        agentId: author,
-        usage: options.usage,
-        taskId: this.taskId || null,
+      EnvironmentTracker.recordUsage(this.db, this.basePath, author, options.usage, this.taskId || null).catch((err) => {
+        console.error(`[AgentGit] Background telemetry recording failed for ${nodeId}:`, err);
       });
     }
 
@@ -608,7 +607,7 @@ export class Repository {
       }
 
       // 2. Constitutional Audit (Path-bound rules)
-      const constraints = await this.agentContext.getLogicalConstraints();
+      const { constraints } = await this.agentContext.audit.getLogicalConstraints();
       if (constraints.length > 0) {
         const changedPaths =
           options.type === 'diff' ? Object.keys(data.changes || {}) : Object.keys(data.tree || {});
@@ -619,16 +618,18 @@ export class Repository {
           });
 
           for (const constraint of matchingConstraints) {
-            const rule = await this.agentContext.getKnowledge(constraint.knowledgeId);
+            const { item: rule } = await this.agentContext.graph.getKnowledge({
+              kbId: constraint.knowledgeId,
+            });
             const casHash = options.type === 'diff' ? data.changes[path] : data.tree[path];
             const fileItem = await this.db.selectOne('files', [{ column: 'id', value: casHash }]);
 
             if (fileItem && rule) {
-              const audit = await this.agentContext.checkConstitutionalViolation(
+              const audit = await this.agentContext.audit.checkConstitutionalViolation({
                 path,
-                fileItem.content,
-                rule.content
-              );
+                code: fileItem.content,
+                ruleContent: rule.content,
+              });
               if (audit.violated) {
                 const msg = `Constitutional violation in ${path}: ${audit.reason}`;
                 if (constraint.severity === 'blocking') {
@@ -1117,7 +1118,7 @@ export class Repository {
           if (sourceNode.data.factBId) kbIds.push(sourceNode.data.factBId);
 
           if (kbIds.length > 0) {
-            const pedigree = await this.agentContext.getReasoningPedigree(kbIds[0]);
+            const { pedigree } = await this.agentContext.reasoning.getReasoningPedigree({ nodeId: kbIds[0] });
             let proof = `# Reasoning Proof: ${message || sourceNode.message}\n\n`;
             proof += `**Conclusion ID:** ${resId}\n`;
             proof += `**Effective Confidence:** ${(pedigree.effectiveConfidence * 100).toFixed(1)}%\n\n`;
@@ -1423,7 +1424,10 @@ export class Repository {
         if (sourceNode.data.factBId) kbIds.push(sourceNode.data.factBId);
 
         if (kbIds.length > 0) {
-          const auditRes = await this.agentContext.detectContradictions(kbIds, 2);
+          const { reports: auditRes } = await this.agentContext.reasoning.detectContradictions({
+            startIds: kbIds,
+            depth: 2,
+          });
           reasoningConflicts = auditRes.map((r: any) => ({
             nodeId: r.nodeId,
             conflictingNodeId: r.conflictingNodeId,

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// [LAYER: UI]
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -8,14 +9,14 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { simpleGit } from 'simple-git';
 import { AgentContext } from '../core/agent-context.js';
+import { healthCommand } from './commands/health.js';
+import { spiderGateCommand, spiderCompactCommand } from './commands/spider.js';
+import { runtimeCommand } from './commands/runtime.js';
 import { Connection } from '../core/connection.js';
 import { AiService } from '../core/embedding.js';
 import { BroccoliDBMCP } from '../core/mcp.js';
 import type { Repository } from '../core/repository.js';
 import { Workspace } from '../core/workspace.js';
-import { SpiderEngine } from '../core/policy/SpiderEngine.js';
-import { StabilityDoctor } from '../core/policy/StabilityDoctor.js';
-import { ModuleDecomposer } from '../core/policy/ModuleDecomposer.js';
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -43,20 +44,29 @@ async function main() {
     await config();
   } else if (command === 'status') {
     await status();
-  } else if (command === 'audit') {
-    await audit();
-  } else if (command === 'refactor') {
-    await refactor();
+  } else if (command === 'health') {
+    await healthCommand(args.slice(1));
+  } else if (command === 'spider') {
+    const sub = args[1];
+    if (sub === 'gate') await spiderGateCommand(args.slice(2));
+    else if (sub === 'compact') await spiderCompactCommand(args.slice(2));
+    else {
+      console.warn(chalk.red('Usage: broccolidb spider <gate|compact>'));
+      process.exit(1);
+    }
+  } else if (command === 'runtime') {
+    const sub = args[1];
+    if (!sub || !['state', 'replay', 'story', 'snapshot'].includes(sub)) {
+      console.warn(chalk.red('Usage: broccolidb runtime <state|replay|story|snapshot> <sessionId>'));
+      process.exit(1);
+    }
+    await runtimeCommand(sub, args.slice(2));
   } else if (command === '--help' || !command) {
     showHelp();
   } else {
     console.warn(chalk.red(`Unknown command: ${command}`));
     showHelp();
     process.exit(1);
-  }
-  
-  if (command !== 'serve') {
-    process.exit(0);
   }
 }
 
@@ -71,9 +81,16 @@ function showHelp() {
   console.info(
     `  ${chalk.green('status')}  ${chalk.dim('→')}  View the health and stats of your Context Graph`
   );
+  console.info(
+    `  ${chalk.green('health')}  ${chalk.dim('→')}  AgentContext + runtime memory health (--format json)`
+  );
+  console.info(
+    `  ${chalk.green('spider')}  ${chalk.dim('→')}  gate | compact structural checks`
+  );
+  console.info(
+    `  ${chalk.green('runtime')} ${chalk.dim('→')}  state | replay | story | snapshot <sessionId>`
+  );
   console.info(`  ${chalk.green('serve')}   ${chalk.dim('→')}  Start the BroccoliDB MCP server`);
-  console.info(`  ${chalk.green('audit')}   ${chalk.dim('→')}  Perform a forensic architectural audit`);
-  console.info(`  ${chalk.green('refactor')}${chalk.dim('→')}  Generate a mission-focused refactoring manifest`);
   console.info(`  ${chalk.green('config')}  ${chalk.dim('→')}  Manage local settings and secrets\n`);
 
   console.info(`${chalk.bold.white('EXAMPLES')}`);
@@ -94,6 +111,7 @@ async function status() {
   const spinner = ora('Analyzing Context Graph...').start();
   const conn = new Connection({ dbPath });
   const pool = conn.getPool();
+  await pool.start();
 
   try {
     const userId = 'local-user';
@@ -257,10 +275,32 @@ async function init() {
 
   spinner.stop();
 
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
   if (!apiKey) {
     console.info(`\n${chalk.yellow('⚠️ ')} ${chalk.bold('Gemini API Key missing!')}`);
-    console.info(`${chalk.dim('BroccoliDB uses Gemini for high-performance semantic search.')}`);
-    console.info(`${chalk.dim('Proceeding with Basic search (keyword fallback).')}\n`);
+    console.info(`${chalk.dim('BroccoliDB uses Gemini for high-performance semantic search.')}\n`);
+
+    apiKey = await rl.question(`${chalk.green('?')} ${chalk.bold('Enter your Gemini API Key:')} `);
+
+    if (apiKey) {
+      await pool.push({
+        type: 'upsert',
+        table: 'settings',
+        where: [{ column: 'key', value: 'gemini_api_key' }],
+        values: { key: 'gemini_api_key', value: apiKey, updatedAt: Date.now() },
+        layer: 'infrastructure',
+      });
+      console.info(`\n${chalk.green('✅')} ${chalk.dim('Key persisted to local database.')}\n`);
+    } else {
+      console.warn(
+        `\n${chalk.red('✘')} ${chalk.bold('Setup aborted.')} AI features will be disabled.`
+      );
+      process.exit(1);
+    }
   }
 
   spinner.start('Initializing database...');
@@ -274,37 +314,43 @@ async function init() {
   let repo!: Repository;
   try {
     repo = await ws.getRepo(repoName);
-  } catch {
-    repo = await ws.createRepo(repoName, 'master');
-  }
+    } catch {
+      // Ignore
+    }
   spinner.succeed(`Database ready ${chalk.dim(`(${dbPath})`)}`);
 
   // Seamless Integration
   const claudeConfigPath = getClaudeConfigPath();
-  if (claudeConfigPath && process.stdin.isTTY) {
+  if (claudeConfigPath) {
     console.info(`\n${chalk.bold.white('SEAMLESS INTEGRATION')}`);
-    try {
-      const config = fs.existsSync(claudeConfigPath)
-        ? JSON.parse(fs.readFileSync(claudeConfigPath, 'utf-8'))
-        : { mcpServers: {} };
+    const answer = await rl.question(
+      `${chalk.green('?')} ${chalk.bold('Automatically add BroccoliDB to Claude Desktop?') + chalk.dim(' (Y/n)')} `
+    );
 
-      config.mcpServers = config.mcpServers || {};
-      config.mcpServers.broccolidb = {
-        command: 'npx',
-        args: ['-y', 'broccolidb', 'serve'],
-        cwd: process.cwd(),
-        env: {
-          GEMINI_API_KEY: apiKey,
-        },
-      };
+    if (answer.toLowerCase() !== 'n') {
+      try {
+        const config = fs.existsSync(claudeConfigPath)
+          ? JSON.parse(fs.readFileSync(claudeConfigPath, 'utf-8'))
+          : { mcpServers: {} };
 
-      fs.writeFileSync(claudeConfigPath, JSON.stringify(config, null, 2));
-      console.info(
-        `${chalk.green('✅')} ${chalk.bold('Integrated!')} BroccoliDB added to ${chalk.dim(claudeConfigPath)}\n`
-      );
-    } catch (e: unknown) {
-      const error = e instanceof Error ? e.message : String(e);
-      console.warn(`${chalk.red('✘')} ${chalk.bold('Integration failed:')} ${error}\n`);
+        config.mcpServers = config.mcpServers || {};
+        config.mcpServers.broccolidb = {
+          command: 'npx',
+          args: ['-y', 'broccolidb', 'serve'],
+          cwd: process.cwd(),
+          env: {
+            GEMINI_API_KEY: apiKey,
+          },
+        };
+
+        fs.writeFileSync(claudeConfigPath, JSON.stringify(config, null, 2));
+        console.info(
+          `${chalk.green('✅')} ${chalk.bold('Integrated!')} BroccoliDB added to ${chalk.dim(claudeConfigPath)}\n`
+        );
+      } catch (e: unknown) {
+        const error = e instanceof Error ? e.message : String(e);
+        console.warn(`${chalk.red('✘')} ${chalk.bold('Integration failed:')} ${error}\n`);
+      }
     }
   }
 
@@ -350,6 +396,8 @@ async function init() {
     }
   }
   indexSpinner.succeed(`Indexing complete! ${chalk.bold.green(count)} nodes in graph.`);
+
+  rl.close();
 
   console.info(
     `\n${chalk.bold.green('✨ SUCCESS')} ${chalk.white('BroccoliDB is ready for use.')}\n`
@@ -422,8 +470,6 @@ async function serve() {
   const repoName = path.basename(process.cwd());
 
   const ws = new Workspace(pool, userId, workspaceId);
-  await ws.init();
-  const repo = await ws.getRepo(repoName);
 
   // Initialize AiService if key is present
   let _aiService: AiService | undefined;
@@ -432,110 +478,17 @@ async function serve() {
   }
 
   const agentContext = new AgentContext(ws, pool, userId, { agentId: 'cli', name: 'CLI' });
+  await agentContext.start();
+  const repo = await ws.getRepo(repoName);
 
   const server = new BroccoliDBMCP(repo, agentContext);
+  await server.start();
   const transport = new StdioServerTransport();
 
   // Logs to stderr
   console.error(chalk.dim(`[BroccoliDB] Internal server starting for ${chalk.bold(repoName)}...`));
   // @ts-expect-error - Internal server access is required for CLI initialization
   await server.server.connect(transport);
-}
-
-async function audit() {
-  const dbPath = path.resolve(process.cwd(), 'broccolidb.db');
-  const conn = new Connection({ dbPath });
-  const pool = conn.getPool();
-  const userId = 'local-user';
-  const workspaceId = 'local-workspace';
-  const repoName = path.basename(process.cwd());
-
-  const ws = new Workspace(pool, userId, workspaceId);
-  await ws.init();
-  const repo = await ws.getRepo(repoName);
-  
-  const spider = new SpiderEngine(process.cwd());
-  await spider.warmUp();
-  const doctor = new StabilityDoctor(spider.cwd);
-  const report = await doctor.diagnose(spider);
-
-  console.info(`${chalk.bold.white('FORENSIC AUDIT REPORT')}`);
-  console.info(`  ${chalk.bold('Build Health:')}      ${report.buildHealth < 70 ? chalk.red(report.buildHealth + '%') : chalk.green(report.buildHealth + '%')}`);
-  console.info(`  ${chalk.bold('Integrity Score:')}   ${chalk.cyan(report.integrityScore)}`);
-  console.info();
-
-  if (report.violations.length > 0) {
-    console.info(`${chalk.bold.red('VIOLATIONS')}`);
-    report.violations.forEach(v => {
-      console.info(`  ${chalk.red('•')} ${chalk.bold(v.path)}: ${v.message}`);
-      console.info(`    ${chalk.dim('Remediation:')} ${v.remediation}`);
-    });
-    console.info();
-  }
-
-  if (report.optimizations.length > 0) {
-    console.info(`${chalk.bold.green('OPTIMIZATION OPPORTUNITIES')}`);
-    report.optimizations.forEach(o => {
-      console.info(`  ${chalk.green('•')} ${chalk.bold(o.file)}: ${o.reason}`);
-      console.info(`    ${chalk.dim('Action:')} ${chalk.yellow(o.action)} to ${chalk.cyan(o.recommendedLayer)} (Gain: +${o.integrityGain})`);
-    });
-    console.info();
-  }
-}
-
-async function refactor() {
-  const filePath = args[1];
-  const action = args[2] as any;
-
-  if (!filePath || !action) {
-    console.warn(chalk.red('✘ Error: File path and action are required.'));
-    console.info(`Usage: npx broccolidb refactor <path> <action>`);
-    return;
-  }
-
-  const dbPath = path.resolve(process.cwd(), 'broccolidb.db');
-  const conn = new Connection({ dbPath });
-  const pool = conn.getPool();
-  const userId = 'local-user';
-  const workspaceId = 'local-workspace';
-  const repoName = path.basename(process.cwd());
-
-  const ws = new Workspace(pool, userId, workspaceId);
-  await ws.init();
-  const repo = await ws.getRepo(repoName);
-  
-  const spider = new SpiderEngine(process.cwd());
-  await spider.warmUp();
-  const decomposer = new ModuleDecomposer();
-  
-  const absPath = path.resolve(process.cwd(), filePath);
-  if (!fs.existsSync(absPath)) {
-    console.error(chalk.red(`✘ Error: File not found: ${filePath}`));
-    return;
-  }
-
-  const content = fs.readFileSync(absPath, 'utf-8');
-  const node = spider.nodes.get(spider.normalizePath(filePath));
-  const plan = decomposer.analyze(filePath, content, node);
-
-  console.info(`${chalk.bold.white('REFACTORING MANIFEST')}`);
-  console.info(`  ${chalk.bold('Target:')}           ${chalk.cyan(filePath)}`);
-  console.info(`  ${chalk.bold('Action:')}           ${chalk.yellow(action)}`);
-  console.info();
-
-  const step = plan.steps.find(s => s.action === action);
-  if (step) {
-    console.info(`${chalk.bold.green('RATIONALE')}`);
-    console.info(`  ${step.reason}\n`);
-    if (step.boilerplate) {
-      console.info(`${chalk.bold.green('SUGGESTED REFACTOR')}`);
-      console.info(chalk.dim('```typescript'));
-      console.info(step.boilerplate);
-      console.info(chalk.dim('```'));
-    }
-  } else {
-    console.info(chalk.yellow('No specific rationale found for this action, but it is recommended for structural health.'));
-  }
 }
 
 main().catch((err) => {

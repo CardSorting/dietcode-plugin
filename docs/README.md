@@ -22,6 +22,7 @@ intent → patch → receipt → journal → verify → verification journal →
 | **Governed roadmap steering** | [roadmap.md](roadmap.md) | `/roadmap cockpit` |
 | **Working with BroccoliDB** | [broccolidb.md](broccolidb.md) | `/broccolidb status` |
 | **Building the kernel binary** | [../kernel/README.md](../kernel/README.md) | `make -C kernel validate` |
+| **Upgrading to v1.10.0** | [CHANGELOG.md](../CHANGELOG.md) | `make distill` then `cd broccolidb && npm ci && npm run build` |
 | **Upgrading to v1.9.4** | [releases/v1.9.4.md](releases/v1.9.4.md) | [../CHANGELOG.md](../CHANGELOG.md) |
 | **v1.9.3 cockpit** | [releases/v1.9.3.md](releases/v1.9.3.md) | [agent-ergonomics.md](agent-ergonomics.md) |
 | **v1.9.2 performance** | [releases/v1.9.2.md](releases/v1.9.2.md) | [agent-ergonomics.md](agent-ergonomics.md) |

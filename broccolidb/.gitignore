@@ -26,11 +26,3 @@ env/
 
 # Snapshots
 .spider/snapshots/
-
-# BroccoliDB
-broccolidb.db
-broccolidb.db-wal
-broccolidb.db-shm
-.broccolidb/
-broccolidb-failed-flush-*.json
-scratch/

@@ -53,11 +53,9 @@ def _ensure_handlers() -> None:
         on_roadmap_write_transform,
     )
     from plugins.dietcode.lib.runtime.governance_hooks import on_transform_tool_result
-    from plugins.dietcode.lib.runtime.kernel_hooks import (
-        _post_tool_call as kernel_post,
-        _pre_tool_call as kernel_pre,
-        on_kernel_journal_transform,
-        on_kernel_raw_write_transform,
+    from plugins.dietcode.lib.runtime.mutation_hooks import (
+        _post_tool_call as mutation_post,
+        on_mutation_journal_transform,
     )
     from plugins.dietcode.lib.runtime.joyzoning_hooks import (
         _on_session_end as jz_end,
@@ -72,11 +70,10 @@ def _ensure_handlers() -> None:
 
     _ON_SESSION_START = (kanban_start, jz_start, jsdp_start, roadmap_start)
     _ON_SESSION_END = (jz_end, roadmap_end)
-    _POST_TOOL_CALL = (jz_post, kernel_post, kanban_post, roadmap_post)
-    _PRE_TOOL_CALL = (kernel_pre, jz_pre, roadmap_pre)
+    _POST_TOOL_CALL = (jz_post, mutation_post, kanban_post, roadmap_post)
+    _PRE_TOOL_CALL = (jz_pre, roadmap_pre)
     _TRANSFORM_TOOL_RESULT = (
-        on_kernel_journal_transform,
-        on_kernel_raw_write_transform,
+        on_mutation_journal_transform,
         on_roadmap_write_transform,
         on_transform_tool_result,
     )

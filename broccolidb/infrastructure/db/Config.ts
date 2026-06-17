@@ -12,9 +12,26 @@ const _rawDbs = new Map<string, unknown>();
 const _initPromises = new Map<string, Promise<Kysely<Schema>>>();
 let _dbPath: string | null = null;
 const _isInitialized = new Set<string>();
+let _onDbPathChanged: (() => void) | null = null;
+
+export function registerDbPathChangeListener(listener: () => void) {
+	_onDbPathChanged = listener;
+}
+
+export function getDbPath(): string {
+	if (!_dbPath) {
+		_dbPath = path.resolve(process.cwd(), "broccolidb.db");
+	}
+	return _dbPath;
+}
 
 export function setDbPath(dbPath: string) {
-	_dbPath = dbPath;
+	const resolved = path.resolve(dbPath);
+	if (_dbPath === resolved) return;
+	_dbPath = resolved;
+	void destroyDb().then(() => {
+		if (_onDbPathChanged) _onDbPathChanged();
+	});
 }
 
 export async function getDb(shardId: string = "main"): Promise<Kysely<Schema>> {
@@ -117,6 +134,11 @@ export async function closeAllShards() {
 			console.error(`[Config] Failed to close shard ${shardId}:`, e);
 		}
 	}
+}
+
+/** Close all shard handles (v30 BufferedDbPool lifecycle compat). */
+export async function destroyDb(): Promise<void> {
+	await closeAllShards();
 }
 
 async function applyPragmas(db: Kysely<Schema>) {

@@ -80,7 +80,7 @@ class RoadmapWorkspaceError(ValueError):
 
 def _reject_quarantined(root: str) -> None:
     try:
-        from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
+        from plugins.dietcode.lib.workspace_root import is_quarantined_root
     except ImportError:
         return
     if is_quarantined_root(root):
@@ -101,7 +101,7 @@ def _candidate_from_env() -> tuple[Optional[str], str]:
             continue
         root = str(Path(val).expanduser().resolve())
         try:
-            from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
+            from plugins.dietcode.lib.workspace_root import is_quarantined_root
 
             if is_quarantined_root(root):
                 continue
@@ -126,7 +126,7 @@ def _candidate_from_kanban_config() -> tuple[Optional[str], str]:
             return None, "kanban:unset"
         root = str(Path(ws).expanduser().resolve())
         try:
-            from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
+            from plugins.dietcode.lib.workspace_root import is_quarantined_root
 
             if is_quarantined_root(root):
                 return None, "kanban:quarantined"
@@ -148,7 +148,7 @@ def resolve_workspace(*, explicit: Optional[str] = None) -> tuple[str, str]:
         return root, "explicit"
 
     try:
-        from plugins.dietcode.lib.kernel_workspace import (
+        from plugins.dietcode.lib.workspace_root import (
             is_quarantined_root,
             resolve_workspace_root as resolve_kernel_workspace,
         )
@@ -168,7 +168,7 @@ def resolve_workspace(*, explicit: Optional[str] = None) -> tuple[str, str]:
         jz_root = _jz_resolve(explicit=None)
         if jz_root:
             try:
-                from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
+                from plugins.dietcode.lib.workspace_root import is_quarantined_root
 
                 if not is_quarantined_root(jz_root):
                     return jz_root, "joyzoning.jsdp"
@@ -187,7 +187,7 @@ def resolve_workspace(*, explicit: Optional[str] = None) -> tuple[str, str]:
 
     cwd = str(Path.cwd().resolve())
     try:
-        from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
+        from plugins.dietcode.lib.workspace_root import is_quarantined_root
 
         if not is_quarantined_root(cwd):
             return cwd, "cwd"

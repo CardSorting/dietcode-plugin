@@ -1,3 +1,4 @@
+// [LAYER: UI]
 import { AgentContext } from '../core/agent-context.js';
 import { Workspace } from '../core/workspace.js';
 import { BufferedDbPool } from '../infrastructure/db/BufferedDbPool.js';
@@ -11,17 +12,18 @@ async function testSovereignProofV18() {
   
   const workspace = new Workspace(pool, userId, workspaceId);
   const ctx = new AgentContext(workspace, pool, userId);
+  await ctx.start();
 
   try {
     console.log('Step 1: Establishing Starting Reality...');
     const fileA = { filePath: 'src/main.ts', content: `import { Target } from './legacy';\nTarget();` };
     const fileB = { filePath: 'src/legacy.ts', content: `export function Target() { console.log("Legacy"); }` };
 
-    await ctx.spider.bootstrapGraph();
-    await ctx.spider.applyChanges([fileA, fileB]);
+    await ctx.graph.spider.bootstrapGraph();
+    await ctx.graph.spider.applyChanges([fileA, fileB]);
 
     // Verify initial state
-    const impact = ctx.getStructuralImpact('src/legacy.ts');
+    const impact = ctx.graph.getStructuralImpact({ filePath: 'src/legacy.ts' });
     console.log(`- Initial Blast Radius: ${impact.blastRadius.affectedNodes.length} nodes`);
 
     console.log('\nStep 2: Simulating Symbolic Displacement (Refactoring)...');
@@ -30,7 +32,7 @@ async function testSovereignProofV18() {
     const emptyLegacy = { filePath: 'src/legacy.ts', content: `// Symbol removed` };
 
     // Apply BOTH changes in one atomic transaction
-    const result = await ctx.spider.applyChanges([newHome, emptyLegacy]);
+    const result = await ctx.graph.spider.applyChanges([newHome, emptyLegacy]);
 
     if (result.deficiencies.length > 0) {
         const def = result.deficiencies[0];
@@ -57,8 +59,7 @@ async function testSovereignProofV18() {
     console.error('\n❌ TEST FAILED:', err);
     process.exit(1);
   } finally {
-    ctx.mutex.shutdown();
-    ctx.lsp.shutdown();
+    await ctx.stop();
     process.exit(0);
   }
 }

@@ -3,7 +3,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type Database from 'better-sqlite3';
 import { type Kysely, sql, type Transaction } from 'kysely';
-import { getDb, getRawDb, getActiveShards, type Schema } from './Config.js';
+import { getDb, getRawDb, getActiveShards, getDbPath, type Schema } from './Config.js';
+import { LifecycleStateError } from '../../core/errors.js';
+import { lifecycleHealth, type ServiceHealth } from '../../core/agent-context/service-health.js';
 import { Logger } from '../../shared/services/Logger.js';
 import { Locker } from './pool/Locker.js';
 
@@ -191,9 +193,53 @@ export class BufferedDbPool {
   private integrityMetrics = { brokenImports: 0, orphanedNodes: 0 };
   private SCHEMA_VERSION = 2; // Pass 4 hardening baseline
   private schemaVerified = false;
+  private lifecycleState: 'new' | 'starting' | 'started' | 'stopping' | 'stopped' = 'new';
+  private startPromise: Promise<void> | null = null;
 
   constructor() {
     this.startFlushLoop();
+  }
+
+  public async start(): Promise<void> {
+    if (this.lifecycleState === 'started') return;
+    if (this.lifecycleState === 'stopped') {
+      throw new LifecycleStateError('BufferedDbPool cannot be restarted after stop().');
+    }
+    if (this.startPromise) return this.startPromise;
+
+    this.lifecycleState = 'starting';
+    this.startPromise = (async () => {
+      this.db = await getDb('main');
+      this.rawDb = (await getRawDb('main')) as Database.Database;
+      await this.verifySchemaVersion();
+      this.lifecycleState = 'started';
+    })().catch((error) => {
+      this.lifecycleState = 'new';
+      this.startPromise = null;
+      throw error;
+    });
+
+    return this.startPromise;
+  }
+
+  public async health(): Promise<ServiceHealth> {
+    const metrics = this.getMetrics();
+    const lifecycle =
+      this.lifecycleState === 'started'
+        ? 'started'
+        : this.lifecycleState === 'stopped'
+          ? 'stopped'
+          : 'new';
+
+    return lifecycleHealth('db', lifecycle, {
+      metrics: {
+        dbPath: getDbPath(),
+        activeBufferSize: metrics.activeBufferSize,
+        inFlightOpsSize: metrics.inFlightOpsSize,
+        activeShadows: metrics.activeShadows,
+        shardCount: metrics.shards.length,
+      },
+    });
   }
 
   private async verifySchemaVersion() {
@@ -1297,7 +1343,26 @@ export class BufferedDbPool {
     return rows.length;
   }
 
+  public async pruneExpiredShadows(maxAgeMs = 5 * 60 * 1000): Promise<number> {
+    const release = await this.stateMutex.acquire();
+    let pruned = 0;
+    try {
+      const now = Date.now();
+      for (const [agentId, shadow] of Array.from(this.agentShadows.entries())) {
+        if (now - shadow.lastUpdated > maxAgeMs) {
+          this.agentShadows.delete(agentId);
+          pruned++;
+        }
+      }
+    } finally {
+      release();
+    }
+    return pruned;
+  }
+
   public async stop() {
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') return;
+    this.lifecycleState = 'stopping';
     if (this.flushInterval) clearInterval(this.flushInterval);
     if (this.cleanupInterval) clearInterval(this.cleanupInterval);
     if (this.flushTimeout) clearTimeout(this.flushTimeout);
@@ -1315,6 +1380,8 @@ export class BufferedDbPool {
         this.rawDb.close();
         this.rawDb = null;
     }
+    this.lifecycleState = 'stopped';
+    this.startPromise = null;
   }
 }
 

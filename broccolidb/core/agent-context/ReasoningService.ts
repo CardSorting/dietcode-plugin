@@ -1,4 +1,5 @@
-import { Logger } from '../../shared/services/Logger.js';
+// [LAYER: CORE]
+// @classification PURE
 import type { GraphService } from './GraphService.js';
 import type { ContradictionReport, KnowledgeBaseItem, Pedigree, ServiceContext } from './types.js';
 
@@ -279,23 +280,6 @@ export class ReasoningService {
     }
 
     return { type: 'none' };
-  }
-
-  /**
-   * Vitality Daemon: Background process for autonomous graph self-healing.
-   */
-  public startVitalityDaemon(listAllFn: () => Promise<KnowledgeBaseItem[]>) {
-    Logger.info('[ReasoningService] 🧬 Vitality Daemon started. Monitoring graph hygiene...');
-    setInterval(async () => {
-      try {
-        const result = await this.selfHealGraph(listAllFn);
-        if (result.prunedNodes.length > 0) {
-          Logger.info(`[ReasoningService] 🧹 Self-Heal: Pruned ${result.prunedNodes.length} stale/invalid nodes.`);
-        }
-      } catch (err) {
-        Logger.error('[ReasoningService] 💥 Vitality Daemon error:', err);
-      }
-    }, 600000); // Every 10 minutes
   }
 
   /**

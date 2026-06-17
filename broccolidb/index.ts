@@ -1,12 +1,3 @@
-export * from './core/agent-context.js';
-export * from './core/connection.js';
-export * from './core/embedding.js';
-export * from './core/errors.js';
-export * from './core/file-tree.js';
-export * from './core/ignore.js';
-export * from './core/mcp.js';
-export * from './core/mirror.js';
-export * from './core/repository.js';
-export * from './core/tracker.js';
-export * from './core/watcher.js';
-export * from './core/workspace.js';
+// [LAYER: CORE]
+/** @stable BroccoliDB v30 public API — see API_STABILITY.md */
+export * from './core/public-api.js';

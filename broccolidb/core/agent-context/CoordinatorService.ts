@@ -1,17 +1,67 @@
+// [LAYER: CORE]
+// @classification OWNED
 import type { ServiceContext, TaskItem } from './types.js';
 import { randomUUID } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { LifecycleStateError } from '../errors.js';
+import { lifecycleHealth, type ServiceHealth } from './service-health.js';
 
 /**
  * CoordinatorService orchestrates software engineering tasks across multiple workers.
  * Hardened with real worker execution loops, heartbeats, and AI synthesis.
  */
 export class CoordinatorService {
+  private lifecycleState: 'new' | 'started' | 'stopped' = 'new';
   private activeWorkers = new Map<string, { taskId: string; lastHeartbeat: number }>();
+  private workerProcesses = new Map<string, ChildProcess>();
+  private heartbeatInterval: NodeJS.Timeout | null = null;
 
-  constructor(private ctx: ServiceContext) {
-    // Start heartbeat monitor
-    setInterval(() => this.monitorHeartbeats(), 10000);
+  constructor(private ctx: ServiceContext) {}
+
+  async start(): Promise<void> {
+    if (this.lifecycleState === 'started') return;
+    if (this.lifecycleState === 'stopped') {
+      throw new LifecycleStateError('CoordinatorService cannot be restarted after stop().');
+    }
+    this.lifecycleState = 'started';
+    await this.initRecovery();
+    this.heartbeatInterval = setInterval(() => this.monitorHeartbeats(), 10000);
+  }
+
+  async stop(): Promise<void> {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+    for (const child of this.workerProcesses.values()) {
+      child.kill();
+    }
+    this.workerProcesses.clear();
+    this.activeWorkers.clear();
+    this.lifecycleState = 'stopped';
+  }
+
+  async flush(): Promise<void> {
+    this.assertOperational('flush');
+  }
+
+  async health(): Promise<ServiceHealth> {
+    return lifecycleHealth('coordinator', this.lifecycleState, {
+      metrics: {
+        activeWorkers: this.activeWorkers.size,
+        workerProcesses: this.workerProcesses.size,
+        heartbeatIntervalActive: this.heartbeatInterval !== null,
+      },
+    });
+  }
+
+  private assertOperational(operation: string): void {
+    if (this.lifecycleState === 'new') {
+      throw new LifecycleStateError(`CoordinatorService.${operation}() called before start().`);
+    }
+    if (this.lifecycleState === 'stopped') {
+      throw new LifecycleStateError(`CoordinatorService.${operation}() called after stop().`);
+    }
   }
 
   /**
@@ -24,6 +74,7 @@ export class CoordinatorService {
     subagentType?: 'worker' | 'researcher' | 'verifier';
     parentTaskId?: string;
   }): Promise<string> {
+    this.assertOperational('spawnWorker');
     const workerId = `worker-${randomUUID().slice(0, 8)}`;
     const taskId = randomUUID();
 
@@ -58,6 +109,7 @@ export class CoordinatorService {
    * Initializes the coordinator by recovering active tasks from the database.
    */
   async initRecovery(): Promise<void> {
+    this.assertOperational('initRecovery');
     const activeTasks = await this.ctx.db.selectWhere('tasks', [
         { column: 'status', value: 'active' }
     ]);
@@ -76,6 +128,7 @@ export class CoordinatorService {
    * Actual execution loop for the worker.
    */
   private async executeWorkerLoop(workerId: string, prompt: string, type?: string) {
+      this.assertOperational('executeWorkerLoop');
       try {
           console.log(`[Coordinator] 🚀 Launching real worker process for ${workerId}: ${prompt.slice(0, 50)}...`);
 
@@ -83,6 +136,7 @@ export class CoordinatorService {
               stdio: 'pipe',
               detached: true
           });
+          this.workerProcesses.set(workerId, workerProc);
 
           this.heartbeat(workerId);
 
@@ -100,6 +154,7 @@ export class CoordinatorService {
           workerProc.on('exit', (code) => {
               console.log(`[Coordinator] ⚰️  Worker ${workerId} exited with code ${code}`);
               this.activeWorkers.delete(workerId);
+              this.workerProcesses.delete(workerId);
               
               if (code !== 0) {
                   this.handleWorkerFailure(workerId);
@@ -120,6 +175,7 @@ export class CoordinatorService {
   }
 
   public heartbeat(workerId: string) {
+      this.assertOperational('heartbeat');
       const worker = this.activeWorkers.get(workerId);
       if (worker) {
           worker.lastHeartbeat = Date.now();
@@ -141,6 +197,7 @@ export class CoordinatorService {
    * Uses real AI-driven synthesis.
    */
   async synthesizeWorkers(workerIds: string[]): Promise<string> {
+    this.assertOperational('synthesizeWorkers');
     console.log(`[Coordinator] 🧠 Synthesizing findings from workers: ${workerIds.join(', ')}`);
     
     // 1. Fetch worker results from KB/Tasks (Real query)

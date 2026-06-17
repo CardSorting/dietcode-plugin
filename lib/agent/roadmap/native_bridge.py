@@ -38,7 +38,7 @@ def resolve_roadmap_write_path(*, write_path: str, workspace: str) -> tuple[Opti
     expected = (ws / "ROADMAP.md").resolve()
 
     try:
-        from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
+        from plugins.dietcode.lib.workspace_root import is_quarantined_root
 
         if is_quarantined_root(resolved.parent) or is_quarantined_root(ws):
             return None, (

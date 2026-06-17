@@ -123,7 +123,7 @@ def _check_checkpoint_fresh(_: dict[str, Any], inputs: dict[str, Any]) -> bool:
 
 def _check_workspace_safe(_: dict[str, Any], inputs: dict[str, Any]) -> bool:
     try:
-        from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
+        from plugins.dietcode.lib.workspace_root import is_quarantined_root
     except ImportError:
         return True
     ws = str(inputs.get("workspace") or "")

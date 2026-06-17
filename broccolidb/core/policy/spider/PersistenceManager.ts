@@ -1,3 +1,4 @@
+// [LAYER: CORE]
 import * as crypto from "crypto"
 import * as v8 from "v8"
 import { MetricsEngine } from "./MetricsEngine.js"
@@ -111,7 +112,7 @@ export class PersistenceManager {
 				hasher.update(node.hash)
 				// Imports are unique and pre-vetted during indexing
 				for (const imp of node.imports) {
-					hasher.update(imp.specifier)
+					hasher.update(imp)
 				}
 			}
 		}

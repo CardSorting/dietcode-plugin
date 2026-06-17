@@ -1,3 +1,4 @@
+// [LAYER: UI]
 import { AgentContext } from '../core/agent-context.js';
 import { Workspace } from '../core/workspace.js';
 import { BufferedDbPool } from '../infrastructure/db/BufferedDbPool.js';
@@ -12,6 +13,7 @@ async function testQueryLoop() {
   const workspaceId = 'test-workspace-query';
   const workspace = new Workspace(pool, userId, workspaceId);
   const ctx = new AgentContext(workspace, pool, userId);
+  await ctx.start();
 
   // Mock ServiceContext for QueryLoop
   const serviceCtx = (ctx as any)._serviceContext;
@@ -70,6 +72,7 @@ async function testQueryLoop() {
     console.error('❌ TEST FAILED:', err);
     process.exit(1);
   } finally {
+    await ctx.stop();
     process.exit(0);
   }
 }

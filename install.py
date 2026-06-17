@@ -24,7 +24,8 @@ def broccolidb_root() -> Path:
 
 
 def kernel_root() -> Path:
-    return plugin_root() / "kernel"
+    """Deprecated — macOS kernel subtree removed; kept for import compatibility."""
+    return get_plugin_root() / ".removed-kernel"
 
 
 def _integration_marker() -> Path:
@@ -135,35 +136,15 @@ def apply_seamless_defaults(*, save: bool = True) -> dict[str, Any]:
 
     dietcode = config.setdefault("dietcode", {})
     if isinstance(dietcode, dict):
+        ws_cfg = dietcode.setdefault("workspace", {})
+        if isinstance(ws_cfg, dict) and "workspace_root_source" not in ws_cfg:
+            ws_cfg["workspace_root_source"] = "hermes_project"
+            changed.append("dietcode.workspace.workspace_root_source")
+        # Back-compat: also seed legacy kernel.workspace_root_source when absent.
         kernel_cfg = dietcode.setdefault("kernel", {})
         if isinstance(kernel_cfg, dict) and "workspace_root_source" not in kernel_cfg:
             kernel_cfg["workspace_root_source"] = "hermes_project"
             changed.append("dietcode.kernel.workspace_root_source")
-        bridge_cfg = kernel_cfg.setdefault("bridge", {}) if isinstance(kernel_cfg, dict) else {}
-        if isinstance(bridge_cfg, dict):
-            if "enabled" not in bridge_cfg:
-                bridge_cfg["enabled"] = True
-                changed.append("dietcode.kernel.bridge.enabled")
-            if "mutations_enabled" not in bridge_cfg:
-                bridge_cfg["mutations_enabled"] = False
-                changed.append("dietcode.kernel.bridge.mutations_enabled")
-            if "raw_write_policy" not in bridge_cfg:
-                bridge_cfg["raw_write_policy"] = "warn"
-                changed.append("dietcode.kernel.bridge.raw_write_policy")
-            perf_defaults = {
-                "preflight_cache_ttl_ms": 5000,
-                "workspace_open_cache": True,
-                "progress_flush_interval_ms": 250,
-                "max_concurrent_mutations_per_workspace": 1,
-                "keep_warm": False,
-                "keep_warm_idle_timeout_ms": 120000,
-                "keep_warm_ping_interval_ms": 30000,
-                "event_hooks_enabled": False,
-            }
-            for key, value in perf_defaults.items():
-                if key not in bridge_cfg:
-                    bridge_cfg[key] = value
-                    changed.append(f"dietcode.kernel.bridge.{key}")
 
         roadmap_cfg = dietcode.setdefault("roadmap", {})
         if isinstance(roadmap_cfg, dict):
@@ -214,34 +195,22 @@ def apply_seamless_defaults(*, save: bool = True) -> dict[str, Any]:
 
 
 def ensure_kernel_built(*, auto_build: bool = False, timeout: int = 600) -> dict[str, Any]:
-    """Check or build the quarantined kernel binary (macOS + toolchain only)."""
-    try:
-        from plugins.dietcode.lib.kernel_health import ensure_kernel_built as _ensure
-    except ImportError:
-        import sys
-
-        root = str(plugin_root())
-        if root not in sys.path:
-            sys.path.insert(0, root)
-        from lib.kernel_health import ensure_kernel_built as _ensure
-
-    return _ensure(auto_build=auto_build, timeout=timeout)
+    """Deprecated — native mutation replaced macOS kernel bridge."""
+    return {"ok": True, "action": "removed", "hint": "kernel subtree removed; use dietcode_kernel native tool"}
 
 
 def run_install_wizard(*, auto_npm: bool = True, auto_kernel: bool = False) -> dict[str, Any]:
-    """CLI / drag-and-drop installer — config + optional npm ci + kernel build check."""
+    """CLI / drag-and-drop installer — config + optional npm ci."""
     cfg = apply_seamless_defaults(save=True)
     runtime = ensure_broccolidb_runtime(auto_npm=auto_npm)
-    kernel = ensure_kernel_built(auto_build=auto_kernel)
-    ok = bool(cfg.get("ok", True)) and bool(runtime.get("ok", True)) and bool(kernel.get("ok", True))
-    return {"ok": ok, "config": cfg, "broccolidb": runtime, "kernel": kernel}
+    ok = bool(cfg.get("ok", True)) and bool(runtime.get("ok", True))
+    return {"ok": ok, "config": cfg, "broccolidb": runtime}
 
 
 _SYNC_EXCLUDES = (
     ".git",
     ".DS_Store",
     "broccolidb/node_modules",
-    "kernel/build",
     "__pycache__",
 )
 

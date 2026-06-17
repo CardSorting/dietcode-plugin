@@ -17,9 +17,9 @@ export async function getAgentContext(): Promise<AgentContext> {
 			const userId = "local-user";
 			const workspaceId = "local-workspace";
 			const workspace = new Workspace(pool, userId, workspaceId);
-			// workspace.init() uses public pool APIs (push/selectOne) — same as cli/index.ts
-			await workspace.init();
-			return new AgentContext(workspace, pool, userId);
+			const ctx = new AgentContext(workspace, pool, userId);
+			await ctx.start();
+			return ctx;
 		})();
 	}
 	return _contextPromise;

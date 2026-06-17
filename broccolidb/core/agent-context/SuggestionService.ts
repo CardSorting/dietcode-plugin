@@ -1,3 +1,4 @@
+// [LAYER: CORE]
 import * as crypto from 'node:crypto';
 import type { BlastRadius } from './StructuralDiscoveryService.js';
 import type {
@@ -77,13 +78,12 @@ export class SuggestionService {
       let semanticContext: string[] = [];
 
       if (activeFilePath) {
-        structuralImpact = agentContext.getStructuralImpact(activeFilePath);
-        const searchResults = await agentContext.searchKnowledge(
-          `context for ${activeFilePath}: ${fileContent?.substring(0, 100)}`,
-          undefined,
-          2
-        );
-        semanticContext = searchResults.map((res: KnowledgeBaseItem) => res.content);
+        structuralImpact = agentContext.graph.getStructuralImpact({ filePath: activeFilePath });
+        const searchResults = await agentContext.query.search({
+          text: `context for ${activeFilePath}: ${fileContent?.substring(0, 100)}`,
+          limit: 2,
+        });
+        semanticContext = searchResults.items.map((res: KnowledgeBaseItem) => res.content);
       }
 
       const systemPrompt = `You are a strict, hyper-aware AI Oracle embedded in the user's IDE.

@@ -1,3 +1,4 @@
+// [LAYER: CORE]
 import * as path from "path"
 import * as ts from "typescript"
 import { Logger } from "../../../shared/services/Logger.js"
@@ -240,8 +241,7 @@ export class MetricsEngine {
 
 			for (const imp of connections) {
 				// V215: Fast-path for already resolved re-exports (which are IDs)
-				const specifier = typeof imp === 'string' ? imp : imp.specifier;
-				const resolved: string | null = nodes.has(specifier) ? specifier : this.resolver.resolveImportToNodeId(node.path, specifier, nodes)
+				const resolved: string | null = nodes.has(imp) ? imp : this.resolver.resolveImportToNodeId(node.path, imp, nodes)
 
 				if (resolved && couplingMap.has(resolved)) {
 					couplingMap.set(resolved, (couplingMap.get(resolved) || 0) + 1)
@@ -277,7 +277,6 @@ export class MetricsEngine {
 				p.includes("index.") ||
 				p === "src/extension.ts" ||
 				p === "src/common.ts" ||
-				p.startsWith("src/standalone/") ||
 				p.startsWith("src/scripts/") ||
 				p.startsWith("src/common/") ||
 				p.includes("/__tests__/") ||
@@ -308,10 +307,9 @@ export class MetricsEngine {
 				const connections = [...(node.imports || []), ...(node.reExports || [])]
 				for (const imp of connections) {
 					// V215: If 'imp' is already a node ID (common for reExports after rebuild), skip resolution.
-					const specifier = typeof imp === 'string' ? imp : imp.specifier;
-					const resolved: string | null = nodes.has(specifier)
-						? specifier
-						: this.resolver.resolveImportToNodeId(node.path, specifier, nodes)
+					const resolved: string | null = nodes.has(imp)
+						? imp
+						: this.resolver.resolveImportToNodeId(node.path, imp, nodes)
 
 					if (resolved && nodes.has(resolved) && !reachable.has(resolved)) {
 						reachable.add(resolved)
@@ -355,7 +353,7 @@ export class MetricsEngine {
 
 			const imports = node.imports || []
 			for (const imp of imports) {
-				const targetId = this.resolver.resolveImportToNodeId(nodeId, imp.specifier, nodeIds)
+				const targetId = this.resolver.resolveImportToNodeId(nodeId, imp, nodeIds)
 				if (!targetId || !nodes.has(targetId)) continue
 
 				if (visiting.has(targetId)) {
@@ -414,7 +412,7 @@ export class MetricsEngine {
 			const imports = node.imports || []
 			for (const imp of imports) {
 				totalEdges++
-				const targetId = this.resolver.resolveImportToNodeId(node.id, imp.specifier, new Set(nodes.keys()))
+				const targetId = this.resolver.resolveImportToNodeId(node.id, imp, new Set(nodes.keys()))
 				const targetLayer = targetId ? this.resolver.resolveLayer(targetId) : null
 
 				if (targetLayer && targetLayer !== node.layer && targetLayer !== "plumbing") {
@@ -513,7 +511,7 @@ export class MetricsEngine {
 				const complexityDiff = Math.abs(a.astComplexity - b.astComplexity) / Math.max(a.astComplexity, b.astComplexity)
 
 				const isSimilar = densityDiff < 0.05 && symbolDiff < 0.1 && complexityDiff < 0.2
-				const isDecoupled = !a.imports.some(imp => imp.specifier === b.path) && !b.imports.some(imp => imp.specifier === a.path)
+				const isDecoupled = !a.imports.includes(b.path) && !b.imports.includes(a.path)
 
 				if (isSimilar && isDecoupled) {
 					twins.push([a.path, b.path])

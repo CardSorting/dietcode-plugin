@@ -49,7 +49,7 @@ def run_checks(*, workspace: Optional[str] = None) -> dict[str, Any]:
 
     _check("roadmap.enabled", cfg.enabled, "enabled" if cfg.enabled else "disabled in config")
     try:
-        from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
+        from plugins.dietcode.lib.workspace_root import is_quarantined_root
 
         _check(
             "workspace_not_plugin_tree",

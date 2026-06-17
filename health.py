@@ -38,21 +38,8 @@ Subcommands:
   status / doctor          Full integration health report
   tools                    Tool module load report
   broccolidb               BroccoliDB root + RPC availability
-  kernel                   Kernel subtree + socket/token health
-  kernel status            Compact operator summary (bridge, policy, gates)
-  kernel progress              Human summary of current operation
-  kernel progress --timeline   Ordered phase timeline with durations
-  kernel progress --last N     Summarize last N operations
-  kernel progress --operation <id>  Filter tail/timeline by operation_id
-  kernel progress --tail       JSON tail of kernel-progress.jsonl
-  kernel progress --current    Full current-state JSON snapshot
-  kernel last-error            Last normalized kernel bridge error envelope
-  kernel explain-gate          Closed gates, fixes, raw-write behavior
-  kernel perf --last 10        Phase timing breakdown (p50/p95 by bucket)
-  kernel perf --ux --last 10   Perceived responsiveness metrics (ack, silent gaps)
-  kernel watch                 Compact single-line live operation summary
-  kernel watch --follow        Kinetic in-place refresh (~1s, spinner when TTY)
-  kernel cockpit               One-screen operator summary (gates, state, next action)
+  mutation                 Native mutation workspace health (dietcode_kernel)
+  mutation status          Workspace revision, drift, coherence state
   roadmap                      Roadmap feature health JSON
   roadmap cockpit              One-screen roadmap operator summary
   roadmap progress             Roadmap tool activity summary
@@ -158,12 +145,24 @@ def _runtime_health() -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
-def _kernel_health() -> dict[str, Any]:
+def _mutation_health() -> dict[str, Any]:
     try:
-        from plugins.dietcode.lib.kernel_health import build_kernel_health
+        from plugins.dietcode.lib.workspace_root import build_workspace_health
+        from plugins.dietcode.lib.agent.native_mutation import NativeMutationManager
 
-        return build_kernel_health()
-    except ImportError as exc:
+        ws_health = build_workspace_health()
+        root = ws_health.get("resolved_workspace_root")
+        status = None
+        if root:
+            mgr = NativeMutationManager.get_instance()
+            status = mgr.get_status(Path(root))
+        return {
+            "ok": bool(ws_health.get("safe_for_mutation")),
+            "mode": "native_mutation",
+            "workspace": ws_health,
+            "runtime_status": status,
+        }
+    except Exception as exc:
         return {"ok": False, "error": str(exc)}
 
 
@@ -261,7 +260,7 @@ def build_status_report(*, strict: bool = False, refresh: bool = False) -> dict[
         "toolset": _toolset_health(),
         "runtime": _runtime_health(),
         "broccolidb": _broccolidb_health(),
-        "kernel": _kernel_health(),
+        "mutation": _mutation_health(),
         "joyzoning": _joyzoning_health(),
         "jsdp": _jsdp_health(),
         "roadmap": _roadmap_health(),
@@ -341,149 +340,30 @@ def format_status_report(
     else:
         lines.append(f"⚠️  BroccoliDB: {bdb.get('error') or 'root not found'}")
 
-    kern = data.get("kernel", {})
-    if kern.get("plugin_root"):
-        lines.append(f"   plugin_root: {kern.get('plugin_root')}")
-    if kern.get("kernel_root"):
-        lines.append(f"   kernel_root: {kern.get('kernel_root')}")
-    ws = kern.get("workspace") or {}
+    mut = data.get("mutation", {})
+    ws = mut.get("workspace") or {}
     if ws.get("resolved_workspace_root"):
         safe = ws.get("safe_for_mutation")
         mark = "✅" if safe else "⚠️ "
         lines.append(
-            f"{mark} workspace: {ws.get('resolved_workspace_root')}"
+            f"{mark} Mutation workspace: {ws.get('resolved_workspace_root')}"
             f" (source={ws.get('source')}, safe_for_mutation={safe})"
         )
         for err in ws.get("errors") or []:
             lines.append(f"   • {err}")
     elif ws.get("source"):
         lines.append(
-            f"⚠️  workspace: unresolved (source={ws.get('source')})"
-            f" — {ws.get('hint') or 'set HERMES_KANBAN_WORKSPACE or DIETCODE_WORKSPACE_ROOT'}"
+            f"⚠️  Mutation workspace: unresolved — {ws.get('hint') or 'set HERMES_KANBAN_WORKSPACE'}"
         )
-    bridge = kern.get("bridge_preflight") or {}
-    if bridge.get("enabled") is False:
-        lines.append("ℹ️  Kernel bridge: disabled in config")
-    elif bridge.get("ok"):
-        gate = bridge.get("patch_gate") or {}
+    runtime = mut.get("runtime_status") or {}
+    if runtime.get("ok") and isinstance(runtime.get("result"), dict):
+        res = runtime["result"]
         lines.append(
-            f"✅ Kernel bridge preflight: {bridge.get('action', 'ok')}"
-            f" | mutations_enabled={bridge.get('mutations_enabled', False)}"
-            f" | patch_allowed={gate.get('patch_allowed', False)}"
+            f"ℹ️  Native mutation: revision={res.get('workspaceRevision')} "
+            f"drift={res.get('driftDetected')} — use dietcode_kernel(action='status')"
         )
-        if bridge.get("workspace_safe_for_mutation") is False:
-            lines.append("   ⚠️  workspace not safe for kernel bridge — read/search/patch blocked")
-        elif not gate.get("mutations_enabled"):
-            lines.append(
-                "   ℹ️  patch gate closed — set dietcode.kernel.bridge.mutations_enabled: true for dietcode_kernel(action='patch')"
-            )
-        elif gate.get("patch_allowed"):
-            lines.append("   ✅ patch gate open — dietcode_kernel(action='patch') available")
-    elif bridge.get("error"):
-        err = bridge.get("error") if isinstance(bridge.get("error"), dict) else {}
-        lines.append(
-            f"⚠️  Kernel bridge: {err.get('string_code') or bridge.get('action')}"
-            f" — {err.get('message') or bridge.get('action')}"
-        )
-    elif bridge.get("action") not in (None, "skipped"):
-        lines.append(f"⚠️  Kernel bridge: {bridge.get('action')}")
-
-    if kern.get("ok"):
-        lines.append(
-            f"✅ Kernel: binary at {kern.get('binary_path')}"
-            f" | socket={'live' if kern.get('socket_reachable') else 'offline'}"
-            f" | token={'ok' if kern.get('token_readable') else 'missing'}"
-        )
-    elif kern.get("platform_supported") is False:
-        lines.append(
-            f"ℹ️  Kernel: macOS-only (current: {kern.get('platform')}) — "
-            "BroccoliDB/JoyZoning unaffected"
-        )
-    elif kern.get("subtree_present"):
-        lines.append(f"⚠️  Kernel: {kern.get('hint') or 'build required'}")
-    elif kern.get("error"):
-        lines.append(f"⚠️  Kernel: {kern.get('error')}")
-
-    receipt = kern.get("receipt_journal") or {}
-    if receipt.get("phase"):
-        lines.append(
-            "ℹ️  Mutation authority: kernel = physical writes | "
-            "JoyZoning = lifecycle journal/completion"
-        )
-        raw_router = kern.get("raw_write_router") or {}
-        policy = raw_router.get("raw_write_policy") or "warn"
-        would_warn = raw_router.get("would_warn_on_raw_write")
-        would_block = raw_router.get("would_block_raw_writes")
-        fuse = raw_router.get("env_fuse_present")
-        if would_block:
-            lines.append(
-                f"⚠️  Raw write policy: {policy} — blocking active on write_file/patch "
-                f"(DIETCODE_KERNEL_RAW_WRITE_BLOCK fuse={'on' if fuse else 'off'})"
-            )
-        elif would_warn:
-            lines.append(
-                f"⚠️  Raw write policy: {policy} — write_file/patch would warn "
-                "(kernel patch gate open; prefer dietcode_kernel)"
-            )
-        elif policy == "block" and not fuse:
-            lines.append(
-                f"ℹ️  Raw write policy: {policy} — fuse unset; raw writes warn-only until "
-                "DIETCODE_KERNEL_RAW_WRITE_BLOCK=1"
-            )
-        elif policy != "allow":
-            lines.append(
-                f"ℹ️  Raw write policy: {policy} — no warn yet "
-                f"(patch_gate_open={raw_router.get('patch_gate_open', False)})"
-            )
-        else:
-            lines.append(f"ℹ️  Raw write policy: {policy} — raw write hints disabled")
-        if not would_block:
-            lines.append(
-                "   Raw Hermes write_file/patch not hard-blocked"
-                if would_warn
-                else "   Raw Hermes write_file/patch allowed (gate closed or policy=allow)"
-            )
-        if receipt.get("joyzoning_enabled"):
-            lines.append(
-                f"   Receipt journal (Phase {receipt.get('phase')}): "
-                "successful dietcode_kernel patches → JoyZoning mutation_record_patch"
-            )
-        else:
-            lines.append(
-                "   Receipt journal: JoyZoning disabled — kernel patches succeed without lifecycle journal"
-            )
-
-    progress = kern.get("progress") or {}
-    current = progress.get("current") if isinstance(progress.get("current"), dict) else None
-    if current:
-        lines.append(
-            f"ℹ️  Kernel progress: phase={current.get('phase')} "
-            f"action={current.get('action')} elapsed_ms={current.get('elapsed_ms')}"
-        )
-    if progress.get("stale_progress_ms"):
-        lines.append(
-            f"⚠️  Kernel progress stale ({progress['stale_progress_ms']}ms) — "
-            "/dietcode kernel progress --current"
-        )
-
-    verify = kern.get("verify_bridge") or {}
-    if verify.get("phase"):
-        allowlist = verify.get("allowlist_prefixes") or []
-        if verify.get("verify_action_available"):
-            lines.append(
-                f"✅ Kernel verify (Phase {verify.get('phase')}): dietcode_kernel(action='verify') available"
-                f" | allowlist={len(allowlist)} prefixes"
-            )
-        else:
-            lines.append(
-                f"ℹ️  Kernel verify (Phase {verify.get('phase')}): unavailable"
-                f" (bridge/socket/workspace gate closed)"
-            )
-        if allowlist:
-            preview = ", ".join(str(p) for p in allowlist[:4])
-            if len(allowlist) > 4:
-                preview += f", … +{len(allowlist) - 4}"
-            lines.append(f"   verify.run allowlist: {preview}")
+    elif mut.get("error"):
+        lines.append(f"⚠️  Mutation runtime: {mut.get('error')}")
 
     jz = data.get("joyzoning", {})
     if jz.get("ok"):
@@ -582,71 +462,11 @@ def handle_dietcode_command(raw_args: str) -> Optional[str]:
     if sub == "broccolidb":
         return json.dumps(_broccolidb_health(), indent=2)
 
-    if sub == "kernel":
+    if sub == "mutation":
         rest = argv[1:] if len(argv) > 1 else []
-        if not rest:
-            return json.dumps(_kernel_health(), indent=2)
-        kernel_sub = rest[0].lower()
-        if kernel_sub == "status":
-            try:
-                from plugins.dietcode.lib.kernel_health import format_kernel_status_report
-            except ImportError:
-                from lib.kernel_health import format_kernel_status_report
-            return format_kernel_status_report()
-        if kernel_sub == "progress":
-            try:
-                from plugins.dietcode.lib.agent import kernel_progress as kp
-            except ImportError:
-                from lib.agent import kernel_progress as kp
-            opts = kp.parse_progress_args(rest[1:])
-            return kp.format_progress_report(
-                tail=bool(opts.get("tail")),
-                current_only=bool(opts.get("current")),
-                timeline=bool(opts.get("timeline")),
-                operation_id=opts.get("operation"),
-                last=opts.get("last"),
-            )
-        if kernel_sub == "last-error":
-            try:
-                from plugins.dietcode.lib.agent import kernel_progress as kp
-            except ImportError:
-                from lib.agent import kernel_progress as kp
-            return json.dumps(kp.read_last_error(), indent=2, ensure_ascii=False)
-        if kernel_sub == "explain-gate":
-            try:
-                from plugins.dietcode.lib.agent import kernel_progress as kp
-            except ImportError:
-                from lib.agent import kernel_progress as kp
-            return kp.format_gate_explanation()
-        if kernel_sub == "perf":
-            try:
-                from plugins.dietcode.lib.agent.kernel_bridge_perf import format_perf_report, parse_perf_args
-                from plugins.dietcode.lib.agent.kernel_progress_ux import format_ux_perf_report, parse_perf_ux_args
-            except ImportError:
-                from lib.agent.kernel_bridge_perf import format_perf_report, parse_perf_args
-                from lib.agent.kernel_progress_ux import format_ux_perf_report, parse_perf_ux_args
-            last_n, ux = parse_perf_ux_args(rest[1:])
-            if ux:
-                return format_ux_perf_report(last_operations=last_n)
-            return format_perf_report(last_operations=parse_perf_args(rest[1:]))
-        if kernel_sub == "watch":
-            try:
-                from plugins.dietcode.lib.agent.kernel_progress_ux import format_watch_report, parse_watch_args
-            except ImportError:
-                from lib.agent.kernel_progress_ux import format_watch_report, parse_watch_args
-            opts = parse_watch_args(rest[1:])
-            return format_watch_report(
-                follow=bool(opts.get("follow")),
-                interval_sec=float(opts.get("interval_sec") or 1.5),
-                max_sec=float(opts.get("max_sec") or 30.0),
-            )
-        if kernel_sub == "cockpit":
-            try:
-                from plugins.dietcode.lib.agent.kernel_cockpit import format_cockpit_report
-            except ImportError:
-                from lib.agent.kernel_cockpit import format_cockpit_report
-            return format_cockpit_report()
-        return json.dumps(_kernel_health(), indent=2)
+        if rest and rest[0].lower() == "status":
+            return json.dumps(_mutation_health(), indent=2)
+        return json.dumps(_mutation_health(), indent=2)
 
     if sub == "roadmap":
         rest = argv[1:] if len(argv) > 1 else []

@@ -1,3 +1,4 @@
+// [LAYER: CORE]
 export class TaskMutex {
   private static locks = new Map<string, Promise<void>>();
 
@@ -22,8 +23,9 @@ export class TaskMutex {
       previous.then(() => current)
     );
 
+    let timerId: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => {
-      setTimeout(
+      timerId = setTimeout(
         () =>
           reject(new Error(`[TaskMutex] Lock acquisition timeout for ${key} after ${timeoutMs}ms`)),
         timeoutMs
@@ -35,6 +37,7 @@ export class TaskMutex {
       await Promise.race([previous, timeout]);
       return await fn();
     } finally {
+      if (timerId) clearTimeout(timerId);
       if (TaskMutex.locks.get(key) === current) {
         TaskMutex.locks.delete(key);
       }

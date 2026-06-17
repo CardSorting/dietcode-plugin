@@ -1,0 +1,66 @@
+{
+  "timestamp": "2026-05-29T23:45:36.084Z",
+  "error": "SqliteError: FOREIGN KEY constraint failed\n    at SqliteConnection.executeQuery (file:///Users/bozoegg/Downloads/diet-hermes-main-master/broccolidb/node_modules/kysely/dist/esm/dialect/sqlite/sqlite-driver.js:68:51)\n    at file:///Users/bozoegg/Downloads/diet-hermes-main-master/broccolidb/node_modules/kysely/dist/esm/query-executor/query-executor-base.js:35:45\n    at #run (file:///Users/bozoegg/Downloads/diet-hermes-main-master/broccolidb/node_modules/kysely/dist/esm/driver/single-connection-provider.js:24:22)\n    at SingleConnectionProvider.provideConnection (file:///Users/bozoegg/Downloads/diet-hermes-main-master/broccolidb/node_modules/kysely/dist/esm/driver/single-connection-provider.js:16:41)\n    at DefaultQueryExecutor.provideConnection (file:///Users/bozoegg/Downloads/diet-hermes-main-master/broccolidb/node_modules/kysely/dist/esm/query-executor/default-query-executor.js:20:41)\n    at DefaultQueryExecutor.executeQuery (file:///Users/bozoegg/Downloads/diet-hermes-main-master/broccolidb/node_modules/kysely/dist/esm/query-executor/query-executor-base.js:34:27)\n    at NotCommittedOrRolledBackAssertingExecutor.executeQuery (file:///Users/bozoegg/Downloads/diet-hermes-main-master/broccolidb/node_modules/kysely/dist/esm/kysely.js:896:31)\n    at InsertQueryBuilder.execute (file:///Users/bozoegg/Downloads/diet-hermes-main-master/broccolidb/node_modules/kysely/dist/esm/query-builder/insert-query-builder.js:1106:51)\n    at BufferedDbPool.executeSingleOp (/Users/bozoegg/Downloads/diet-hermes-main-master/broccolidb/infrastructure/db/BufferedDbPool.ts:1159:19)\n    at <anonymous> (/Users/bozoegg/Downloads/diet-hermes-main-master/broccolidb/infrastructure/db/BufferedDbPool.ts:616:26)",
+  "ops": [
+    {
+      "type": "upsert",
+      "table": "knowledge",
+      "values": {
+        "id": "node-a",
+        "userId": "reembed-test-user",
+        "type": "fact",
+        "content": "Alpha knowledge for embedding test.",
+        "tags": "[]",
+        "embedding": null,
+        "confidence": 1,
+        "hubScore": 0,
+        "expiresAt": null,
+        "metadata": "{\"isReference\":false}",
+        "createdAt": 1780098335737
+      },
+      "layer": "domain",
+      "seq": 0,
+      "hasIncrements": false
+    },
+    {
+      "type": "upsert",
+      "table": "knowledge",
+      "values": {
+        "id": "node-b",
+        "userId": "reembed-test-user",
+        "type": "fact",
+        "content": "Beta knowledge for embedding test.",
+        "tags": "[]",
+        "embedding": null,
+        "confidence": 1,
+        "hubScore": 0,
+        "expiresAt": null,
+        "metadata": "{\"isReference\":false}",
+        "createdAt": 1780098335738
+      },
+      "layer": "domain",
+      "seq": 1,
+      "hasIncrements": false
+    },
+    {
+      "type": "upsert",
+      "table": "knowledge",
+      "values": {
+        "id": "node-empty",
+        "userId": "reembed-test-user",
+        "type": "fact",
+        "content": "   ",
+        "tags": "[]",
+        "embedding": null,
+        "confidence": 1,
+        "hubScore": 0,
+        "expiresAt": null,
+        "metadata": "{\"isReference\":false}",
+        "createdAt": 1780098335738
+      },
+      "layer": "domain",
+      "seq": 2,
+      "hasIncrements": false
+    }
+  ]
+}

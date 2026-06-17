@@ -1,50 +1,104 @@
-# SPIDER: Sovereign Structural Forensic Engine (V19)
+# SPIDER: Structural Forensic Engine
 
-The Spider Engine is a hyper-deterministic, remedial architectural guardian designed to enforce structural integrity, physical parity, and symbolic continuity in the BroccoliDB ecosystem.
+Spider proves structural truth. It does not guess. Agents access Spider **only** via `ctx.graph.spider`.
 
-## 🏗️ Architectural Pillars (Level 19)
+Public docs: [../../docs/getting-started.md](../../docs/getting-started.md) · [Spider ergonomics](../../../docs/api/spider-agent-ergonomics.md)
 
-### 1. 🧬 Semantic Footprinting (Identity v2)
-The substrate tracks the **Persistent Identity** of symbols via SHA-256 AST hashing.
-- **The Anchor**: Footprints ignore whitespace/comments, focusing purely on the logic and signature.
-- **The Result**: 100% confidence in "Perfect Moves". The engine knows a function hasn't changed its identity just because it changed its address.
+## Forensic contracts
 
-### 2. 🛡️ Sovereign Drift Guard (Disk Parity)
-Every node in the graph is anchored to its **Physical Reality** via disk hashing.
-- **The Anchor**: SHA-256 parity checks between the memory-resident graph and actual bytes-on-disk.
-- **The Result**: Automatic detection of "Reality Drift" (external file modifications), ensuring the agent always operates on the physical truth.
+1. **Evidence** — typed `SpiderEvidence` on every finding
+2. **Identity** — `SemanticFootprint` with AST-normalized hashing
+3. **Reality** — `DiskParityResult` with explicit `driftStatus`
+4. **Repair** — JSON-serializable `RepairDirective` with verification commands
 
-### 3. 🛠️ Surgical Repair Maps (ARM)
-Audits now provide **Actionable Success Paths**. 
-- **The Anchor**: JSON-serializable `RepairDirectives` (e.g., `UPDATE_IMPORT_PATH`).
-- **The Result**: Tool outputs provide a specific **REPAIR PLAN** with suggested values and rationales, enabling self-healing recovery from structural breakages.
+Audit and gate are **read-only**. File mutations go through `ctx.runtime.execute`.
 
-### 4. 🪚 T-Mirror (Type-Soundness Anchoring)
-Integrates the TypeScript compiler to project REAL compiler diagnostics onto every mutation.
+## SPI diagnostics
 
-## 📊 Structural Integrity Protocols
+| ID | Name |
+| --- | --- |
+| SPI-001 | SymbolicContractBreakage |
+| SPI-002 | TypeSoundnessFailure |
+| SPI-003 | ArchitecturalVolcano |
+| SPI-004 | StructuralLoop |
+| SPI-005 | LayerViolation |
+| SPI-006 | RealityDrift |
+| SPI-007 | SemanticIdentityMismatch |
+| SPI-008 | RepairDirectiveUnsafe |
+| SPI-009 | CompilerUnavailable |
+| SPI-010 | GraphStaleness |
 
-| Metric | Anchor | Reality Check | Target |
-| :--- | :--- | :--- | :--- |
-| **Entropy** | Complexity | Tarjan's SCC & Multi-Hop Cycles | < 0.3 |
-| **Deficiency** | Contract | Symbolic Repair & Actionable Map | 0 |
-| **Drift** | Physical | SHA-256 Disk Parity Guard | 0 |
-| **Sovereignty** | Layers | Joy-Zoning Violation (SPI-005) | 0 |
+## Agent workflow
 
-## 🚨 Diagnostic Identifiers
+```typescript
+// 0. Discover toolkit surface
+const catalog = ctx.graph.spider.getAgentToolkitCatalog();
 
-| ID | Severity | Violation Name | Description |
-| :--- | :--- | :--- | :--- |
-| **SPI-001** | ERROR | Symbolic Contract Breakage | Missing named export consumed by dependents |
-| **SPI-002** | ERROR | Type-Soundness Failure | REALITY CHECK: Compiler diagnostic (Type Error) |
-| **SPI-003** | WARN | Architectural Volcano | High-churn hub targeting for extraction/decoupling |
-| **SPI-004** | ERROR | Structural Loop | Circular dependency detected via Tarjan's SCC |
-| **SPI-005** | ERROR | Layer Violation | Forbidden Joy-Zoning dependency (e.g. Domain -> UI) |
+// 1. Unified check (recommended)
+const pre = await ctx.graph.spider.check({ phase: 'pre-edit', filePath: 'src/core/provider.ts' });
+const post = await ctx.graph.spider.check({
+  phase: 'ci',
+  scope: 'changed-files',
+  gatePreset: 'strict',
+});
+if (post.exitCode === 1) process.exit(1);
 
-## 🛠️ Operational Workflow for Agents
-- **Anchor on Repair Maps**: Never guess. Follow the **Surgical Repair Plans** and displacement instructions in tool outputs.
-- **Respect Drift Alarms**: If the engine reports Reality Drift, resync the graph before continuing mutations.
-- **Verify Compiled Truth**: All T-Mirror diagnostics must be addressed before task completion.
+// JSON envelope for MCP/CI
+const json = ctx.graph.spider.toCheckResponse(post, { includeSarifMeta: true });
 
----
-*Sovereign Level 19 Industrial State*
+// 2. Pre-edit bundle (alternate)
+const preBundle = await ctx.graph.spider.preflightBundle('src/core/provider.ts');
+if (!preBundle.proceed) console.log(ctx.graph.spider.agentContext(preBundle.bundle));
+
+// 3. Multi-file pre-edit
+const batch = await ctx.graph.spider.batchPreflight(['src/a.ts', 'src/b.ts']);
+
+// 4. CI gate (preferred: gateBundle)
+const { gate: ci, bundle } = await ctx.graph.spider.gateBundle({ scope: 'changed-files' });
+if (ci.blocked) process.exit(ci.exitCode);
+
+// 5. PR baseline delta
+ctx.graph.spider.setBaseline(ci.report);
+const delta = ctx.graph.spider.compareBaseline();
+```
+
+## Runtime integration
+
+Spider findings feed the repair pipeline through runtime sessions:
+
+```typescript
+const session = await ctx.runtime.beginSession({ taskId: 'structural-fix' });
+const audit = await ctx.graph.spider.audit({ scope: 'all', includeRepairDirectives: true });
+ctx.runtime.recordAudit(session.sessionId, audit);
+const gate = await ctx.graph.spider.gate({ scope: 'all' });
+ctx.runtime.recordGate(session.sessionId, gate.exitCode, audit.reportId);
+
+if (gate.blocked) {
+  const plan = ctx.runtime.planRepairs({ audit, sessionId: session.sessionId });
+  // preview → approve → ctx.runtime.execute({ plan })
+}
+```
+
+## Phase reference
+
+| Phase | Use |
+|-------|-----|
+| `pre-edit` | Before local edits |
+| `post-edit` | After edits, before commit |
+| `ci` | Pipeline gate |
+| `pr-review` | PR review scope |
+
+## Output formats
+
+- **Compact** — `formatCheckDigest` for token-efficient CI logs
+- **JSON** — `toCheckResponse` for MCP and automation
+- **SARIF** — `toSarifLog` / `buildCiArtifacts` for tool interchange
+- **Scenario** — `runAgentScenarioAndRespond` for preset workflows
+
+## Rules
+
+- Respect SPI-006 drift — call `resync` before mutations when disk parity fails
+- Follow `agentDigest.playbook` or `bundle.playbook` in order
+- Never bypass capabilities to call `SpiderService` directly
+
+Internal implementation: `core/policy/spider/`. Architecture history: [../../../docs/architecture/spider-v20-forensic-engine.md](../../../docs/architecture/spider-v20-forensic-engine.md).

@@ -1,3 +1,4 @@
+// [LAYER: CORE]
 import { Layer } from "../../../utils/joy-zoning.js"
 export type { Layer }
 
@@ -5,7 +6,7 @@ export interface SpiderNode {
 	id: string
 	path: string
 	layer: Layer
-	imports: { specifier: string; symbols: string[]; line: number; character: number }[]
+	imports: string[]
 	dependents: string[]
 	depth: number
 	orphaned: boolean
@@ -33,6 +34,7 @@ export interface SpiderNode {
 	hazardScore: number // V450: Probability of catastrophic failure (0-1.0)
 	vitality?: number // Added for SpiderService compatibility
 	resolvedImports: Map<string, string> // V500: specifier -> resolved Node ID
+	rawImports?: { specifier: string; symbols: string[] }[]
 }
 
 export interface SpiderSnapshot {

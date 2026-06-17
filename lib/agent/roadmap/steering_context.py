@@ -74,7 +74,7 @@ def build_steering_context(*, workspace: Optional[str] = None) -> dict[str, Any]
     path = roadmap_file_path(root)
     workspace_safe = True
     try:
-        from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
+        from plugins.dietcode.lib.workspace_root import is_quarantined_root
 
         workspace_safe = not is_quarantined_root(root)
     except ImportError:

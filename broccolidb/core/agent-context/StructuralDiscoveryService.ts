@@ -1,3 +1,4 @@
+// [LAYER: CORE]
 import * as path from 'node:path';
 import type { SpiderEngine } from '../policy/SpiderEngine.js';
 
@@ -132,16 +133,14 @@ export class StructuralDiscoveryService {
         const depNode = engine.nodes.get(depId);
         if (!depNode) continue;
 
-        for (const imp of depNode.imports) {
-            const resolved = depNode.resolvedImports.get(imp.specifier);
-            if (resolved === normalizedTarget) {
-                // Determine WHICH symbols are missing
-                const missing = imp.symbols.filter(s => !remainingSymbols.has(s));
-                
-                // For each missing symbol, check if it has "Displaced" elsewhere in the project reality
+        const importedSymbols = depNode.consumptions[normalizedTarget] || [];
+        if (importedSymbols.length > 0) {
+            const missing = importedSymbols.filter(s => s !== '*' && !remainingSymbols.has(s));
+            
+            if (missing.length > 0) {
                 const realMissing: string[] = [];
                 const displacementSuggestions: { symbol: string, newPath: string }[] = [];
-                const directives: any[] = []; // RepairDirective[]
+                const directives: any[] = [];
 
                 for (const s of missing) {
                     const providers = registry.findProviders(s);
@@ -149,30 +148,39 @@ export class StructuralDiscoveryService {
                         const newPath = providers[0];
                         displacementSuggestions.push({ symbol: s, newPath });
                         directives.push({
+                            type: 'UPDATE_IMPORT_PATH',
                             action: 'UPDATE_IMPORT_PATH',
                             symbol: s,
                             suggestedValue: newPath,
-                            rationale: `Symbol '${s}' was moved to '${newPath}'. Update import specifier to restore link.`
+                            rationale: `Symbol '${s}' was moved to '${newPath}'. Update import specifier to restore link.`,
+                            preconditions: ['Provider exports symbol'],
+                            verificationCommand: `grep -n "${s}" ${depId}`,
+                            riskLevel: 'low',
+                            supportingEvidenceIds: ['SPI-001'],
                         });
                     } else {
                         realMissing.push(s);
                         directives.push({
-                            action: 'EXPORT_SYMBOL',
+                            type: 'ADD_MISSING_EXPORT',
+                            action: 'ADD_MISSING_EXPORT',
                             symbol: s,
-                            rationale: `Symbol '${s}' is no longer exported by '${normalizedTarget}'. Ensure it is exported or update references.`
+                            rationale: `Symbol '${s}' is no longer exported by '${normalizedTarget}'. Ensure it is exported or update references.`,
+                            preconditions: ['Symbol still defined in module'],
+                            verificationCommand: `grep -n "export.*${s}" ${normalizedTarget}`,
+                            riskLevel: 'medium',
+                            supportingEvidenceIds: ['SPI-001'],
                         });
                     }
                 }
 
-                // If the import was a wildcard or specific symbols are REAL missing
-                if (realMissing.length > 0 || displacementSuggestions.length > 0 || (imp.symbols.length === 0 && remainingSymbols.size === 0)) {
+                if (realMissing.length > 0 || displacementSuggestions.length > 0) {
                     report.push({
                         depId,
                         symbols: realMissing.length > 0 ? realMissing : [],
                         displacements: displacementSuggestions,
                         directives,
-                        line: imp.line,
-                        character: imp.character
+                        line: 0,
+                        character: 0
                     });
                 }
             }

@@ -1,3 +1,4 @@
+// [LAYER: CORE]
 import type { MemoryMessage } from './types.js';
 
 /**
@@ -28,7 +29,8 @@ export class TokenService {
 
   /**
    * Adaptive token counting that handles "thinking" blocks and tool usage.
-   * Uses character-ratio estimation; provider token APIs can be wired via message usage metadata.
+   * In a real app, this would use the Anthropic /count_tokens API.
+   * For BroccoliDB, we use the character-ratio fallback.
    */
   public static countTokensWithEstimation(messages: MemoryMessage[]): number {
     // If messages have usage metadata from a real API response, use that as anchor.

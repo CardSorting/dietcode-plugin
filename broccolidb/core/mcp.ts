@@ -1,3 +1,5 @@
+// [LAYER: CORE]
+// @classification OWNED
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -5,20 +7,16 @@ import type { GraphEdge, KnowledgeBaseItem } from './agent-context/types.js';
 import type { AgentContext, TraversalFilter } from './agent-context.js';
 import { executor } from './executor.js';
 import type { Repository } from './repository.js';
-import { EnvironmentTracker, telemetryQueue } from './tracker.js';
-import { SpiderEngine } from './policy/SpiderEngine.js';
-import { StabilityDoctor } from './policy/StabilityDoctor.js';
-import { IntegrityOptimizer } from './policy/IntegrityOptimizer.js';
-import { ModuleDecomposer } from './policy/ModuleDecomposer.js';
-import { StabilityPolicy } from './policy/StabilityPolicy.js';
-import * as fs from 'fs';
-import * as path from 'path';
+import { EnvironmentTracker } from './tracker.js';
+import { LifecycleStateError } from './errors.js';
 
 export class BroccoliDBMCP {
   private server: McpServer;
   private repo: Repository;
   private agentContext?: AgentContext | undefined;
-  private spider?: SpiderEngine;
+  private lifecycleState: 'new' | 'started' | 'stopped' = 'new';
+  private cleanupInterval: NodeJS.Timeout | null = null;
+  private toolsRegistered = false;
 
   constructor(repo: Repository, agentContext?: AgentContext) {
     this.repo = repo;
@@ -27,13 +25,54 @@ export class BroccoliDBMCP {
       name: 'BroccoliDB',
       version: '1.0.0',
     });
-    this.registerTools();
-    this.startBackgroundCleanup();
   }
 
-  private startBackgroundCleanup() {
+  public async start(): Promise<void> {
+    if (this.lifecycleState === 'started') return;
+    if (this.lifecycleState === 'stopped') {
+      throw new LifecycleStateError('BroccoliDBMCP cannot be restarted after stop().');
+    }
+    if (!this.toolsRegistered) {
+      this.registerTools();
+      this.toolsRegistered = true;
+    }
+    this.lifecycleState = 'started';
+    await this.startBackgroundCleanup();
+  }
+
+  public async stop(): Promise<void> {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    this.lifecycleState = 'stopped';
+  }
+
+  public async flush(): Promise<void> {
+    this.assertOperational('flush');
+    await this.repo.getDb().flush();
+  }
+
+  public async health(): Promise<Record<string, unknown>> {
+    return {
+      component: 'BroccoliDBMCP',
+      status: this.lifecycleState === 'started' ? 'healthy' : this.lifecycleState,
+      cleanupInterval: Boolean(this.cleanupInterval),
+    };
+  }
+
+  private assertOperational(operation: string): void {
+    if (this.lifecycleState === 'new') {
+      throw new LifecycleStateError(`BroccoliDBMCP.${operation}() called before start().`);
+    }
+    if (this.lifecycleState === 'stopped') {
+      throw new LifecycleStateError(`BroccoliDBMCP.${operation}() called after stop().`);
+    }
+  }
+
+  private async startBackgroundCleanup() {
     // Run cleanup every 15 minutes
-    setInterval(
+    this.cleanupInterval = setInterval(
       () => {
         this.cleanupExpiredBranches().catch((err) =>
           console.error(`[AgentGit][Lifecycle] Cleanup failed: ${err}`)
@@ -42,10 +81,11 @@ export class BroccoliDBMCP {
       15 * 60 * 1000
     );
     // Also run once on startup
-    this.cleanupExpiredBranches().catch(() => {});
+    await this.cleanupExpiredBranches().catch(() => {});
   }
 
   private async cleanupExpiredBranches() {
+    this.assertOperational('cleanupExpiredBranches');
     const db = this.repo.getDb();
     const now = Date.now();
     const expired = await db.selectWhere('branches', [
@@ -388,7 +428,10 @@ export class BroccoliDBMCP {
       async (args) => {
         return this.executeTool('audit_reasoning', async () => {
           if (!this.agentContext) return 'AgentContext not available for auditing.';
-          const reports = await this.agentContext.detectContradictions(args.startId, args.depth);
+          const { reports } = await this.agentContext.reasoning.detectContradictions({
+            startIds: args.startId,
+            depth: args.depth,
+          });
           if (reports.length === 0) return 'No logical contradictions detected.';
 
           let output = `[Audit Report] Found ${reports.length} potential contradictions:\n`;
@@ -409,7 +452,7 @@ export class BroccoliDBMCP {
       async (args) => {
         return this.executeTool('get_lineage', async () => {
           if (!this.agentContext) return 'AgentContext not available for lineage tracing.';
-          const pedigree = await this.agentContext.getReasoningPedigree(args.nodeId);
+          const { pedigree } = await this.agentContext.reasoning.getReasoningPedigree({ nodeId: args.nodeId });
           let output = `[Lineage Trace] ${args.nodeId}\n`;
           output += `Evidence Path:\n`;
           for (const step of pedigree.lineage) {
@@ -429,7 +472,7 @@ export class BroccoliDBMCP {
       async (args) => {
         return this.executeTool('visualize_pedigree', async () => {
           if (!this.agentContext) return 'AgentContext not available.';
-          const pedigree = await this.agentContext.getReasoningPedigree(args.nodeId);
+          const { pedigree } = await this.agentContext.reasoning.getReasoningPedigree({ nodeId: args.nodeId });
 
           let mermaid = 'graph TD\n';
           for (const step of pedigree.lineage) {
@@ -440,7 +483,7 @@ export class BroccoliDBMCP {
 
           // Add edges
           for (const step of pedigree.lineage) {
-            const node = await this.agentContext.getKnowledge(step.nodeId);
+            const { item: node } = await this.agentContext.graph.getKnowledge({ kbId: step.nodeId });
             for (const edge of node.edges) {
               if (edge.type === 'supports' || edge.type === 'depends_on') {
                 mermaid += `  ${step.nodeId.substring(0, 7)} -- ${edge.type} --> ${edge.targetId.substring(0, 7)}\n`;
@@ -708,7 +751,10 @@ export class BroccoliDBMCP {
             if (args.edgesJson) {
               edgesArray = JSON.parse(args.edgesJson);
             }
-            const newId = await context.addKnowledge(args.kbId, args.type, args.content, {
+            const { kbId: newId } = await context.graph.addKnowledge({
+              kbId: args.kbId,
+              type: args.type,
+              content: args.content,
               tags: tagsArray,
               edges: edgesArray,
             });
@@ -740,18 +786,16 @@ export class BroccoliDBMCP {
         },
         async (args) => {
           return this.executeTool('kb_search', async () => {
-            const results = await context.searchKnowledge(
-              args.query,
-              args.tags
+            const { items: results } = await context.query.search({
+              text: args.query,
+              tags: args.tags
                 ? args.tags
                     .split(',')
                     .map((t) => t.trim())
                     .filter(Boolean)
                 : undefined,
-              args.limit,
-              args.queryEmbeddingJson ? JSON.parse(args.queryEmbeddingJson) : undefined,
-              { augmentWithGraph: args.augmentWithGraph }
-            );
+              limit: args.limit,
+            });
             const formatted = results
               .map(
                 (r: KnowledgeBaseItem) =>
@@ -803,7 +847,11 @@ export class BroccoliDBMCP {
             if (args.minWeight !== undefined) {
               filter.minWeight = args.minWeight;
             }
-            const results = await context.traverseGraph(args.kbId, args.maxDepth, filter);
+            const { nodes: results } = await context.graph.traverseGraph({
+              startId: args.kbId,
+              maxDepth: args.maxDepth,
+              filter,
+            });
             return JSON.stringify(results, null, 2);
           });
         }
@@ -817,7 +865,7 @@ export class BroccoliDBMCP {
         },
         async (args) => {
           return this.executeTool('get_agent_bundle', async () => {
-            const bundle = await context.getAgentBundle(args.agentId);
+            const { bundle } = await context.query.getAgentBundle({ agentId: args.agentId });
             return JSON.stringify(bundle, null, 2);
           });
         }
@@ -832,7 +880,7 @@ export class BroccoliDBMCP {
         },
         async (args) => {
           return this.executeTool('append_memory_layer', async () => {
-            await context.appendMemoryLayer(args.agentId, args.memory);
+            await context.tasks.appendMemoryLayer({ agentId: args.agentId, memory: args.memory });
             return `Successfully appended memory to ${args.agentId}'s memory layer.`;
           });
         }
@@ -848,7 +896,7 @@ export class BroccoliDBMCP {
         },
         async (args) => {
           return this.executeTool('append_shared_memory', async () => {
-            await context.appendSharedMemory(args.memory);
+            await context.query.appendSharedMemory({ memory: args.memory });
             return `Successfully appended memory to the swarm-wide shared rulebook.`;
           });
         }
@@ -871,7 +919,12 @@ export class BroccoliDBMCP {
             const kbIds = args.linkedKnowledgeIds
               ? args.linkedKnowledgeIds.split(',').map((id) => id.trim())
               : [];
-            await context.spawnTask(args.taskId, args.agentId, args.description, kbIds);
+            await context.tasks.spawn({
+              taskId: args.taskId,
+              agentId: args.agentId,
+              description: args.description,
+              linkedKnowledgeIds: kbIds,
+            });
             return `Task '${args.taskId}' spawned successfully.`;
           });
         }
@@ -885,7 +938,7 @@ export class BroccoliDBMCP {
         },
         async (args) => {
           return this.executeTool('get_task_context', async () => {
-            const taskContext = await context.getTaskContext(args.taskId);
+            const { context: taskContext } = await context.tasks.getContext({ taskId: args.taskId });
             return JSON.stringify(taskContext, null, 2);
           });
         }
@@ -917,7 +970,7 @@ export class BroccoliDBMCP {
                 .filter(Boolean);
             if (args.edgesJson !== undefined) patch.edges = JSON.parse(args.edgesJson);
             if (args.confidence !== undefined) patch.confidence = args.confidence;
-            await context.updateKnowledge(args.kbId, patch);
+            await context.graph.updateKnowledge({ kbId: args.kbId, patch });
             return `Successfully updated knowledge node: ${args.kbId}`;
           });
         }
@@ -931,7 +984,7 @@ export class BroccoliDBMCP {
         },
         async (args) => {
           return this.executeTool('kb_register', async () => {
-            await context.deleteKnowledge(args.kbId);
+            await context.graph.deleteKnowledge({ kbId: args.kbId });
             return `Successfully deleted knowledge node: ${args.kbId}`;
           });
         }
@@ -948,7 +1001,7 @@ export class BroccoliDBMCP {
         },
         async (args) => {
           return this.executeTool('kb_link', async () => {
-            await context.mergeKnowledge(args.sourceId, args.targetId);
+            await context.graph.mergeKnowledge({ sourceId: args.sourceId, targetId: args.targetId });
             return `Successfully merged ${args.sourceId} into ${args.targetId}. Source deleted.`;
           });
         }
@@ -964,7 +1017,7 @@ export class BroccoliDBMCP {
         },
         async (args) => {
           return this.executeTool('node_centrality', async () => {
-            const result = await context.getNodeCentrality(args.kbId);
+            const result = await context.graph.getNodeCentrality({ kbId: args.kbId });
             return `Node: ${result.kbId}\nInbound Edges: ${result.inbound}\nOutbound Edges: ${result.outbound}\nTotal Degree Centrality: ${result.totalDegree}`;
           });
         }
@@ -991,7 +1044,11 @@ export class BroccoliDBMCP {
                 .split(',')
                 .map((t) => t.trim()) as GraphEdge['type'][];
             }
-            const subgraph = await context.extractSubgraph(args.rootId, args.maxDepth, filter);
+            const subgraph = await context.graph.extractSubgraph({
+              startId: args.rootId,
+              maxDepth: args.maxDepth,
+              filter,
+            });
             return JSON.stringify(subgraph, null, 2);
           });
         }
@@ -1014,7 +1071,10 @@ export class BroccoliDBMCP {
           return this.executeTool('decay_confidence', async () => {
             const olderThan = new Date(args.olderThanIso);
             if (Number.isNaN(olderThan.getTime())) throw new Error('Invalid ISO timestamp');
-            const result = await context.decayConfidence(args.factor, olderThan);
+            const result = await context.query.decayConfidence({
+              factor: args.factor,
+              olderThan,
+            });
             return `Confidence decay applied. ${result.decayedCount} nodes affected.`;
           });
         }
@@ -1024,29 +1084,21 @@ export class BroccoliDBMCP {
 
       this.server.tool(
         'broccolidb_embed_knowledge',
-        "Force (re-)embed a specific knowledge node using the local embedding engine. Updates the node's embedding vector in-place.",
+        "Force (re-)embed a specific knowledge node using Gemini Embedding 2. Updates the node's embedding vector in-place.",
         {
           kbId: z.string().describe('The Knowledge Base item ID to embed'),
         },
         async (args) => {
           try {
-            const result = await context.embedKnowledge(args.kbId);
-            if (!result.embedded) {
-              return {
-                content: [
-                  {
-                    type: 'text',
-                    text: `Could not embed node ${args.kbId} — empty content or embedding unavailable.`,
-                  },
-                ],
-                isError: true,
-              };
-            }
+            const { item: node } = await context.graph.getKnowledge({ kbId: args.kbId });
+            await context.graph.updateKnowledge({ kbId: args.kbId, patch: { content: node.content } });
+            const { item: updated } = await context.graph.getKnowledge({ kbId: args.kbId });
+            const dims = updated.embedding ? updated.embedding.length : 0;
             return {
               content: [
                 {
                   type: 'text',
-                  text: `Successfully embedded node ${args.kbId}. Vector dimensions: ${result.dimensions}`,
+                  text: `Successfully embedded node ${args.kbId}. Vector dimensions: ${dims}`,
                 },
               ],
             };
@@ -1059,7 +1111,7 @@ export class BroccoliDBMCP {
 
       this.server.tool(
         'broccolidb_semantic_search',
-        'Search the knowledge graph by natural language. Auto-embeds the query locally and ranks results by cosine similarity (substring fallback when no embeddings exist).',
+        'Search the knowledge graph by natural language. Auto-embeds the query using Gemini Embedding 2 and ranks results by cosine similarity.',
         {
           query: z.string().describe('Natural language search query'),
           tags: z.string().optional().describe('Comma-separated tags to filter by'),
@@ -1080,13 +1132,11 @@ export class BroccoliDBMCP {
                   .map((t) => t.trim())
                   .filter(Boolean)
               : undefined;
-            const results = await context.searchKnowledge(
-              args.query,
-              tagsArray,
-              args.limit,
-              undefined,
-              { augmentWithGraph: args.augmentWithGraph }
-            );
+            const { items: results } = await context.query.search({
+              text: args.query,
+              tags: tagsArray,
+              limit: args.limit,
+            });
             const formatted = results
               .map((r: KnowledgeBaseItem) => {
                 const embDims = r.embedding?.length ?? 0;
@@ -1103,11 +1153,11 @@ export class BroccoliDBMCP {
 
       this.server.tool(
         'broccolidb_reembed_all',
-        'Batch re-embed all knowledge nodes using the local embedding engine. Useful when migrating embedding dimensions or refreshing stale vectors.',
+        'Batch re-embed all knowledge nodes using Gemini Embedding 2. Useful when migrating to a new embedding model.',
         {},
         async () => {
           try {
-            const result = await context.reembedAll();
+            const result = await context.query.reembedAll();
             return {
               content: [
                 {
@@ -1153,7 +1203,7 @@ export class BroccoliDBMCP {
         {},
         async () => {
           try {
-            const stats = context.getCacheStats();
+            const stats = (await context.health()).cache;
             return { content: [{ type: 'text', text: JSON.stringify(stats, null, 2) }] };
           } catch (e: unknown) {
             const message = e instanceof Error ? e.message : String(e);
@@ -1170,7 +1220,7 @@ export class BroccoliDBMCP {
         },
         async (args) => {
           try {
-            const hubs = await context.getGlobalCentrality(args.limit);
+            const { hubs } = await context.query.getGlobalCentrality({ limit: args.limit });
             const formatted = hubs
               .map(
                 (h: { kbId: string; score: number }) =>
@@ -1228,13 +1278,13 @@ Affected Paths: ${result.affectedPaths.join(', ') || 'None'}
       'Force flush the async telemetry queue. Useful before shutting down the Agent context.',
       {},
       async () => {
-        const statsBefore = await telemetryQueue.getStats();
-        await telemetryQueue.drain();
+        const db = this.repo.getDb();
+        await db.flush();
         return {
           content: [
             {
               type: 'text',
-              text: `Telemetry queue drained. Processed ${statsBefore.pending} pending items.`,
+              text: `Telemetry flushed to primary database.`,
             },
           ],
         };
@@ -1250,7 +1300,7 @@ Affected Paths: ${result.affectedPaths.join(', ') || 'None'}
       async (args) => {
         return this.executeTool('proactive_audit', async () => {
           if (!this.agentContext) return 'AgentContext not available.';
-          const result = await this.agentContext.autoDiscoverRelationships(args.nodeId);
+          const result = await this.agentContext.reasoning.autoDiscoverRelationships({ nodeId: args.nodeId });
           return `Proactive Audit Complete.\nNodes discovered: ${result.discovered}\nSuggestions:\n${result.suggestions.join('\n')}`;
         });
       }
@@ -1265,7 +1315,8 @@ Affected Paths: ${result.affectedPaths.join(', ') || 'None'}
       async (args) => {
         return this.executeTool('describe_pedigree', async () => {
           if (!this.agentContext) return 'AgentContext not available.';
-          return await this.agentContext.getNarrativePedigree(args.nodeId);
+          const { narrative } = await this.agentContext.reasoning.getNarrativePedigree({ nodeId: args.nodeId });
+          return narrative;
         });
       }
     );
@@ -1283,7 +1334,10 @@ Affected Paths: ${result.affectedPaths.join(', ') || 'None'}
       async (args) => {
         return this.executeTool('speculate_fact', async () => {
           if (!this.agentContext) return 'AgentContext not available.';
-          const report = await this.agentContext.speculateImpact(args.content, args.startId);
+          const report = await this.agentContext.audit.speculateImpact({
+            kbId: args.startId ?? args.content,
+            fallbackId: args.startId,
+          });
           let output = `[Speculative Impact Report]\nValid: ${report.isValid}\nSoundness Delta: ${report.soundnessDelta}\n\n`;
           if (report.contradictions.length > 0) {
             output += `Contradictions Identified:\n`;
@@ -1314,11 +1368,11 @@ Affected Paths: ${result.affectedPaths.join(', ') || 'None'}
       async (args) => {
         return this.executeTool('bind_rule', async () => {
           if (!this.agentContext) return 'AgentContext not available.';
-          await this.agentContext.addLogicalConstraint(
-            args.pathPattern,
-            args.knowledgeId,
-            args.severity
-          );
+          await this.agentContext.audit.addLogicalConstraint({
+            pathPattern: args.pathPattern,
+            knowledgeId: args.knowledgeId,
+            severity: args.severity,
+          });
           return `Successfully bound rule ${args.knowledgeId} to ${args.pathPattern} (${args.severity})`;
         });
       }
@@ -1331,7 +1385,7 @@ Affected Paths: ${result.affectedPaths.join(', ') || 'None'}
       async () => {
         return this.executeTool('get_constitution', async () => {
           if (!this.agentContext) return 'AgentContext not available.';
-          const constraints = await this.agentContext.getLogicalConstraints();
+          const { constraints } = await this.agentContext.audit.getLogicalConstraints();
           if (constraints.length === 0) return 'No constitutional constraints defined.';
           return (
             `[Repository Constitution]\n` +
@@ -1342,101 +1396,428 @@ Affected Paths: ${result.affectedPaths.join(', ') || 'None'}
         });
       }
     );
-    
-    // ─── JOYZONING FORENSIC TOOLS ───
 
     this.server.tool(
-      'broccolidb_joyzoning_audit',
-      'Perform a deep forensic audit of the codebase to identify structural violations, technical debt, and architectural drift.',
-      {},
-      async () => {
-        return this.executeTool('joyzoning_audit', async () => {
-          const spider = await this.getSpiderEngine();
-          const doctor = new StabilityDoctor(spider.cwd);
-          const report = await doctor.diagnose(spider);
-          return report;
-        });
-      }
-    );
-
-    this.server.tool(
-      'broccolidb_joyzoning_refactor',
-      'Generate a specific mission-focused refactoring manifest for a file or batch of files.',
+      'spider_get_catalog',
+      'Bootstrap Spider agent ergonomics: runbook, tool schema, MCP tool names, gate presets, phase workflow, and LLM prompt digest.',
       {
-        path: z.string().describe('The path to the file to refactor (or comma-separated list)'),
-        action: z.enum(['DECOMPOSE', 'MOVE', 'EXTRACT', 'PRUNE', 'ALIGN_TAGS', 'HEAL_STATELESSNESS', 'HARDEN', 'DECOUPLE', 'FIX_STRUCTURAL_VIOLATION']).describe('The refactoring action to perform'),
-        dryRun: z.boolean().optional().default(false).describe('If true, only generate the plan without creating a persistent task'),
+        responseFormat: z
+          .enum(['markdown', 'json'])
+          .optional()
+          .default('markdown')
+          .describe('markdown=promptDigest for system prompts; json=full SpiderAgentCatalog'),
+        includeDecisionGuide: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe('Append scenario decision guide to markdown output'),
       },
       async (args) => {
-        return this.executeTool('joyzoning_refactor', async () => {
-          const spider = await this.getSpiderEngine();
-          const decomposer = new ModuleDecomposer();
-          
-          const paths = args.path.split(',').map(p => p.trim());
-          let manifest = `JOY_ZONING ADAPTIVE ORCHESTRATION MANIFEST\n`;
-          manifest += `==========================================\n\n`;
-          
-          for (const filePath of paths) {
-            const node = spider.nodes.get(spider.normalizePath(filePath));
-            const absPath = path.resolve(spider.cwd, filePath);
-            if (!fs.existsSync(absPath)) {
-              manifest += `### FILE NOT FOUND: ${filePath}\n\n`;
-              continue;
-            }
-            
-            const content = fs.readFileSync(absPath, 'utf-8');
-            const plan = decomposer.analyze(filePath, content, node);
-            
-            manifest += `### ACTION: ${args.action} on ${filePath}\n`;
-            manifest += `- PROJECTED HEALTH: ${plan.projectedHealth}%\n`;
-            manifest += `- INTEGRITY SCORE: ${plan.integrityScore}\n`;
-            
-            const step = plan.steps.find(s => s.action === args.action);
-            if (step) {
-              manifest += `- RATIONALE: ${step.reason}\n`;
-              if (step.boilerplate) {
-                manifest += `- SUGGESTED REFACTOR:\n\`\`\`typescript\n${step.boilerplate}\n\`\`\`\n`;
-              }
-            } else {
-              manifest += `- RATIONALE: Resolve structural debt and improve local maintainability.\n`;
-            }
-            manifest += `\n`;
+        return this.executeTool('spider_get_catalog', async () => {
+          if (!this.agentContext) return 'AgentContext not available.';
+          const catalog = this.agentContext.graph.spider.getAgentToolkitCatalog();
+          if (args.responseFormat === 'json') {
+            return JSON.stringify(catalog, null, 2);
           }
-          
-          if (args.dryRun) {
-            return {
-              success: true,
-              message: "Dry run complete.",
-              manifest
-            };
+          const lines = [catalog.promptDigest];
+          if (args.includeDecisionGuide) {
+            lines.push('', catalog.decisionGuide);
           }
-          
-          // In BroccoliDB, we can't create a "Task" in the same way as codemarie,
-          // but we return the manifest which the agent then executes.
-          return {
-            success: true,
-            message: "Refactoring manifest generated. Agent should follow the plan below.",
-            manifest
-          };
+          return lines.join('\n');
         });
       }
     );
-  }
 
-  private async getSpiderEngine(): Promise<SpiderEngine> {
-    if (!this.spider) {
-      this.spider = new SpiderEngine(this.repo.getBasePath());
-      // Warm up the engine
-      await this.spider.warmUp();
-    }
-    return this.spider;
+    this.server.tool(
+      'spider_run_scenario',
+      'Run a named Spider agent scenario (before-edit, after-edit, ci-gate, pr-review, advisory-scan, local-edit-loop) — recommend + execute in one call.',
+      {
+        scenario: z.enum(['before-edit', 'after-edit', 'ci-gate', 'pr-review', 'advisory-scan', 'local-edit-loop']),
+        filePath: z.string().optional(),
+        filePaths: z.array(z.string()).optional(),
+        correlationId: z.string().optional(),
+        maxCompactLines: z.number().int().min(1).max(50).optional().default(8),
+        responseFormat: z.enum(['markdown', 'json']).optional().default('markdown'),
+        blockOnFailure: z.boolean().optional().default(false),
+      },
+      async (args) => {
+        return this.executeTool('spider_run_scenario', async () => {
+          if (!this.agentContext) return 'AgentContext not available.';
+          const spider = this.agentContext.graph.spider;
+          const result = await spider.runAgentScenario(
+            args.scenario,
+            {
+              filePath: args.filePath,
+              filePaths: args.filePaths,
+              correlationId: args.correlationId,
+            },
+            { maxCompactLines: args.maxCompactLines }
+          );
+          const response = spider.toScenarioResponse(result, { maxCompactLines: args.maxCompactLines });
+          if (args.blockOnFailure && result.exitCode !== 0) {
+            const failure = spider.formatScenarioFailure(response);
+            if (args.responseFormat === 'json') {
+              return JSON.stringify(failure, null, 2);
+            }
+            return `SPIDER_SCENARIO_FAILED\n\n${failure.digest}\n\nscenario=${failure.scenario} exitCode=1`;
+          }
+          if (args.responseFormat === 'json') {
+            return JSON.stringify(response, null, 2);
+          }
+          return [
+            `## Spider scenario: ${result.scenario}`,
+            result.digest,
+            '',
+            `exitCode=${result.exitCode} proceed=${result.proceed} kind=${result.kind}`,
+          ].join('\n');
+        });
+      }
+    );
+
+    this.server.tool(
+      'spider_export_schemas',
+      'Export Spider JSON Schema registry to a directory (CI bootstrap — no audit run).',
+      {
+        outputDir: z.string().describe('Directory to write schema registry and per-schema files'),
+      },
+      async (args) => {
+        return this.executeTool('spider_export_schemas', async () => {
+          if (!this.agentContext) return 'AgentContext not available.';
+          const written = await this.agentContext.graph.spider.writeSchemaRegistry(args.outputDir);
+          return `Wrote ${written.length} schema file(s) to ${args.outputDir}\n${written.join('\n')}`;
+        });
+      }
+    );
+
+    this.server.tool(
+      'spider_validate_check_request',
+      'Dry-run validate Spider JSON payloads without running an audit (requests, responses, failure envelopes).',
+      {
+        requestJson: z.string().describe('JSON payload to validate'),
+        kind: z
+          .enum(['check', 'pipeline', 'check-response', 'scenario-response', 'failure'])
+          .optional()
+          .default('check')
+          .describe('check|pipeline=request; check-response|scenario-response|failure=output envelopes'),
+      },
+      async (args) => {
+        return this.executeTool('spider_validate_check_request', async () => {
+          if (!this.agentContext) return 'AgentContext not available.';
+          const spider = this.agentContext.graph.spider;
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(args.requestJson);
+          } catch {
+            return JSON.stringify({ valid: false, errors: ['requestJson must be valid JSON'] }, null, 2);
+          }
+          let result: unknown;
+          switch (args.kind) {
+            case 'pipeline':
+              result = spider.safeValidateCheckPipelineRequest(parsed);
+              break;
+            case 'check-response':
+              result = spider.safeValidateCheckResponse(parsed);
+              break;
+            case 'scenario-response':
+              try {
+                spider.validateScenarioResponse(parsed);
+                result = { valid: true };
+              } catch (error) {
+                result = { valid: false, errors: [error instanceof Error ? error.message : String(error)] };
+              }
+              break;
+            case 'failure':
+              result = spider.safeValidateFailureEnvelope(parsed);
+              break;
+            default:
+              result = spider.safeValidateCheckRequest(parsed);
+          }
+          return JSON.stringify(result, null, 2);
+        });
+      }
+    );
+
+    this.server.tool(
+      'spider_validate_failure',
+      'Dry-run validate Spider failure envelope JSON (broccolidb.spider.failure/v1) without running an audit.',
+      {
+        failureJson: z.string().describe('JSON SpiderAgentFailureEnvelope from blockOnFailure or format*Failure'),
+      },
+      async (args) => {
+        return this.executeTool('spider_validate_failure', async () => {
+          if (!this.agentContext) return 'AgentContext not available.';
+          const spider = this.agentContext.graph.spider;
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(args.failureJson);
+          } catch {
+            return JSON.stringify({ valid: false, errors: ['failureJson must be valid JSON'] }, null, 2);
+          }
+          const result = spider.safeValidateFailureEnvelope(parsed);
+          return JSON.stringify(result, null, 2);
+        });
+      }
+    );
+
+    this.server.tool(
+      'spider_forensic_check',
+      'Run Spider structural forensic check (pre-edit, post-edit, CI, or delta). Returns compact agent digest with exit code.',
+      {
+        phase: z
+          .enum(['pre-edit', 'post-edit', 'ci', 'delta'])
+          .describe('Workflow phase: pre-edit (preflight), post-edit/ci (gate), delta (baseline/session regression)'),
+        filePath: z.string().optional().describe('Single file for pre-edit phase'),
+        filePaths: z
+          .array(z.string())
+          .optional()
+          .describe('Multiple files for batch pre-edit'),
+        scope: z
+          .union([z.literal('changed-files'), z.array(z.string())])
+          .optional()
+          .describe('Audit scope for post-edit/ci — default changed-files'),
+        neighborhoodDepth: z
+          .number()
+          .int()
+          .min(0)
+          .max(3)
+          .optional()
+          .describe('Import neighborhood depth for scoped audits (post-edit)'),
+        maxCompactLines: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .default(8)
+          .describe('Max compact diagnostic lines in digest output'),
+        responseFormat: z
+          .enum(['markdown', 'json'])
+          .optional()
+          .default('markdown')
+          .describe('markdown=human digest; json=SpiderCheckResponse envelope'),
+        includeSarifMeta: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe('Include SARIF upload metadata in json response'),
+        blockOnFailure: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe('Throw-equivalent: return error text when exitCode !== 0'),
+        gatePreset: z
+          .enum(['ci', 'strict', 'advisory'])
+          .optional()
+          .describe('Named gate policy preset (ci=errors+drift, strict=all blockers, advisory=report only)'),
+        correlationId: z
+          .string()
+          .optional()
+          .describe('Intent trace correlation id (BroccoliDB v25)'),
+      },
+      async (args) => {
+        return this.executeTool('spider_forensic_check', async () => {
+          if (!this.agentContext) return 'AgentContext not available.';
+          const spider = this.agentContext.graph.spider;
+          const result = await spider.check({
+            phase: args.phase,
+            filePath: args.filePath,
+            filePaths: args.filePaths,
+            scope: args.scope,
+            neighborhoodDepth: args.neighborhoodDepth,
+            gatePreset: args.gatePreset,
+            correlationId: args.correlationId,
+            includeTypes: false,
+            includeRepairDirectives: true,
+          });
+          const response = spider.toCheckResponse(result, {
+            maxCompactLines: args.maxCompactLines,
+            includeSarifMeta: args.includeSarifMeta,
+          });
+          if (args.blockOnFailure && result.exitCode !== 0) {
+            if (args.responseFormat === 'json') {
+              return JSON.stringify(spider.formatCheckFailure(response), null, 2);
+            }
+            const digest = spider.formatCheckDigest(result, args.maxCompactLines);
+            return `SPIDER_CHECK_FAILED\n\n${digest}\n\nexitCode=${result.exitCode}`;
+          }
+          if (args.responseFormat === 'json') {
+            return JSON.stringify(response, null, 2);
+          }
+          const digest = spider.formatCheckDigest(result, args.maxCompactLines);
+          const telemetry = result.wire ? spider.toStructuredTelemetry(result.wire) : null;
+          const lines = [
+            digest,
+            '',
+            `exitCode=${result.exitCode} proceed=${result.proceed}`,
+            `workflow: ${result.workflowSummary}`,
+          ];
+          if (telemetry) {
+            lines.push(`telemetry: ${JSON.stringify(telemetry)}`);
+          }
+          if (result.exitCode !== 0 && result.suggestedCommands[0]) {
+            lines.push(`suggested: ${result.suggestedCommands[0]}`);
+          }
+          return lines.join('\n');
+        });
+      }
+    );
+
+    this.server.tool(
+      'spider_forensic_pipeline',
+      'Run multi-phase Spider check pipeline (e.g. pre-edit → ci → delta). Stops on first failure by default.',
+      {
+        phases: z
+          .array(z.enum(['pre-edit', 'post-edit', 'ci', 'delta']))
+          .optional()
+          .describe('Ordered phases — optional when workflowPreset is set'),
+        workflowPreset: z
+          .enum(['local-edit', 'ci-gate', 'pr-review', 'advisory-scan'])
+          .optional()
+          .describe('Named pipeline template (local-edit, ci-gate, pr-review, advisory-scan)'),
+        filePath: z.string().optional(),
+        filePaths: z.array(z.string()).optional(),
+        scope: z.union([z.literal('changed-files'), z.array(z.string())]).optional(),
+        stopOnFailure: z.boolean().optional().default(true),
+        responseFormat: z.enum(['markdown', 'json']).optional().default('markdown'),
+        includeSarifMeta: z.boolean().optional().default(false),
+        blockOnFailure: z.boolean().optional().default(false),
+        gatePreset: z.enum(['ci', 'strict', 'advisory']).optional(),
+        correlationId: z.string().optional(),
+      },
+      async (args) => {
+        return this.executeTool('spider_forensic_pipeline', async () => {
+          if (!this.agentContext) return 'AgentContext not available.';
+          const spider = this.agentContext.graph.spider;
+          const pipeline = await spider.runCheckPipeline(
+            {
+              phases: args.phases,
+              workflowPreset: args.workflowPreset,
+              filePath: args.filePath,
+              filePaths: args.filePaths,
+              scope: args.scope,
+              stopOnFailure: args.stopOnFailure,
+              gatePreset: args.gatePreset,
+              correlationId: args.correlationId,
+              includeTypes: false,
+              includeRepairDirectives: true,
+            },
+            { includeSarifMeta: args.includeSarifMeta }
+          );
+          if (args.blockOnFailure && pipeline.exitCode !== 0) {
+            if (args.responseFormat === 'json') {
+              return JSON.stringify(spider.formatPipelineFailure(pipeline), null, 2);
+            }
+            const digest = pipeline.response?.digest ?? 'Pipeline failed';
+            return `SPIDER_PIPELINE_FAILED\n\n${digest}\n\nexitCode=${pipeline.exitCode}`;
+          }
+          if (args.responseFormat === 'json') {
+            return JSON.stringify(pipeline, null, 2);
+          }
+          const lines = [
+            `## Spider Pipeline — exit ${pipeline.exitCode}`,
+            `Phases run: ${pipeline.phases.map((p) => p.phase).join(' → ')}`,
+            pipeline.failedPhase ? `Failed at: ${pipeline.failedPhase}` : 'All phases passed',
+            '',
+          ];
+          if (pipeline.response) {
+            lines.push(spider.formatCheckDigest(pipeline.phases[pipeline.phases.length - 1]!));
+          }
+          return lines.join('\n');
+        });
+      }
+    );
+
+    this.server.tool(
+      'spider_restore_wire',
+      'Restore Spider agent context from a wire v2 JSON payload (session checkpoint) without re-auditing disk.',
+      {
+        wireJson: z.string().describe('JSON string of SpiderBundleWireFormat (v2 with ndjsonStream)'),
+        maxCompactLines: z.number().int().min(1).max(50).optional().default(8),
+        responseFormat: z.enum(['markdown', 'json']).optional().default('markdown'),
+      },
+      async (args) => {
+        return this.executeTool('spider_restore_wire', async () => {
+          if (!this.agentContext) return 'AgentContext not available.';
+          const spider = this.agentContext.graph.spider;
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(args.wireJson);
+          } catch {
+            return 'Invalid wireJson: must be valid JSON';
+          }
+          const restored = spider.restoreFromWire(parsed, args.maxCompactLines);
+          if (args.responseFormat === 'json') {
+            return JSON.stringify(restored, null, 2);
+          }
+          const lines = [
+            restored.digest,
+            '',
+            `exitCode=${restored.exitCode} proceed=${restored.proceed}`,
+            `phase=${restored.phase ?? 'unknown'}`,
+            `telemetry: ${JSON.stringify(restored.telemetry)}`,
+          ];
+          if (restored.ndjsonEvents?.length) {
+            lines.push(`ndjsonEvents=${restored.ndjsonEvents.length}`);
+          }
+          return lines.join('\n');
+        });
+      }
+    );
+
+    this.server.tool(
+      'spider_export_ci_artifacts',
+      'Export Spider CI artifacts (step summary, annotations, SARIF, wire, NDJSON) to a directory.',
+      {
+        phase: z.enum(['pre-edit', 'post-edit', 'ci', 'delta']).optional(),
+        scenario: z
+          .enum(['before-edit', 'after-edit', 'ci-gate', 'pr-review', 'advisory-scan', 'local-edit-loop'])
+          .optional()
+          .describe('When set, run scenario and export scenario CI artifacts instead of a single check'),
+        filePath: z.string().optional(),
+        scope: z.union([z.literal('changed-files'), z.array(z.string())]).optional(),
+        outputDir: z.string().describe('Directory to write artifact files'),
+        includeSarifMeta: z.boolean().optional().default(true),
+        gatePreset: z.enum(['ci', 'strict', 'advisory']).optional(),
+        correlationId: z.string().optional(),
+      },
+      async (args) => {
+        return this.executeTool('spider_export_ci_artifacts', async () => {
+          if (!this.agentContext) return 'AgentContext not available.';
+          const spider = this.agentContext.graph.spider;
+          if (args.scenario) {
+            const scenarioResponse = await spider.runAgentScenarioAndRespond(args.scenario, {
+              filePath: args.filePath,
+              scope: args.scope,
+              correlationId: args.correlationId,
+            });
+            const written = await spider.writeScenarioCiArtifacts(args.outputDir, scenarioResponse);
+            return `Wrote ${written.length} scenario artifact file(s) to ${args.outputDir}\n${written.join('\n')}`;
+          }
+          const phase = args.phase ?? 'ci';
+          const result = await spider.check({
+            phase,
+            filePath: args.filePath,
+            scope: args.scope,
+            gatePreset: args.gatePreset,
+            correlationId: args.correlationId,
+            includeTypes: false,
+            includeRepairDirectives: true,
+          });
+          const written = await spider.writeCiArtifacts(args.outputDir, result, {
+            includeSarifMeta: args.includeSarifMeta,
+          });
+          return `Wrote ${written.length} file(s) to ${args.outputDir}\n${written.join('\n')}`;
+        });
+      }
+    );
   }
 
   /**
    * Starts the MCP server via standard I/O streams.
    * This is how agent clients like Cursor or Claude Desktop connect natively.
    */
-  async start() {
+  async connectStdio() {
+    this.assertOperational('connectStdio');
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
   }

@@ -1499,11 +1499,11 @@ class RoadmapWorkspaceResolutionTests(unittest.TestCase):
 
         project = str(self.project)
         with mock.patch(
-            "plugins.dietcode.lib.kernel_workspace.resolve_workspace_root",
+            "plugins.dietcode.lib.workspace_root.resolve_workspace_root",
             return_value=mock.Mock(resolved_workspace_root=project, resolution_detail="explicit"),
         ):
             with mock.patch(
-                "plugins.dietcode.lib.kernel_workspace.is_quarantined_root",
+                "plugins.dietcode.lib.workspace_root.is_quarantined_root",
                 return_value=False,
             ):
                 root, source = resolve_workspace()
@@ -1515,14 +1515,14 @@ class RoadmapWorkspaceResolutionTests(unittest.TestCase):
         from plugins.dietcode.lib.agent.roadmap.config import resolve_workspace
 
         with mock.patch(
-            "plugins.dietcode.lib.kernel_workspace.resolve_workspace_root",
+            "plugins.dietcode.lib.workspace_root.resolve_workspace_root",
             return_value=mock.Mock(
                 resolved_workspace_root=str(_PLUGIN_ROOT),
                 resolution_detail="hermes_project:quarantined_cwd",
             ),
         ):
             with mock.patch(
-                "plugins.dietcode.lib.kernel_workspace.is_quarantined_root",
+                "plugins.dietcode.lib.workspace_root.is_quarantined_root",
                 return_value=True,
             ):
                 with mock.patch(

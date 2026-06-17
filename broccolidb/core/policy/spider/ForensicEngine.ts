@@ -1,3 +1,4 @@
+// [LAYER: CORE]
 import * as crypto from "crypto"
 import * as fs from "fs"
 import * as path from "path"
@@ -80,7 +81,7 @@ export class ForensicEngine {
 	public calculateArchitecturalResonance(node: SpiderNode, nodes: Map<string, SpiderNode>): number {
 		const neighborhood = new Set<string>()
 		// Get immediate neighbors (imports and dependents)
-		for (const imp of node.imports) neighborhood.add(imp.specifier)
+		for (const imp of node.imports) neighborhood.add(imp)
 		for (const dep of node.dependents) neighborhood.add(dep)
 
 		if (neighborhood.size < 3) return 0
@@ -177,7 +178,7 @@ export class ForensicEngine {
 			// if a dependency's exports change, even if this file's content remains identical.
 			const depHashes: string[] = []
 			for (const imp of node.imports) {
-				const targetId = this.resolver.resolveImportToNodeId(node.path, imp.specifier, nodes)
+				const targetId = this.resolver.resolveImportToNodeId(node.path, imp, nodes)
 				if (targetId) {
 					const targetNode = nodes.get(targetId)
 					if (targetNode) depHashes.push(targetNode.hash)
@@ -498,7 +499,7 @@ export class ForensicEngine {
 			// We treat the graph as undirected for bridge detection (connectivity is what matters)
 			const neighbors = new Set([
 				...(node.imports
-					.map((i: any) => this.resolver.resolveImportToNodeId(node.path, i.specifier || i, nodes))
+					.map((i: string) => this.resolver.resolveImportToNodeId(node.path, i, nodes))
 					.filter(Boolean) as string[]),
 				...node.dependents,
 			])

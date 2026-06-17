@@ -125,7 +125,7 @@ def main() -> int:
     from plugins.dietcode.lib.agent.roadmap.snapshot import get_workspace_snapshot, invalidate_snapshot
     from plugins.dietcode.lib.agent.roadmap import snapshot as snapshot_mod
     from plugins.dietcode.lib.agent.roadmap.workspace_state import record_file_mutation, record_validation
-    from plugins.dietcode.lib.kernel_workspace import is_quarantined_root
+    from plugins.dietcode.lib.workspace_root import is_quarantined_root
 
     if is_quarantined_root(_PLUGIN_ROOT):
         # Dev checkout may equal plugin root — quarantine applies to install path at runtime.
@@ -624,49 +624,6 @@ def main() -> int:
         schema_closed = [g for g in closed_gates if g.get("id") == "schema_valid"]
         if schema_closed and "apply_bootstrap_fill" not in str(schema_closed[0].get("fix") or ""):
             failures.append("schema gate fix should prioritize bootstrap fill when placeholders remain")
-
-        try:
-            from plugins.dietcode.lib.agent import kernel_cockpit as kc_mod
-            from unittest import mock as audit_mock
-
-            fake_brief = {
-                "enabled": True,
-                "steering_brief": fp.get("steering_brief"),
-                "stack_summary": fp.get("stack_summary"),
-                "bootstrap_complete": False,
-                "bootstrap_placeholder_count": fill_plan.get("remaining_count", 3),
-                "roadmap_exists": True,
-                "health_status": "Coherent",
-                "roadmap_path": str(root / "ROADMAP.md"),
-                "project_steering_digest": digest,
-            }
-            kernel_gate = {
-                "resolved_workspace_root": str(root),
-                "patch_allowed": True,
-                "mutations_enabled": True,
-                "socket_ready": True,
-                "token_ready": True,
-                "workspace_safe_for_mutation": True,
-            }
-            kernel_router = {"raw_write_policy": "warn", "would_block_raw_writes": False, "would_warn_on_raw_write": False}
-            with audit_mock.patch.object(
-                kc_mod,
-                "_gate_context",
-                return_value={"config": None, "gate": kernel_gate, "router": kernel_router},
-            ):
-                with audit_mock.patch.object(kc_mod, "_roadmap_cockpit_brief", return_value=fake_brief):
-                    kc_payload = kc_mod.build_cockpit_report()
-                    kc_text = kc_mod.format_cockpit_report()
-            if not kc_payload.get("roadmap_steering"):
-                failures.append("kernel cockpit missing roadmap_steering brief")
-            if "apply_bootstrap_fill" not in kc_text:
-                failures.append("kernel cockpit report missing bootstrap fill guidance")
-            if "Verify:" not in kc_text:
-                failures.append("kernel cockpit report missing project verify line")
-            if "Identity:" not in kc_text:
-                failures.append("kernel cockpit report missing project identity line")
-        except ImportError:
-            pass
 
         invalidate_snapshot(str(root))
         snapshot_mod._CACHE.clear()

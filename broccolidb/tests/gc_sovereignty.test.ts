@@ -1,3 +1,4 @@
+// [LAYER: UI]
 import { AgentContext } from '../core/agent-context.js';
 import { Workspace } from '../core/workspace.js';
 import { BufferedDbPool } from '../infrastructure/db/BufferedDbPool.js';
@@ -12,6 +13,7 @@ async function testGC() {
   const workspaceId = 'test-workspace-gc';
   const workspace = new Workspace(pool, userId, workspaceId);
   const ctx = new AgentContext(workspace, pool, userId);
+  await ctx.start();
 
   try {
     // 1. Test Task Output Pruning
@@ -26,7 +28,7 @@ async function testGC() {
     tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
     fs.utimesSync(oldFile, tenDaysAgo, tenDaysAgo);
 
-    const result = await ctx.cleanup.performGarbageCollection();
+    const result = await ctx.recovery.performGarbageCollection();
     console.log(`Pruned tasks count: ${result.prunedTaskOutputs}`);
     
     if (!fs.existsSync(oldFile)) {
@@ -37,13 +39,23 @@ async function testGC() {
 
     // 2. Test Epistemic Sunsetting
     console.log('Testing Epistemic Sunsetting...');
-    await ctx.graph.addKnowledge('low-conf-node', 'fact', 'stale info', { confidence: 0.1 });
-    await ctx.graph.addKnowledge('high-conf-node', 'fact', 'fresh info', { confidence: 0.9 });
+    await ctx.graph.addKnowledge({
+      kbId: 'low-conf-node',
+      type: 'fact',
+      content: 'stale info',
+      confidence: 0.1,
+    });
+    await ctx.graph.addKnowledge({
+      kbId: 'high-conf-node',
+      type: 'fact',
+      content: 'fresh info',
+      confidence: 0.9,
+    });
     
     const initialCount = (await pool.selectWhere('knowledge', [{ column: 'userId', value: userId }])).length;
     console.log(`Initial node count: ${initialCount}`);
     
-    const prunedCount = await ctx.cleanup.performEpistemicSunsetting(0.2);
+    const { prunedCount } = await ctx.recovery.performEpistemicSunsetting({ confidenceThreshold: 0.2 });
     console.log(`Pruned nodes count: ${prunedCount}`);
     
     const finalNodes = await pool.selectWhere('knowledge', [{ column: 'userId', value: userId }]);
@@ -61,6 +73,7 @@ async function testGC() {
     console.error('❌ TEST FAILED:', err);
     process.exit(1);
   } finally {
+    await ctx.stop();
     process.exit(0);
   }
 }

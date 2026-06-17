@@ -1,3 +1,4 @@
+// [LAYER: CORE]
 import * as path from 'node:path';
 import type { SpiderEngine } from './SpiderEngine.js';
 
@@ -77,11 +78,11 @@ export class SpiderRefactorer {
 
     // 4. Heavy Hub Detection (Vitality aware)
     for (const node of this.engine.nodes.values()) {
-        if ((node.vitality ?? 0) > 80 && node.resolvedImports.size > 15) {
+        if ((node.vitality || 0) > 80 && node.resolvedImports.size > 15) {
             suggestions.push({
                 type: 'EXTRACT',
                 target: node.path,
-                reason: `High Churn Hub detected. Extensive vitality (${node.vitality} additions) and high outgoing coupling (${node.resolvedImports.size} imports).`,
+                reason: `High Churn Hub detected. Extensive vitality (${node.vitality || 0} additions) and high outgoing coupling (${node.resolvedImports.size} imports).`,
                 benefit: 'Stabilizes core logic by extracting high-frequency mutation points into leaf components.'
             });
         }

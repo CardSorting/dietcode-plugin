@@ -1,5 +1,37 @@
 # Changelog
 
+## v1.11.0 — Native mutation (remove macOS kernel) (2026-06-17)
+
+Replaces the quarantined macOS `kernel/` subtree and socket bridge with the
+**codemarie-new / LUMI native mutation strategy** (`NativeMutationManager`).
+
+### Highlights
+
+- **Removed** — `kernel/` C++ tree, socket RPC bridge, patch gate, raw-write router, kernel cockpit/progress UX.
+- **Added** — `lib/agent/native_mutation.py` — Python port of coherence tokens, governed patch, verify, drift detection.
+- **`dietcode_kernel` tool** — now calls native mutation (status, search, patch, verify, coherence, refresh).
+- **Workspace** — `lib/workspace_root.py` replaces `kernel_workspace` (plugin-tree quarantine only).
+- **Doctor** — `/dietcode mutation` replaces `/dietcode kernel`.
+
+## v1.10.0 — BroccoliDB v30 distill (2026-06-17)
+
+Distills the rewritten **LUMI / codemarie-new** BroccoliDB substrate into the
+Hermes plugin while preserving Hermes-only infrastructure (RPC worker, kanban hive,
+queue, sharded Config).
+
+### Highlights
+
+- **BroccoliDB v30 core** — capabilities, orchestration runtime, Spider agent toolkit,
+  lifecycle-owned `AgentContext`, frozen `core/public-api.ts`.
+- **Hermes RPC adapter** — `agent_invoke.ts` / `agent_session.ts` map legacy ops onto
+  v30 surfaces (`ctx.graph`, `ctx.query`, `ctx.reasoning`, `ctx.tasks`).
+- **Sharded pool preserved** — plugin `BufferedDbPool` + hive schema kept; v30
+  `start()` / `health()` / `pruneExpiredShadows()` added for lifecycle compat.
+- **Distill script** — `make distill` / `scripts/distill_from_codemarie.sh`
+  (`CODEMARIE_SRC` defaults to `~/Downloads/codemarie-new`).
+
+Run after distill: `cd broccolidb && npm ci && npm run build`.
+
 ## v1.9.4 — Sonic Kernel UX (2026-06-09)
 
 Adds high-tempo kernel cockpit feedback, kinetic watch mode, fast-path indicators,

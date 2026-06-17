@@ -1,6 +1,6 @@
 # DietCode Hermes Plugin
 
-**v1.9.4 — Sonic Kernel UX**
+**v1.11.0 — Native mutation (LUMI strategy)**
 
 DietCode is a standalone Hermes Agent plugin: one installable directory that gives
 agents **governed mutation**, **repository intelligence**, and **per-project
@@ -9,8 +9,8 @@ long-horizon steering** — without forcing a single runtime path.
 BroccoliDB indexes your repo. JoyZoning owns the mutation lifecycle.
 JSDP plans bounded delivery loops. The **roadmap** tool keeps `ROADMAP.md` as a
 living steering surface unique to *your* project — not the plugin checkout.
-An optional **macOS kernel bridge** adds coherent physical patch and verify when
-you opt in.
+**`dietcode_kernel`** provides native governed patch/verify with coherence tokens
+(same strategy as codemarie-new / LUMI).
 
 ```text
 Point workspace at YOUR project → fingerprint → evidence → ROADMAP.md steering
@@ -25,12 +25,13 @@ DietCode separates three authorities that other setups often collapse:
 
 | Authority | Owner | Question it answers |
 | --- | --- | --- |
-| **Physical mutation** | Kernel bridge (optional) or raw Hermes tools | What changed on disk, with receipts? |
+| **Physical mutation** | `dietcode_kernel` (native) or raw Hermes tools | What changed on disk, with receipts? |
 | **Lifecycle & completion** | JoyZoning + convergence gates | Is this mutation reviewed, verified, converged? |
 | **Long-horizon steering** | Roadmap (`ROADMAP.md`) | What is the project becoming; what matters now? |
 
-Nothing auto-completes kanban. Raw writes stay allowed by default. The kernel
-patch gate is **closed until you enable it**. Roadmap gates can block
+Nothing auto-completes kanban. Raw Hermes writes remain allowed. Governed patches
+use `dietcode_kernel(action='patch')` with coherence tokens when `task_id` is set.
+Roadmap gates can block
 `kanban_complete` when the steering surface is stale, invalid, or unvalidated —
 mirroring how production teams treat architecture docs and CI green before merge.
 
@@ -57,15 +58,16 @@ as production-ready.
 
 **Deep reference:** [docs/roadmap.md](docs/roadmap.md)
 
-### Mutation loop (JoyZoning + optional kernel)
+### Mutation loop (JoyZoning + native runtime)
 
 ```text
 joyzoning(action='context')  → scope, convergence, roadmap brief, next_actions
+dietcode_kernel(action='status') → coherence token when task_id set
 begin → patch → verify → request_review → convergence → kanban_complete (if gates open)
 ```
 
-Kernel-enabled path adds governed RPC patch/verify with coherence receipts and
-progress telemetry (`/dietcode kernel cockpit`, watch, explain-gate).
+Native path: governed patch/verify via `dietcode_kernel` with drift detection and
+`.dietcode/mutation-state.json` (codemarie-new / LUMI strategy).
 
 ---
 
@@ -77,7 +79,7 @@ progress telemetry (`/dietcode kernel cockpit`, watch, explain-gate).
 | **BroccoliDB** | Knowledge graph, audit, refactor, structural analysis, hive sync |
 | **JoyZoning** | Mutation lifecycle, convergence, runtime journal |
 | **JSDP** | Rolling-horizon autonomous delivery helpers |
-| **Kernel bridge** | Optional macOS `dietcode_kernel` patch/verify + raw-write policy |
+| **Native mutation** | `dietcode_kernel` tool — patch, verify, coherence, drift detection |
 | **Hooks** | Session start, pre/post tool call, write transforms, gate enforcement |
 
 ---
@@ -152,13 +154,11 @@ Prime directive: *did the latest work strengthen or weaken the project's center 
 
 Decision tree when stuck: [docs/roadmap.md#decision-tree](docs/roadmap.md#decision-tree-which-call-next)
 
-### Kernel (optional, macOS)
+### Native mutation
 
 ```text
-/dietcode kernel cockpit          State, gates, roadmap steering merge
-/dietcode kernel watch --follow   Live operation line
-/dietcode kernel explain-gate     Patch gate diagnostics
-/dietcode kernel progress         Human summary + phase hints
+/dietcode mutation status       Workspace revision, drift, coherence state
+dietcode_kernel(action='status')   Same via tool
 ```
 
 ### Everything else
@@ -178,26 +178,14 @@ Safe defaults are seeded by `install.py`:
 
 ```yaml
 dietcode:
-  kernel:
-    bridge:
-      enabled: true
-      mutations_enabled: false    # opt in to open patch gate
-      raw_write_policy: warn
+  workspace:
+    workspace_root_source: hermes_project
   roadmap:
     enabled: true
     auto_install_skills: true
     warn_on_stale_before_complete: true
     block_kanban_on_validation_pending: true
     stale_checkpoint_days: 7
-```
-
-Enable kernel mutation (macOS, after build + socket):
-
-```yaml
-dietcode:
-  kernel:
-    bridge:
-      mutations_enabled: true
 ```
 
 Full keys: [docs/roadmap.md#configuration-reference](docs/roadmap.md#configuration-reference) · [docs/dietcode-plugin.md](docs/dietcode-plugin.md)
@@ -212,20 +200,14 @@ Plugin checkout production gate:
 make verify
 ```
 
-Runs roadmap smoke, production audit, operator smoke, and 121 unit tests
-(roadmap + kernel cockpit).
+Runs roadmap smoke, production audit, operator smoke, and unit tests
+(roadmap + native mutation).
 
 Inside Hermes after install:
 
 ```text
 /dietcode doctor
-```
-
-Kernel integration (macOS):
-
-```bash
-make -C kernel kernel && make -C kernel restart-agent-server-fast
-python scripts/kernel_bridge_e2e.py
+/dietcode mutation status
 ```
 
 BroccoliDB:
@@ -257,9 +239,8 @@ make deploy-fast                        # skip Hermes pip reinstall
 - Hermes Agent with plugin support
 - Python (Hermes runtime)
 - Node.js 18+ and npm (`broccolidb/`)
-- **Kernel bridge (optional):** macOS, built `kernel/build/dietcode-kernel`, socket at `~/.dietcode/control.sock`
 
-Linux: full BroccoliDB, JoyZoning, JSDP, and roadmap; kernel bridge degrades gracefully.
+Works on macOS and Linux — native mutation uses Python + git (no macOS binary).
 
 ---
 
@@ -276,14 +257,15 @@ Linux: full BroccoliDB, JoyZoning, JSDP, and roadmap; kernel bridge degrades gra
 │   ├── agent/
 │   │   ├── roadmap/            Fingerprint, evidence, autofill, gates, cockpit
 │   │   ├── joyzoning/          Lifecycle, convergence, JSDP
-│   │   └── kernel_*            Bridge client, progress, cockpit
-│   ├── runtime/                roadmap_hooks, joyzoning_hooks, kernel_hooks
+│   │   ├── native_mutation.py  Governed patch, verify, coherence tokens
+│   │   └── joyzoning/          Lifecycle, convergence, JSDP
+│   ├── workspace_root.py       Project workspace resolution
+│   ├── runtime/                roadmap_hooks, joyzoning_hooks, mutation_hooks
 │   └── tools/                  roadmap, dietcode_kernel, broccolidb, joyzoning
 ├── optional-skills/dietcode/auto-rolling-roadmap/   ROADMAP skill (auto-installed)
-├── kernel/                     Quarantined macOS kernel subtree
 ├── broccolidb/                 Bundled TypeScript package
-├── scripts/                    Deploy, audit, smoke, kernel e2e
-├── tests/                      Roadmap + kernel cockpit unit tests
+├── scripts/                    Deploy, audit, smoke
+├── tests/                      Roadmap + native mutation unit tests
 └── docs/                       Operator and developer documentation
 ```
 
@@ -292,7 +274,8 @@ Workspace artifacts (in **your** project, not the plugin):
 ```text
 /path/to/your/project/
 ├── ROADMAP.md                  Living steering surface (12-section contract)
-└── .dietcode/roadmap-state.json   Validate/checkpoint memory
+├── .dietcode/roadmap-state.json   Validate/checkpoint memory
+└── .dietcode/mutation-state.json  Native mutation coherence state
 ```
 
 ---
@@ -304,12 +287,9 @@ Workspace artifacts (in **your** project, not the plugin):
 | **Roadmap steering (read first for agents)** | [docs/roadmap.md](docs/roadmap.md) |
 | Install, config, workflow | [docs/dietcode-plugin.md](docs/dietcode-plugin.md) |
 | Hook wiring, authority split | [docs/architecture.md](docs/architecture.md) |
-| Kernel bridge operations | [docs/kernel-bridge-operations.md](docs/kernel-bridge-operations.md) |
 | Slash commands + tools | [docs/tools-reference.md](docs/tools-reference.md) |
-| Kernel + roadmap operator UX | [docs/agent-ergonomics.md](docs/agent-ergonomics.md) |
 | BroccoliDB runtime | [docs/broccolidb.md](docs/broccolidb.md) |
 | Doc index | [docs/README.md](docs/README.md) |
-| Kernel build + RPC | [kernel/README.md](kernel/README.md) |
 | Release history | [CHANGELOG.md](CHANGELOG.md) |
 
 Agent skill (installed to workspace):  

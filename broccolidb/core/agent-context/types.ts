@@ -1,3 +1,6 @@
+// [LAYER: CORE]
+import type { LifecycleRegistryHealth } from './LifecycleRegistry.js';
+import type { CapabilityHealth } from './capability-health.js';
 import type { BufferedDbPool } from '../../infrastructure/db/BufferedDbPool.js';
 import type { LRUCache } from '../lru-cache.js';
 import type { Workspace } from '../workspace.js';
@@ -5,7 +8,6 @@ import type { LspService } from './LspService.js';
 import type { CoordinatorService } from './CoordinatorService.js';
 import type { ScratchpadService } from './ScratchpadService.js';
 import type { BlastRadius } from './StructuralDiscoveryService.js';
-import type { CompactService } from './CompactService.js';
 import type { MailboxService } from './MailboxService.js';
 
 export interface MemoryMessage {
@@ -25,12 +27,16 @@ export interface ToolDef {
   isSearchOrReadCommand?: boolean;
   isDestructive?: boolean;
   maxResultSizeChars?: number;
+  timeoutMs?: number;
   execute: (args: any, context: ServiceContext) => Promise<any>;
 }
 
 export interface ToolUseContext {
   agentId?: string;
   sessionId?: string;
+  toolUseId?: string;
+  startedAt?: number;
+  signal?: AbortSignal;
   options: {
     tools: ToolDef[];
   };
@@ -142,14 +148,33 @@ export interface AiService {
   explainReasoningChain: (content: string, lineage: { content: string; type: string }[]) => Promise<string>;
 }
 
-export type RepairAction = 'UPDATE_IMPORT_PATH' | 'EXPORT_SYMBOL' | 'DECOUPLE_INTERFACE' | 'FIX_LAYER_VIOLATION';
+export type RepairAction =
+  | 'UPDATE_IMPORT_PATH'
+  | 'ADD_MISSING_EXPORT'
+  | 'REMOVE_STALE_IMPORT'
+  | 'RENAME_SYMBOL_REFERENCE'
+  | 'MOVE_SYMBOL_REFERENCE'
+  | 'BREAK_CYCLE_BY_INTERFACE'
+  | 'FIX_LAYER_VIOLATION'
+  | 'REFRESH_GRAPH_NODE'
+  | 'RESYNC_DISK_PARITY'
+  | 'EXPORT_SYMBOL'
+  | 'DECOUPLE_INTERFACE';
 
 export interface RepairDirective {
-  action: RepairAction;
+  directiveId?: string;
+  action?: RepairAction;
+  type?: RepairAction;
   symbol?: string;
   filePath?: string;
+  targetFile?: string;
+  targetRange?: import('../policy/spider/report-types.js').SourceRange;
   suggestedValue?: string;
   rationale: string;
+  preconditions?: string[];
+  verificationCommand?: string;
+  riskLevel?: 'low' | 'medium' | 'high';
+  supportingEvidenceIds?: string[];
 }
 
 export interface ServiceContext {
@@ -180,7 +205,6 @@ export interface ServiceContext {
         character: number 
     }[] 
   };
-  pasteStore: import('./PasteStore.js').PasteStore;
   compact: import('./CompactService.js').CompactService;
   storage: import('../../infrastructure/storage/StorageService.js').StorageService;
   token: import('./TokenService.js').TokenService;
@@ -192,33 +216,13 @@ export interface ServiceContext {
   toolUseContext?: ToolUseContext;
 }
 
+import type { GraphCapability } from './capabilities/GraphCapability.js';
+import type { QueryCapability } from './capabilities/QueryCapability.js';
+
 export interface IAgentContext {
-  getStructuralImpact(filePath: string): { 
-    summary: string; 
-    blastRadius: BlastRadius; 
-    deficiencies: { 
-        depId: string, 
-        symbols: string[], 
-        displacements: { symbol: string, newPath: string }[],
-        directives: RepairDirective[],
-        line: number, 
-        character: number 
-    }[] 
-  };
-  searchKnowledge(
-    query: string,
-    tags?: string[],
-    limit?: number,
-    queryEmbedding?: number[],
-    options?: any
-  ): Promise<KnowledgeBaseItem[]>;
+  graph: Pick<GraphCapability, 'getStructuralImpact' | 'annotateKnowledge'>;
+  query: Pick<QueryCapability, 'search'>;
   flush(): Promise<void>;
-  annotateKnowledge(
-    targetId: string,
-    annotation: string,
-    agentId?: string,
-    metadata?: Record<string, any>
-  ): Promise<void>;
 }
 
 export type SuggestionType = 'fix' | 'design' | 'learn' | 'feature';
@@ -233,4 +237,29 @@ export interface AgentBundle {
   profile: AgentProfile;
   activeTasks: TaskItem[];
   recentKnowledge: KnowledgeBaseItem[];
+}
+
+export interface BroccoliDbCacheStats {
+  hits: number;
+  misses: number;
+  size: number;
+}
+
+import type { IntentTracerHealth } from './intent-types.js';
+
+export interface BroccoliDbHealth {
+  status: 'healthy' | 'degraded' | 'critical' | 'stopped';
+  lifecycle: 'new' | 'starting' | 'started' | 'stopping' | 'stopped';
+  registry: LifecycleRegistryHealth;
+  capabilities: Record<string, CapabilityHealth>;
+  cache: BroccoliDbCacheStats;
+  intent: IntentTracerHealth;
+  invariantViolations?: string[];
+  compatibilityBridgeViolations?: string[];
+}
+
+export interface BroccoliDbRecoveryReport {
+  recovered: boolean;
+  warmedTables: Record<string, number>;
+  errors: string[];
 }

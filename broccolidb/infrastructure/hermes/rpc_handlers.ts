@@ -141,7 +141,10 @@ export async function runProposalAction(
 		.updateTable("hive_healing_proposals")
 		.set({
 			status: nextStatus,
-			applied_at: action === "approve" ? Date.now() : row.applied_at,
+			applied_at:
+				action === "approve"
+					? String(Date.now())
+					: row.applied_at,
 		})
 		.where("id", "=", proposalId)
 		.execute();

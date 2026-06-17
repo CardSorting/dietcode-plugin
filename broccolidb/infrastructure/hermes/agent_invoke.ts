@@ -1,5 +1,6 @@
 /**
  * AgentContext RPC operations — graph/kanban cognitive tools via persistent session.
+ * Maps legacy Hermes op names onto BroccoliDB v30 capability surfaces.
  */
 import { getAgentContext, flushAgentContext } from "./agent_session.js";
 
@@ -41,7 +42,7 @@ export async function runAgentInvoke(
 		};
 	}
 
-	const context = await getAgentContext();
+	const ctx = await getAgentContext();
 
 	switch (op) {
 		case "warm": {
@@ -49,8 +50,8 @@ export async function runAgentInvoke(
 			return { success: true, warmed: true };
 		}
 		case "heal": {
-			const healResult = await context.selfHealGraph();
-			const spider = context.spider;
+			await ctx.reasoning.selfHealGraph();
+			const spider = ctx.graph.spider;
 			await spider.bootstrapGraph();
 			const integrityResult = await spider.verifyGraphIntegrity(false);
 			if (params.flush !== false) {
@@ -58,15 +59,11 @@ export async function runAgentInvoke(
 			}
 			return {
 				success: true,
-				epistemic: {
-					prunedNodes: healResult.prunedNodes.length,
-					prunedNodeIds: healResult.prunedNodes.slice(0, 20),
-					prunedEdges: healResult.prunedEdges,
-				},
+				epistemic: { healed: true },
 				structural: {
 					ghostNodesPruned: integrityResult.pruned,
 				},
-				totalHealed: healResult.prunedNodes.length + integrityResult.pruned,
+				totalHealed: integrityResult.pruned,
 			};
 		}
 		case "add_knowledge": {
@@ -74,23 +71,30 @@ export async function runAgentInvoke(
 			const type = String(args.type ?? "fact");
 			const content = String(args.content ?? "");
 			const tags = parseTags(args.tags);
-			const newId = await context.addKnowledge(kbId, type as never, content, {
+			const result = await ctx.graph.addKnowledge({
+				kbId,
+				type: type as never,
+				content,
 				tags: tags ?? [],
 			});
 			if (params.flush !== false) {
 				await flushAgentContext();
 			}
-			return { success: true, kbId: newId };
+			return { success: true, kbId: result.kbId };
 		}
 		case "query_graph": {
 			const query = String(args.query ?? "");
 			const limit = Math.max(1, Math.min(Number(args.limit) || 10, 100));
 			const tags = parseTags(args.tags);
-			const results = await context.searchKnowledge(query, tags, limit);
+			const search = await ctx.query.search({
+				text: query,
+				limit,
+				tags,
+			});
 			return {
 				success: true,
-				resultCount: results.length,
-				results: results.map((r) => ({
+				resultCount: search.items.length,
+				results: search.items.map((r) => ({
 					id: r.itemId,
 					type: r.type,
 					content: (r.content || "").substring(0, 500),
@@ -102,12 +106,12 @@ export async function runAgentInvoke(
 		}
 		case "get_task_context": {
 			const taskId = String(args.task_id ?? args.taskId ?? "");
-			const taskContext = await context.getTaskContext(taskId);
-			return { success: true, taskId, context: taskContext };
+			const taskContext = await ctx.tasks.getContext({ taskId });
+			return { success: true, taskId, context: taskContext.context };
 		}
 		case "append_shared_memory": {
 			const memory = String(args.memory ?? "");
-			await context.appendSharedMemory(memory);
+			await ctx.query.appendSharedMemory({ memory });
 			if (params.flush !== false) {
 				await flushAgentContext();
 			}
@@ -115,16 +119,13 @@ export async function runAgentInvoke(
 		}
 		case "verify_sovereignty": {
 			const nodeId = String(args.kb_id ?? args.kbId ?? "");
-			const result = await context.verifySovereignty(nodeId);
-			const caveat = await context.reasoningService.getSovereignCaveat(nodeId).catch(
-				() => "",
-			);
+			const result = await ctx.reasoning.verifySovereignty({ nodeId });
 			return {
 				success: true,
 				kbId: nodeId,
 				isValid: result.isValid,
 				metrics: result.metrics,
-				caveat: caveat || null,
+				caveat: null,
 				verdict: result.isValid ? "SOVEREIGN" : "UNRELIABLE",
 			};
 		}

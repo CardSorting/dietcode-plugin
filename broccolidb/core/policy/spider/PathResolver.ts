@@ -1,3 +1,4 @@
+// [LAYER: CORE]
 import * as fs from "fs"
 import * as path from "path"
 import { Logger } from "../../../shared/services/Logger.js"
@@ -334,8 +335,7 @@ export class PathResolver {
 						item.name.endsWith(".ts") ||
 						item.name.endsWith(".tsx") ||
 						item.name.endsWith(".js") ||
-						item.name.endsWith(".jsx") ||
-						item.name.endsWith(".py")
+						item.name.endsWith(".jsx")
 					) {
 						results.push(itemRel)
 					}
